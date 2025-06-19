@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -22,7 +22,7 @@ const Shipments = () => {
   const [shipments, setShipments] = useState([]);
   const [trackers, setTrackers] = useState([]);
   const [selectedTracker, setSelectedTracker] = useState('');
-
+  
   const [formData, setFormData] = useState({
     legs: [{
       shipFrom: '',
@@ -34,6 +34,18 @@ const Shipments = () => {
       departureDate: ''
     }]
   });
+
+  // Add state for shipment markers
+  const [shipmentMarkers, setShipmentMarkers] = useState([]);
+  const [isLoadingMarkers, setIsLoadingMarkers] = useState(false);
+  // Add state for cluster view mode
+  const [clusterViewMode] = useState(true);
+  // Add geocoding cache state
+  const [geocodeCache, setGeocodeCache] = useState({});
+  const [isGeocodingInProgress, setIsGeocodingInProgress] = useState(false);
+  
+  // Use ref to track processed shipments to prevent unnecessary re-processing
+  const processedShipmentsRef = useRef(new Set());
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
@@ -270,6 +282,236 @@ const Shipments = () => {
     return 'Delivered';
   };
 
+  // Create shipment markers with dynamic geocoding
+  useEffect(() => {
+    // Prevent multiple simultaneous geocoding operations
+    if (isGeocodingInProgress) return;
+
+    // Check if shipments have changed
+    const currentShipmentIds = new Set(shipments.map(s => s._id || s.trackerId));
+    const hasShipmentsChanged = 
+      currentShipmentIds.size !== processedShipmentsRef.current.size ||
+      [...currentShipmentIds].some(id => !processedShipmentsRef.current.has(id));
+
+    if (!hasShipmentsChanged && shipmentMarkers.length > 0) {
+      return; // Skip if shipments haven't changed and we already have markers
+    }
+
+    // Dynamic geocoding function using Nominatim API
+    const geocodeAddress = async (address) => {
+      if (!address || address.trim() === '') return null;
+      
+      // Check cache first
+      const cacheKey = address.toLowerCase().trim();
+      if (geocodeCache[cacheKey]) {
+        return geocodeCache[cacheKey];
+      }
+
+      try {
+        // Use Nominatim (OpenStreetMap) - Free, no API key required
+        const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&addressdetails=1`;
+        
+        const response = await fetch(nominatimUrl, {
+          headers: {
+            'User-Agent': 'ShipmentTracker/1.0'
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.length > 0) {
+            const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+            
+            // Cache the result
+            setGeocodeCache(prev => ({
+              ...prev,
+              [cacheKey]: coords
+            }));
+            
+            return coords;
+          }
+        }
+      } catch (error) {
+        console.warn('Geocoding failed for:', address, error);
+      }
+
+      return null;
+    };
+
+    // Batch geocoding with rate limiting
+    const batchGeocodeAddresses = async (addresses) => {
+      const results = new Map();
+      const BATCH_DELAY = 1000; // 1 second between requests to respect rate limits
+      
+      for (let i = 0; i < addresses.length; i++) {
+        const address = addresses[i];
+        
+        const coords = await geocodeAddress(address);
+        if (coords) {
+          results.set(address, coords);
+        }
+        
+        // Rate limiting delay (except for last item)
+        if (i < addresses.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+        }
+      }
+      
+      return results;
+    };
+
+    const createShipmentMarkers = async () => {
+      if (!shipments || shipments.length === 0) {
+        setShipmentMarkers([]);
+        processedShipmentsRef.current = new Set();
+        return;
+      }
+
+      setIsLoadingMarkers(true);
+      setIsGeocodingInProgress(true);
+
+      try {
+        // Group shipments by origin address
+        const originGroups = {};
+        shipments.forEach(shipment => {
+          const origin = shipment.legs?.[0]?.shipFromAddress;
+          if (origin && origin.trim() !== '') {
+            if (!originGroups[origin]) {
+              originGroups[origin] = [];
+            }
+            originGroups[origin].push(shipment);
+          }
+        });
+
+        const uniqueAddresses = Object.keys(originGroups);
+        
+        // Filter out addresses that are already cached
+        const uncachedAddresses = uniqueAddresses.filter(address => {
+          const cacheKey = address.toLowerCase().trim();
+          return !geocodeCache[cacheKey];
+        });
+
+        // Only geocode uncached addresses
+        let geocodedResults = new Map();
+        
+        // Add cached results first
+        uniqueAddresses.forEach(address => {
+          const cacheKey = address.toLowerCase().trim();
+          if (geocodeCache[cacheKey]) {
+            geocodedResults.set(address, geocodeCache[cacheKey]);
+          }
+        });
+
+        // Geocode remaining addresses if any
+        if (uncachedAddresses.length > 0) {
+          const newResults = await batchGeocodeAddresses(uncachedAddresses);
+          newResults.forEach((coords, address) => {
+            geocodedResults.set(address, coords);
+          });
+        }
+
+        // Create markers from geocoded results
+        const markers = [];
+        geocodedResults.forEach((coords, address) => {
+          markers.push({
+            id: `marker-${markers.length}`,
+            position: coords,
+            address: address,
+            shipments: originGroups[address],
+            count: originGroups[address].length
+          });
+        });
+
+        setShipmentMarkers(markers);
+        processedShipmentsRef.current = currentShipmentIds;
+      } catch (error) {
+        console.error('Error creating shipment markers:', error);
+        setShipmentMarkers([]);
+      } finally {
+        setIsLoadingMarkers(false);
+        setIsGeocodingInProgress(false);
+      }
+    };
+
+    createShipmentMarkers();
+  }, [shipments, geocodeCache, isGeocodingInProgress, shipmentMarkers.length]);
+
+  // Improved clustering function
+  const createClusters = (markers, zoom = 2) => {
+    if (!markers || markers.length === 0) return [];
+    
+    // Return all markers as individual clusters for better visibility
+    return markers.map((marker, index) => ({
+      id: `cluster-${index}`,
+      position: marker.position,
+      markers: [marker],
+      count: marker.count
+    }));
+  };
+
+  // Create circle cluster icon with shipment count
+  const createCircleClusterIcon = (count) => {
+    const size = Math.min(80, Math.max(40, 30 + (count * 2))); // Dynamic size based on count
+    const fontSize = count >= 100 ? '14px' : count >= 10 ? '16px' : '18px';
+    
+    // Color based on shipment count with transparency
+    let backgroundColor, borderColor;
+    if (count >= 50) {
+      backgroundColor = 'rgba(229, 62, 62, 0.4)'; // Red with 70% opacity
+      borderColor = 'rgba(197, 48, 48, 0.8)';
+    } else if (count >= 20) {
+      backgroundColor = 'rgba(221, 107, 32, 0.4)'; // Orange with 70% opacity
+      borderColor = 'rgba(192, 86, 33, 0.8)';
+    } else if (count >= 10) {
+      backgroundColor = 'rgba(49, 130, 206, 0.4)'; // Blue with 70% opacity
+      borderColor = 'rgba(44, 90, 160, 0.8)';
+    } else {
+      backgroundColor = 'rgba(56, 161, 105, 0.4)'; // Green with 70% opacity
+      borderColor = 'rgba(47, 133, 90, 0.8)';
+    }
+    
+    return L.divIcon({
+      className: 'circle-cluster-marker',
+      html: `
+        <div class="circle-cluster" style="
+          width: ${size}px;
+          height: ${size}px;
+          background: ${backgroundColor};
+          border: 4px solid ${borderColor};
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: bold;
+          font-size: ${fontSize};
+          font-family: Arial, sans-serif;
+          box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+          cursor: pointer;
+          transition: all 0.3s ease;
+          position: relative;
+        ">
+          <span style="z-index: 2; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${count}</span>
+          <div style="
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,0.1) 100%);
+            z-index: 1;
+          "></div>
+        </div>
+      `,
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2],
+      popupAnchor: [0, -size/2],
+    });
+  };
+
+  const clusters = createClusters(shipmentMarkers);
+
   return (
     <div className="shipments-container">
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
@@ -376,15 +618,174 @@ const Shipments = () => {
 
       <div className="map-container">
         <MapContainer
-          center={[41.6032, -72.6506]}
-          zoom={10}
+          center={[20, 0]} // World view
+          zoom={2}
+          minZoom={1}
+          maxZoom={18}
           style={{ height: '100%', width: '100%' }}
+          worldCopyJump={true}
+          preferCanvas={true}
         >
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            maxZoom={19}
           />
-          {filteredShipments.map(shipment => (
+          
+          {/* Show loading indicator */}
+          {isLoadingMarkers && (
+            <div style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              background: 'rgba(255, 255, 255, 0.9)',
+              padding: '10px 15px',
+              borderRadius: '8px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              zIndex: 1000,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '14px',
+              color: '#666'
+            }}>
+              <div style={{
+                width: '16px',
+                height: '16px',
+                border: '2px solid #ddd',
+                borderTop: '2px solid #1976d2',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }}></div>
+              Loading clusters...
+            </div>
+          )}
+          
+          {/* Show all clusters with circle markers */}
+          {clusterViewMode && clusters.map((cluster) => (
+            <Marker 
+              key={cluster.id} 
+              position={cluster.position}
+              icon={createCircleClusterIcon(cluster.count)}
+            >
+              <Popup maxWidth={350}>
+                <div style={{ minWidth: '300px' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '15px',
+                    marginBottom: '20px',
+                    paddingBottom: '15px',
+                    borderBottom: '3px solid #667eea'
+                  }}>
+                    <div style={{
+                      width: '60px',
+                      height: '60px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                      fontSize: '20px',
+                      fontWeight: 'bold',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                    }}>
+                      {cluster.count}
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: '18px', color: '#1976d2' }}>
+                        Shipment Hub
+                      </strong>
+                      <div style={{ fontSize: '13px', color: '#666', marginTop: '5px' }}>
+                        {cluster.markers[0].address}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div style={{ 
+                    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                    color: 'white',
+                    padding: '20px',
+                    borderRadius: '15px',
+                    marginBottom: '20px',
+                    textAlign: 'center',
+                    boxShadow: '0 6px 20px rgba(0,0,0,0.15)'
+                  }}>
+                    <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '5px' }}>
+                      {cluster.markers[0].count}
+                    </div>
+                    <div style={{ fontSize: '14px', opacity: 0.9, letterSpacing: '1px' }}>
+                      ACTIVE SHIPMENTS
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '10px' }}>
+                    <strong style={{ fontSize: '14px' }}>Recent Shipments:</strong>
+                  </div>
+                  
+                  <div style={{ 
+                    maxHeight: '150px', 
+                    overflowY: 'auto',
+                    background: '#f8f9fa',
+                    borderRadius: '8px',
+                    padding: '10px'
+                  }}>
+                    {cluster.markers[0].shipments.slice(0, 5).map((shipment, idx) => (
+                      <div key={idx} style={{ 
+                        marginBottom: '8px',
+                        padding: '8px',
+                        background: 'white',
+                        borderRadius: '6px',
+                        borderLeft: '3px solid #1976d2'
+                      }}>
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '4px'
+                        }}>
+                          <strong style={{ color: '#1976d2', fontSize: '13px' }}>
+                            #{shipment.trackerId}
+                          </strong>
+                          <span style={{ 
+                            background: '#28a745',
+                            color: 'white',
+                            padding: '2px 6px',
+                            borderRadius: '10px',
+                            fontSize: '10px'
+                          }}>
+                            {getShipmentStatus(shipment)}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#666' }}>
+                          <strong>To:</strong> {shipment.legs?.[shipment.legs.length - 1]?.stopAddress?.substring(0, 30) || 'N/A'}
+                          {shipment.legs?.[shipment.legs.length - 1]?.stopAddress?.length > 30 ? '...' : ''}
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
+                          ETA: {formatDate(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate)}
+                        </div>
+                      </div>
+                    ))}
+                    {cluster.markers[0].shipments.length > 5 && (
+                      <div style={{ 
+                        textAlign: 'center',
+                        color: '#666',
+                        fontSize: '11px',
+                        fontStyle: 'italic',
+                        marginTop: '8px'
+                      }}>
+                        + {cluster.markers[0].shipments.length - 5} more shipments
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+
+          {/* Show individual shipment markers only when a specific shipment is selected from sidebar */}
+          {!clusterViewMode && filteredShipments.map(shipment => (
             <Marker key={shipment._id} position={[41.6032, -72.6506]}>
               <Popup>
                 <div>
@@ -399,6 +800,7 @@ const Shipments = () => {
         </MapContainer>
       </div>
 
+      {/* Modal for new shipment form */}
       {showNewShipmentForm && (
         <div className="modal-overlay">
           <div className="modal-content">
