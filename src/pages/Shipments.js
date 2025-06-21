@@ -472,14 +472,12 @@ const Shipments = () => {
       verticalLine.setAttribute('y1', '0');
       verticalLine.setAttribute('x2', closestPoint.x);
       verticalLine.setAttribute('y2', '60');
-      verticalLine.style.display = 'block';
-      
-      // Show tooltip
+      verticalLine.style.display = 'block';        // Show tooltip
       const tooltip = document.getElementById('chart-tooltip');
       if (tooltip) {
         tooltip.style.display = 'block';
-        tooltip.style.left = e.pageX + 10 + 'px';
-        tooltip.style.top = e.pageY - 10 + 'px';
+        tooltip.style.left = e.pageX + 15 + 'px';
+        tooltip.style.top = e.pageY - 60 + 'px';
         tooltip.innerHTML = `
           <strong>${sensorName}:</strong> ${closestPoint.value.toFixed(1)}${unit}<br/>
           <strong>Time:</strong> ${formatTimestamp(closestPoint.timestamp)}
@@ -1392,23 +1390,23 @@ const Shipments = () => {
               </button>
             </div>
           </div>
-        </div>      )}
-
-      {/* Global tooltip for chart interactions */}
+        </div>      )}      {/* Global tooltip for chart interactions */}
       <div 
         id="chart-tooltip" 
         style={{
           position: 'absolute',
-          background: 'rgba(0, 0, 0, 0.9)',
+          background: 'rgba(0, 0, 0, 0.75)',
           color: 'white',
-          padding: '8px 12px',
-          borderRadius: '6px',
-          fontSize: '12px',
+          padding: '6px 10px',
+          borderRadius: '4px',
+          fontSize: '11px',
           pointerEvents: 'none',
           zIndex: 10000,
           display: 'none',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-          border: '1px solid rgba(255,255,255,0.2)'
+          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          border: '1px solid rgba(255,255,255,0.15)',
+          maxWidth: '200px',
+          whiteSpace: 'nowrap'
         }}
       />
     </div>
