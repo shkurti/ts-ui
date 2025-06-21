@@ -1,7 +1,7 @@
 import React from 'react';
 import './Page.css';
 
-const Shipments: React.FC = () => {
+const Shipments = () => {
   return (
     <div className="page-container">
       <div className="page-header">

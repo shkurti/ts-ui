@@ -22,8 +22,7 @@ const Shipments = () => {
   const [shipments, setShipments] = useState([]);
   const [trackers, setTrackers] = useState([]);
   const [selectedTracker, setSelectedTracker] = useState('');
-  
-  const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState({
     legs: [{
       shipFrom: '',
       stopAddress: '',
@@ -34,6 +33,10 @@ const Shipments = () => {
       departureDate: ''
     }]
   });
+
+  // Add state for shipment detail view
+  const [selectedShipmentDetail, setSelectedShipmentDetail] = useState(null);
+  const [activeTab, setActiveTab] = useState('sensors');
 
   // Add state for shipment markers
   const [shipmentMarkers, setShipmentMarkers] = useState([]);
@@ -269,7 +272,6 @@ const Shipments = () => {
       return 'Invalid Date';
     }
   };
-
   // Helper function to get shipment status
   const getShipmentStatus = (shipment) => {
     // Simple logic to determine status based on dates
@@ -280,6 +282,16 @@ const Shipments = () => {
     if (now < shipDate) return 'Pending';
     if (now >= shipDate && now < arrivalDate) return 'In Transit';
     return 'Delivered';
+  };
+
+  // Handle shipment detail view
+  const handleShipmentClick = (shipment) => {
+    setSelectedShipmentDetail(shipment);
+    setActiveTab('sensors');
+  };
+
+  const handleBackToList = () => {
+    setSelectedShipmentDetail(null);
   };
 
   // Create shipment markers with dynamic geocoding
@@ -520,98 +532,271 @@ const Shipments = () => {
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
         >
           {sidebarCollapsed ? '→' : '←'}
-        </button>
-        
+        </button>        
         {!sidebarCollapsed && (
           <div className="sidebar-content">
-            <div className="sidebar-header">
-              <h2>Shipment Management</h2>
-              <p>Track and manage shipments</p>
-            </div>
-
-            <div className="action-buttons">
-              <button className="btn btn-primary" onClick={handleNewShipment}>
-                + New Shipment
-              </button>
-              <button 
-                className="btn btn-danger" 
-                onClick={handleDeleteSelected}
-                disabled={selectedShipments.length === 0}
-              >
-                Delete
-              </button>
-            </div>
-
-            <div className="select-all">
-              <label className="checkbox-container">
-                <input
-                  type="checkbox"
-                  checked={selectAll}
-                  onChange={handleSelectAll}
-                />
-                <span className="checkmark"></span>
-                Select All ({filteredShipments.length} shipments)
-              </label>
-            </div>
-
-            <div className="search-bar">
-              <input
-                type="text"
-                placeholder="Search shipments..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="search-input"
-              />
-            </div>
-
-            <div className="shipments-list">
-              {isLoading ? (
-                <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                  Loading shipments...
+            {selectedShipmentDetail ? (
+              // Shipment Detail View
+              <div className="shipment-detail-view">
+                <div className="detail-header">
+                  <button className="back-btn" onClick={handleBackToList}>
+                    ← Back to Shipments
+                  </button>
+                  <h2>Shipment #{selectedShipmentDetail.trackerId}</h2>
+                  <span className={`status ${getShipmentStatus(selectedShipmentDetail).toLowerCase().replace(' ', '-')}`}>
+                    {getShipmentStatus(selectedShipmentDetail)}
+                  </span>
                 </div>
-              ) : filteredShipments.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                  {shipments.length === 0 ? 'No shipments found' : 'No shipments match your search'}
-                </div>
-              ) : (
-                filteredShipments.map(shipment => (
-                  <div 
-                    key={shipment._id} 
-                    className={`shipment-item ${selectedShipments.includes(shipment._id) ? 'selected' : ''}`}
-                  >
-                    <div className="shipment-details">
-                      <div className="shipment-header">
-                        <div className="shipment-header-left">
-                          <label className="checkbox-container">
-                            <input
-                              type="checkbox"
-                              checked={selectedShipments.includes(shipment._id)}
-                              onChange={() => handleShipmentSelect(shipment._id)}
-                            />
-                            <span className="checkmark"></span>
-                          </label>
-                          <span className="shipment-id">#{shipment.trackerId}</span>
-                        </div>
-                        <span className={`status ${getShipmentStatus(shipment).toLowerCase().replace(' ', '-')}`}>
-                          {getShipmentStatus(shipment)}
-                        </span>
-                      </div>
-                      <div className="shipment-route">
-                        <div className="route-info">
-                          <strong>From:</strong> {shipment.legs?.[0]?.shipFromAddress || 'N/A'}
-                        </div>
-                        <div className="route-info">
-                          <strong>To:</strong> {shipment.legs?.[shipment.legs.length - 1]?.stopAddress || 'N/A'}
-                        </div>
-                        <div className="route-info">
-                          <strong>ETA:</strong> {formatDate(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate)}
-                        </div>
-                      </div>
-                    </div>
+
+                <div className="shipment-info">
+                  <div className="info-item">
+                    <strong>From:</strong> {selectedShipmentDetail.legs?.[0]?.shipFromAddress || 'N/A'}
                   </div>
-                ))
-              )}
-            </div>
+                  <div className="info-item">
+                    <strong>To:</strong> {selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.stopAddress || 'N/A'}
+                  </div>
+                  <div className="info-item">
+                    <strong>ETA:</strong> {formatDate(selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.arrivalDate)}
+                  </div>
+                  <div className="info-item">
+                    <strong>Carrier:</strong> {selectedShipmentDetail.legs?.[0]?.carrier || 'N/A'}
+                  </div>
+                </div>
+
+                <div className="detail-tabs">
+                  <div className="tab-buttons">
+                    <button 
+                      className={`tab-btn ${activeTab === 'sensors' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('sensors')}
+                    >
+                      Sensors
+                    </button>
+                    <button 
+                      className={`tab-btn ${activeTab === 'alerts' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('alerts')}
+                    >
+                      Alerts
+                    </button>
+                    <button 
+                      className={`tab-btn ${activeTab === 'reports' ? 'active' : ''}`}
+                      onClick={() => setActiveTab('reports')}
+                    >
+                      Reports
+                    </button>
+                  </div>
+
+                  <div className="tab-content">
+                    {activeTab === 'sensors' && (
+                      <div className="sensors-content">
+                        <div className="sensor-charts">
+                          <div className="chart-item">
+                            <div className="chart-header">
+                              <h4>Temperature</h4>
+                              <span className="current-value">23.5°C</span>
+                            </div>
+                            <div className="inline-chart temperature-chart">
+                              <svg width="100%" height="60" viewBox="0 0 300 60">
+                                <polyline
+                                  fill="none"
+                                  stroke="#ff6b6b"
+                                  strokeWidth="2"
+                                  points="0,40 30,35 60,38 90,32 120,30 150,28 180,25 210,30 240,32 270,28 300,26"
+                                />
+                                <circle cx="300" cy="26" r="3" fill="#ff6b6b" />
+                              </svg>
+                            </div>
+                          </div>
+
+                          <div className="chart-item">
+                            <div className="chart-header">
+                              <h4>Humidity</h4>
+                              <span className="current-value">65%</span>
+                            </div>
+                            <div className="inline-chart humidity-chart">
+                              <svg width="100%" height="60" viewBox="0 0 300 60">
+                                <polyline
+                                  fill="none"
+                                  stroke="#4ecdc4"
+                                  strokeWidth="2"
+                                  points="0,45 30,42 60,40 90,38 120,35 150,32 180,30 210,28 240,25 270,22 300,20"
+                                />
+                                <circle cx="300" cy="20" r="3" fill="#4ecdc4" />
+                              </svg>
+                            </div>
+                          </div>
+
+                          <div className="chart-item">
+                            <div className="chart-header">
+                              <h4>Battery</h4>
+                              <span className="current-value">78%</span>
+                            </div>
+                            <div className="inline-chart battery-chart">
+                              <svg width="100%" height="60" viewBox="0 0 300 60">
+                                <polyline
+                                  fill="none"
+                                  stroke="#95e1d3"
+                                  strokeWidth="2"
+                                  points="0,50 30,48 60,46 90,44 120,42 150,40 180,38 210,36 240,34 270,32 300,30"
+                                />
+                                <circle cx="300" cy="30" r="3" fill="#95e1d3" />
+                              </svg>
+                            </div>
+                          </div>
+
+                          <div className="chart-item">
+                            <div className="chart-header">
+                              <h4>Speed</h4>
+                              <span className="current-value">65 km/h</span>
+                            </div>
+                            <div className="inline-chart speed-chart">
+                              <svg width="100%" height="60" viewBox="0 0 300 60">
+                                <polyline
+                                  fill="none"
+                                  stroke="#ffeaa7"
+                                  strokeWidth="2"
+                                  points="0,50 30,45 60,40 90,42 120,38 150,35 180,40 210,38 240,35 270,32 300,30"
+                                />
+                                <circle cx="300" cy="30" r="3" fill="#ffeaa7" />
+                              </svg>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'alerts' && (
+                      <div className="alerts-content">
+                        <div className="alert-item">
+                          <div className="alert-header">
+                            <span className="alert-type warning">Temperature Alert</span>
+                            <span className="alert-time">2 hours ago</span>
+                          </div>
+                          <p>Temperature exceeded threshold: 28°C</p>
+                        </div>
+                        <div className="alert-item">
+                          <div className="alert-header">
+                            <span className="alert-type info">Location Update</span>
+                            <span className="alert-time">4 hours ago</span>
+                          </div>
+                          <p>Shipment arrived at distribution center</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'reports' && (
+                      <div className="reports-content">
+                        <div className="report-item">
+                          <h4>Trip Summary</h4>
+                          <p>Total distance: 1,250 km</p>
+                          <p>Average speed: 62 km/h</p>
+                          <p>Time in transit: 18 hours</p>
+                        </div>
+                        <div className="report-item">
+                          <h4>Environmental Conditions</h4>
+                          <p>Avg temperature: 22.3°C</p>
+                          <p>Avg humidity: 58%</p>
+                          <p>Temperature violations: 2</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // Shipments List View
+              <>
+                <div className="sidebar-header">
+                  <h2>Shipment Management</h2>
+                  <p>Track and manage shipments</p>
+                </div>
+
+                <div className="action-buttons">
+                  <button className="btn btn-primary" onClick={handleNewShipment}>
+                    + New Shipment
+                  </button>
+                  <button 
+                    className="btn btn-danger" 
+                    onClick={handleDeleteSelected}
+                    disabled={selectedShipments.length === 0}
+                  >
+                    Delete
+                  </button>
+                </div>
+
+                <div className="select-all">
+                  <label className="checkbox-container">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={handleSelectAll}
+                    />
+                    <span className="checkmark"></span>
+                    Select All ({filteredShipments.length} shipments)
+                  </label>
+                </div>
+
+                <div className="search-bar">
+                  <input
+                    type="text"
+                    placeholder="Search shipments..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="search-input"
+                  />
+                </div>
+
+                <div className="shipments-list">
+                  {isLoading ? (
+                    <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                      Loading shipments...
+                    </div>
+                  ) : filteredShipments.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+                      {shipments.length === 0 ? 'No shipments found' : 'No shipments match your search'}
+                    </div>
+                  ) : (
+                    filteredShipments.map(shipment => (
+                      <div 
+                        key={shipment._id} 
+                        className={`shipment-item ${selectedShipments.includes(shipment._id) ? 'selected' : ''}`}
+                        onClick={() => handleShipmentClick(shipment)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div className="shipment-details">
+                          <div className="shipment-header">
+                            <div className="shipment-header-left">
+                              <label className="checkbox-container" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedShipments.includes(shipment._id)}
+                                  onChange={() => handleShipmentSelect(shipment._id)}
+                                />
+                                <span className="checkmark"></span>
+                              </label>
+                              <span className="shipment-id">#{shipment.trackerId}</span>
+                            </div>
+                            <span className={`status ${getShipmentStatus(shipment).toLowerCase().replace(' ', '-')}`}>
+                              {getShipmentStatus(shipment)}
+                            </span>
+                          </div>
+                          <div className="shipment-route">
+                            <div className="route-info">
+                              <strong>From:</strong> {shipment.legs?.[0]?.shipFromAddress || 'N/A'}
+                            </div>
+                            <div className="route-info">
+                              <strong>To:</strong> {shipment.legs?.[shipment.legs.length - 1]?.stopAddress || 'N/A'}
+                            </div>
+                            <div className="route-info">
+                              <strong>ETA:</strong> {formatDate(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
