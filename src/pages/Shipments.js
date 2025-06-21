@@ -444,7 +444,7 @@ const Shipments = () => {
       index: clampedIndex,
       x: clampedIndex * stepSize
     };
-  };// Helper function to handle chart hover
+  };  // Helper function to handle chart hover
   const handleChartHover = (e, data, valueKey, sensorName, unit) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const mouseX = ((e.clientX - rect.left) / rect.width) * 300; // Scale to viewBox width
@@ -452,11 +452,15 @@ const Shipments = () => {
     const closestPoint = findClosestDataPoint(data, valueKey, mouseX);
     
     if (closestPoint) {
+      // Create unique ID for each chart's vertical line
+      const chartId = sensorName.toLowerCase().replace(' ', '-');
+      const verticalLineId = `chart-vertical-line-${chartId}`;
+      
       // Show vertical line
-      let verticalLine = document.getElementById('chart-vertical-line');
+      let verticalLine = document.getElementById(verticalLineId);
       if (!verticalLine) {
         verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        verticalLine.id = 'chart-vertical-line';
+        verticalLine.id = verticalLineId;
         verticalLine.setAttribute('stroke', '#666');
         verticalLine.setAttribute('stroke-width', '1');
         verticalLine.setAttribute('stroke-dasharray', '3,3');
@@ -485,8 +489,10 @@ const Shipments = () => {
   };
 
   // Helper function to handle chart leave
-  const handleChartLeave = () => {
-    const verticalLine = document.getElementById('chart-vertical-line');
+  const handleChartLeave = (sensorName) => {
+    const chartId = sensorName.toLowerCase().replace(' ', '-');
+    const verticalLineId = `chart-vertical-line-${chartId}`;
+    const verticalLine = document.getElementById(verticalLineId);
     if (verticalLine) {
       verticalLine.style.display = 'none';
     }
@@ -815,10 +821,9 @@ const Shipments = () => {
                                 <svg 
                                   width="100%" 
                                   height="60" 
-                                  viewBox="0 0 300 60"
-                                  style={{ cursor: 'crosshair' }}
+                                  viewBox="0 0 300 60"                                  style={{ cursor: 'crosshair' }}
                                   onMouseMove={(e) => handleChartHover(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                  onMouseLeave={handleChartLeave}
+                                  onMouseLeave={() => handleChartLeave('Temperature')}
                                 >
                                   {temperatureData.length > 0 ? (
                                     <polyline
@@ -849,10 +854,9 @@ const Shipments = () => {
                                 <svg 
                                   width="100%" 
                                   height="60" 
-                                  viewBox="0 0 300 60"
-                                  style={{ cursor: 'crosshair' }}
+                                  viewBox="0 0 300 60"                                  style={{ cursor: 'crosshair' }}
                                   onMouseMove={(e) => handleChartHover(e, humidityData, 'humidity', 'Humidity', '%')}
-                                  onMouseLeave={handleChartLeave}
+                                  onMouseLeave={() => handleChartLeave('Humidity')}
                                 >
                                   {humidityData.length > 0 ? (
                                     <polyline
@@ -883,10 +887,9 @@ const Shipments = () => {
                                 <svg 
                                   width="100%" 
                                   height="60" 
-                                  viewBox="0 0 300 60"
-                                  style={{ cursor: 'crosshair' }}
+                                  viewBox="0 0 300 60"                                  style={{ cursor: 'crosshair' }}
                                   onMouseMove={(e) => handleChartHover(e, batteryData, 'battery', 'Battery', '%')}
-                                  onMouseLeave={handleChartLeave}
+                                  onMouseLeave={() => handleChartLeave('Battery')}
                                 >
                                   {batteryData.length > 0 ? (
                                     <polyline
@@ -918,9 +921,8 @@ const Shipments = () => {
                                   width="100%" 
                                   height="60" 
                                   viewBox="0 0 300 60"
-                                  style={{ cursor: 'crosshair' }}
-                                  onMouseMove={(e) => handleChartHover(e, speedData, 'speed', 'Speed', ' km/h')}
-                                  onMouseLeave={handleChartLeave}
+                                  style={{ cursor: 'crosshair' }}                                  onMouseMove={(e) => handleChartHover(e, speedData, 'speed', 'Speed', ' km/h')}
+                                  onMouseLeave={() => handleChartLeave('Speed')}
                                 >
                                   {speedData.length > 0 ? (
                                     <polyline
