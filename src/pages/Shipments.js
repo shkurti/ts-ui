@@ -33,10 +33,19 @@ const Shipments = () => {
       departureDate: ''
     }]
   });
-
   // Add state for shipment detail view
   const [selectedShipmentDetail, setSelectedShipmentDetail] = useState(null);
   const [activeTab, setActiveTab] = useState('sensors');
+  
+  // Add state for sensor data
+  const [temperatureData, setTemperatureData] = useState([]);
+  const [humidityData, setHumidityData] = useState([]);
+  const [batteryData, setBatteryData] = useState([]);
+  const [speedData, setSpeedData] = useState([]);
+  const [isLoadingSensorData, setIsLoadingSensorData] = useState(false);
+  
+  // User timezone (you can make this configurable)
+  const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Add state for shipment markers
   const [shipmentMarkers, setShipmentMarkers] = useState([]);
@@ -283,15 +292,209 @@ const Shipments = () => {
     if (now >= shipDate && now < arrivalDate) return 'In Transit';
     return 'Delivered';
   };
-
   // Handle shipment detail view
-  const handleShipmentClick = (shipment) => {
+  const handleShipmentClick = async (shipment) => {
     setSelectedShipmentDetail(shipment);
     setActiveTab('sensors');
+    
+    // Clear previous sensor data
+    setTemperatureData([]);
+    setHumidityData([]);
+    setBatteryData([]);
+    setSpeedData([]);
+
+    const trackerId = shipment.trackerId;
+    const legs = shipment.legs || [];
+    const firstLeg = legs[0] || {};
+    const lastLeg = legs[legs.length - 1] || {};
+    const shipDate = firstLeg.shipDate;
+    const arrivalDate = lastLeg.arrivalDate;
+
+    if (!trackerId || !shipDate || !arrivalDate) {
+      return;
+    }
+
+    // Fetch sensor data from backend
+    setIsLoadingSensorData(true);
+    try {
+      const params = new URLSearchParams({
+        tracker_id: trackerId,
+        start: shipDate,
+        end: arrivalDate,
+        timezone: userTimezone
+      });
+      
+      const response = await fetch(`/shipment_route_data?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Process sensor data - timestamps are now in local time
+        setTemperatureData(
+          data.map((record) => ({
+            timestamp: record.timestamp || 'N/A',
+            temperature: record.temperature !== undefined
+              ? parseFloat(record.temperature)
+              : record.Temp !== undefined
+                ? parseFloat(record.Temp)
+                : null,
+          })).filter(item => item.temperature !== null)
+        );
+        
+        setHumidityData(
+          data.map((record) => ({
+            timestamp: record.timestamp || 'N/A',
+            humidity: record.humidity !== undefined
+              ? parseFloat(record.humidity)
+              : record.Hum !== undefined
+                ? parseFloat(record.Hum)
+                : null,
+          })).filter(item => item.humidity !== null)
+        );
+        
+        setBatteryData(
+          data.map((record) => ({
+            timestamp: record.timestamp || 'N/A',
+            battery: record.battery !== undefined
+              ? parseFloat(record.battery)
+              : record.Batt !== undefined
+                ? parseFloat(record.Batt)
+                : null,
+          })).filter(item => item.battery !== null)
+        );
+        
+        setSpeedData(
+          data.map((record) => ({
+            timestamp: record.timestamp || 'N/A',
+            speed: record.speed !== undefined
+              ? parseFloat(record.speed)
+              : record.Speed !== undefined
+                ? parseFloat(record.Speed)
+                : null,
+          })).filter(item => item.speed !== null)
+        );
+      } else {
+        console.error('Failed to fetch sensor data');
+      }
+    } catch (error) {
+      console.error('Error fetching sensor data:', error);
+    } finally {
+      setIsLoadingSensorData(false);
+    }
   };
 
   const handleBackToList = () => {
     setSelectedShipmentDetail(null);
+    // Clear sensor data when going back
+    setTemperatureData([]);
+    setHumidityData([]);
+    setBatteryData([]);
+    setSpeedData([]);
+  };
+  // Helper function to generate SVG path from data points
+  const generateSVGPath = (data, valueKey, maxHeight = 60, maxWidth = 300) => {
+    if (!data || data.length === 0) return '';
+    
+    const values = data.map(item => item[valueKey]).filter(val => val !== null && !isNaN(val));
+    if (values.length === 0) return '';
+    
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const range = maxValue - minValue || 1;
+    
+    const points = values.map((value, index) => {
+      const x = (index / (values.length - 1)) * maxWidth;
+      const y = maxHeight - ((value - minValue) / range) * (maxHeight - 10) - 5;
+      return `${x},${y}`;
+    }).join(' ');
+    
+    return points;
+  };
+  // Helper function to get current value
+  const getCurrentValue = (data, valueKey) => {
+    if (!data || data.length === 0) return 'N/A';
+    const values = data.map(item => item[valueKey]).filter(val => val !== null && !isNaN(val));
+    return values.length > 0 ? values[values.length - 1] : 'N/A';
+  };
+
+  // Helper function to format timestamp for tooltip
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp || timestamp === 'N/A') return 'N/A';
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleString();
+    } catch {
+      return timestamp;
+    }
+  };
+
+  // Helper function to find the closest data point to mouse position
+  const findClosestDataPoint = (data, valueKey, mouseX, maxWidth = 300) => {
+    if (!data || data.length === 0) return null;
+    
+    const values = data.map(item => ({ value: item[valueKey], timestamp: item.timestamp }))
+                        .filter(item => item.value !== null && !isNaN(item.value));
+    if (values.length === 0) return null;
+    
+    const stepSize = maxWidth / (values.length - 1);
+    const index = Math.round(mouseX / stepSize);
+    const clampedIndex = Math.max(0, Math.min(index, values.length - 1));
+    
+    return {
+      ...values[clampedIndex],
+      index: clampedIndex,
+      x: clampedIndex * stepSize
+    };
+  };// Helper function to handle chart hover
+  const handleChartHover = (e, data, valueKey, sensorName, unit) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseX = ((e.clientX - rect.left) / rect.width) * 300; // Scale to viewBox width
+    
+    const closestPoint = findClosestDataPoint(data, valueKey, mouseX);
+    
+    if (closestPoint) {
+      // Show vertical line
+      let verticalLine = document.getElementById('chart-vertical-line');
+      if (!verticalLine) {
+        verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        verticalLine.id = 'chart-vertical-line';
+        verticalLine.setAttribute('stroke', '#666');
+        verticalLine.setAttribute('stroke-width', '1');
+        verticalLine.setAttribute('stroke-dasharray', '3,3');
+        verticalLine.setAttribute('opacity', '0.7');
+        e.currentTarget.appendChild(verticalLine);
+      }
+      
+      verticalLine.setAttribute('x1', closestPoint.x);
+      verticalLine.setAttribute('y1', '0');
+      verticalLine.setAttribute('x2', closestPoint.x);
+      verticalLine.setAttribute('y2', '60');
+      verticalLine.style.display = 'block';
+      
+      // Show tooltip
+      const tooltip = document.getElementById('chart-tooltip');
+      if (tooltip) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = e.pageX + 10 + 'px';
+        tooltip.style.top = e.pageY - 10 + 'px';
+        tooltip.innerHTML = `
+          <strong>${sensorName}:</strong> ${closestPoint.value.toFixed(1)}${unit}<br/>
+          <strong>Time:</strong> ${formatTimestamp(closestPoint.timestamp)}
+        `;
+      }
+    }
+  };
+
+  // Helper function to handle chart leave
+  const handleChartLeave = () => {
+    const verticalLine = document.getElementById('chart-vertical-line');
+    if (verticalLine) {
+      verticalLine.style.display = 'none';
+    }
+    
+    const tooltip = document.getElementById('chart-tooltip');
+    if (tooltip) {
+      tooltip.style.display = 'none';
+    }
   };
 
   // Create shipment markers with dynamic geocoding
@@ -583,84 +786,159 @@ const Shipments = () => {
                     >
                       Reports
                     </button>
-                  </div>
-
-                  <div className="tab-content">
+                  </div>                  <div className="tab-content">
                     {activeTab === 'sensors' && (
                       <div className="sensors-content">
-                        <div className="sensor-charts">
-                          <div className="chart-item">
-                            <div className="chart-header">
-                              <h4>Temperature</h4>
-                              <span className="current-value">23.5°C</span>
-                            </div>
-                            <div className="inline-chart temperature-chart">
-                              <svg width="100%" height="60" viewBox="0 0 300 60">
-                                <polyline
-                                  fill="none"
-                                  stroke="#ff6b6b"
-                                  strokeWidth="2"
-                                  points="0,40 30,35 60,38 90,32 120,30 150,28 180,25 210,30 240,32 270,28 300,26"
-                                />
-                                <circle cx="300" cy="26" r="3" fill="#ff6b6b" />
-                              </svg>
-                            </div>
+                        {isLoadingSensorData ? (
+                          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                            <div style={{
+                              width: '32px',
+                              height: '32px',
+                              border: '3px solid #ddd',
+                              borderTop: '3px solid #007bff',
+                              borderRadius: '50%',
+                              animation: 'spin 1s linear infinite',
+                              margin: '0 auto 15px'
+                            }}></div>
+                            Loading sensor data...
                           </div>
+                        ) : (                          <div className="sensor-charts">                            <div className="chart-item">
+                              <div className="chart-header">
+                                <h4>Temperature</h4>
+                                <span className="current-value">
+                                  {typeof getCurrentValue(temperatureData, 'temperature') === 'number' 
+                                    ? getCurrentValue(temperatureData, 'temperature').toFixed(1) + '°C'
+                                    : getCurrentValue(temperatureData, 'temperature')}
+                                </span>
+                              </div>
+                              <div className="inline-chart temperature-chart" style={{ position: 'relative' }}>
+                                <svg 
+                                  width="100%" 
+                                  height="60" 
+                                  viewBox="0 0 300 60"
+                                  style={{ cursor: 'crosshair' }}
+                                  onMouseMove={(e) => handleChartHover(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                  onMouseLeave={handleChartLeave}
+                                >
+                                  {temperatureData.length > 0 ? (
+                                    <polyline
+                                      fill="none"
+                                      stroke="#ff6b6b"
+                                      strokeWidth="2"
+                                      points={generateSVGPath(temperatureData, 'temperature')}
+                                    />
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                      No temperature data available
+                                    </text>
+                                  )}
+                                </svg>
+                              </div>
+                            </div>
 
-                          <div className="chart-item">
-                            <div className="chart-header">
-                              <h4>Humidity</h4>
-                              <span className="current-value">65%</span>
+                            <div className="chart-item">
+                              <div className="chart-header">
+                                <h4>Humidity</h4>
+                                <span className="current-value">
+                                  {typeof getCurrentValue(humidityData, 'humidity') === 'number' 
+                                    ? getCurrentValue(humidityData, 'humidity').toFixed(1) + '%'
+                                    : getCurrentValue(humidityData, 'humidity')}
+                                </span>
+                              </div>
+                              <div className="inline-chart humidity-chart" style={{ position: 'relative' }}>
+                                <svg 
+                                  width="100%" 
+                                  height="60" 
+                                  viewBox="0 0 300 60"
+                                  style={{ cursor: 'crosshair' }}
+                                  onMouseMove={(e) => handleChartHover(e, humidityData, 'humidity', 'Humidity', '%')}
+                                  onMouseLeave={handleChartLeave}
+                                >
+                                  {humidityData.length > 0 ? (
+                                    <polyline
+                                      fill="none"
+                                      stroke="#4ecdc4"
+                                      strokeWidth="2"
+                                      points={generateSVGPath(humidityData, 'humidity')}
+                                    />
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                      No humidity data available
+                                    </text>
+                                  )}
+                                </svg>
+                              </div>
                             </div>
-                            <div className="inline-chart humidity-chart">
-                              <svg width="100%" height="60" viewBox="0 0 300 60">
-                                <polyline
-                                  fill="none"
-                                  stroke="#4ecdc4"
-                                  strokeWidth="2"
-                                  points="0,45 30,42 60,40 90,38 120,35 150,32 180,30 210,28 240,25 270,22 300,20"
-                                />
-                                <circle cx="300" cy="20" r="3" fill="#4ecdc4" />
-                              </svg>
-                            </div>
-                          </div>
 
-                          <div className="chart-item">
-                            <div className="chart-header">
-                              <h4>Battery</h4>
-                              <span className="current-value">78%</span>
+                            <div className="chart-item">
+                              <div className="chart-header">
+                                <h4>Battery</h4>
+                                <span className="current-value">
+                                  {typeof getCurrentValue(batteryData, 'battery') === 'number' 
+                                    ? getCurrentValue(batteryData, 'battery').toFixed(1) + '%'
+                                    : getCurrentValue(batteryData, 'battery')}
+                                </span>
+                              </div>
+                              <div className="inline-chart battery-chart" style={{ position: 'relative' }}>
+                                <svg 
+                                  width="100%" 
+                                  height="60" 
+                                  viewBox="0 0 300 60"
+                                  style={{ cursor: 'crosshair' }}
+                                  onMouseMove={(e) => handleChartHover(e, batteryData, 'battery', 'Battery', '%')}
+                                  onMouseLeave={handleChartLeave}
+                                >
+                                  {batteryData.length > 0 ? (
+                                    <polyline
+                                      fill="none"
+                                      stroke="#95e1d3"
+                                      strokeWidth="2"
+                                      points={generateSVGPath(batteryData, 'battery')}
+                                    />
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                      No battery data available
+                                    </text>
+                                  )}
+                                </svg>
+                              </div>
                             </div>
-                            <div className="inline-chart battery-chart">
-                              <svg width="100%" height="60" viewBox="0 0 300 60">
-                                <polyline
-                                  fill="none"
-                                  stroke="#95e1d3"
-                                  strokeWidth="2"
-                                  points="0,50 30,48 60,46 90,44 120,42 150,40 180,38 210,36 240,34 270,32 300,30"
-                                />
-                                <circle cx="300" cy="30" r="3" fill="#95e1d3" />
-                              </svg>
-                            </div>
-                          </div>
 
-                          <div className="chart-item">
-                            <div className="chart-header">
-                              <h4>Speed</h4>
-                              <span className="current-value">65 km/h</span>
-                            </div>
-                            <div className="inline-chart speed-chart">
-                              <svg width="100%" height="60" viewBox="0 0 300 60">
-                                <polyline
-                                  fill="none"
-                                  stroke="#ffeaa7"
-                                  strokeWidth="2"
-                                  points="0,50 30,45 60,40 90,42 120,38 150,35 180,40 210,38 240,35 270,32 300,30"
-                                />
-                                <circle cx="300" cy="30" r="3" fill="#ffeaa7" />
-                              </svg>
+                            <div className="chart-item">
+                              <div className="chart-header">
+                                <h4>Speed</h4>
+                                <span className="current-value">
+                                  {typeof getCurrentValue(speedData, 'speed') === 'number' 
+                                    ? getCurrentValue(speedData, 'speed').toFixed(1) + ' km/h'
+                                    : getCurrentValue(speedData, 'speed')}
+                                </span>
+                              </div>
+                              <div className="inline-chart speed-chart" style={{ position: 'relative' }}>
+                                <svg 
+                                  width="100%" 
+                                  height="60" 
+                                  viewBox="0 0 300 60"
+                                  style={{ cursor: 'crosshair' }}
+                                  onMouseMove={(e) => handleChartHover(e, speedData, 'speed', 'Speed', ' km/h')}
+                                  onMouseLeave={handleChartLeave}
+                                >
+                                  {speedData.length > 0 ? (
+                                    <polyline
+                                      fill="none"
+                                      stroke="#ffeaa7"
+                                      strokeWidth="2"
+                                      points={generateSVGPath(speedData, 'speed')}
+                                    />
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                      No speed data available
+                                    </text>
+                                  )}
+                                </svg>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     )}
 
@@ -1112,8 +1390,25 @@ const Shipments = () => {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        </div>      )}
+
+      {/* Global tooltip for chart interactions */}
+      <div 
+        id="chart-tooltip" 
+        style={{
+          position: 'absolute',
+          background: 'rgba(0, 0, 0, 0.9)',
+          color: 'white',
+          padding: '8px 12px',
+          borderRadius: '6px',
+          fontSize: '12px',
+          pointerEvents: 'none',
+          zIndex: 10000,
+          display: 'none',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          border: '1px solid rgba(255,255,255,0.2)'
+        }}
+      />
     </div>
   );
 };

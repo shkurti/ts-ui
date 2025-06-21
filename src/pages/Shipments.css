@@ -414,6 +414,12 @@
   }
 }
 
+/* Loading animation */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 /* Responsive circle sizes */
 @media (max-width: 768px) {
   .circle-cluster {
