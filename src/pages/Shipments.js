@@ -806,135 +806,157 @@ const Shipments = () => {
                             }}></div>
                             Loading sensor data...
                           </div>
-                        ) : (                          <div className="sensor-charts">                            <div className="chart-item">
-                              <div className="chart-header">
-                                <h4>Temperature</h4>
-                                <span className="current-value">
-                                  {typeof getCurrentValue(temperatureData, 'temperature') === 'number' 
-                                    ? getCurrentValue(temperatureData, 'temperature').toFixed(1) + '°C'
-                                    : getCurrentValue(temperatureData, 'temperature')}
-                                </span>
-                              </div>
-                              <div className="inline-chart temperature-chart" style={{ position: 'relative' }}>
-                                <svg 
-                                  width="100%" 
-                                  height="60" 
-                                  viewBox="0 0 300 60"                                  style={{ cursor: 'crosshair' }}
-                                  onMouseMove={(e) => handleChartHover(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                  onMouseLeave={() => handleChartLeave('Temperature')}
-                                >
-                                  {temperatureData.length > 0 ? (
-                                    <polyline
-                                      fill="none"
-                                      stroke="#ff6b6b"
-                                      strokeWidth="2"
-                                      points={generateSVGPath(temperatureData, 'temperature')}
-                                    />
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                      No temperature data available
-                                    </text>
-                                  )}
-                                </svg>
-                              </div>
-                            </div>
-
-                            <div className="chart-item">
-                              <div className="chart-header">
-                                <h4>Humidity</h4>
-                                <span className="current-value">
-                                  {typeof getCurrentValue(humidityData, 'humidity') === 'number' 
-                                    ? getCurrentValue(humidityData, 'humidity').toFixed(1) + '%'
-                                    : getCurrentValue(humidityData, 'humidity')}
-                                </span>
-                              </div>
-                              <div className="inline-chart humidity-chart" style={{ position: 'relative' }}>
-                                <svg 
-                                  width="100%" 
-                                  height="60" 
-                                  viewBox="0 0 300 60"                                  style={{ cursor: 'crosshair' }}
-                                  onMouseMove={(e) => handleChartHover(e, humidityData, 'humidity', 'Humidity', '%')}
-                                  onMouseLeave={() => handleChartLeave('Humidity')}
-                                >
-                                  {humidityData.length > 0 ? (
-                                    <polyline
-                                      fill="none"
-                                      stroke="#4ecdc4"
-                                      strokeWidth="2"
-                                      points={generateSVGPath(humidityData, 'humidity')}
-                                    />
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                      No humidity data available
-                                    </text>
-                                  )}
-                                </svg>
+                        ) : (
+                          <div className="sensor-charts" style={{ width: '100%', padding: '0', margin: '0' }}>
+                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
+                              <div className="shipment-details">
+                                <div className="shipment-header">
+                                  <div className="shipment-header-left">
+                                    <span className="shipment-id">Temperature</span>
+                                  </div>
+                                  <span className="current-value">
+                                    {typeof getCurrentValue(temperatureData, 'temperature') === 'number' 
+                                      ? getCurrentValue(temperatureData, 'temperature').toFixed(1) + '°C'
+                                      : getCurrentValue(temperatureData, 'temperature')}
+                                  </span>
+                                </div>
+                                <div className="inline-chart temperature-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
+                                  <svg 
+                                    width="100%" 
+                                    height="60" 
+                                    viewBox="0 0 300 60"
+                                    style={{ cursor: 'crosshair', display: 'block' }}
+                                    onMouseMove={(e) => handleChartHover(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                    onMouseLeave={() => handleChartLeave('Temperature')}
+                                  >
+                                    {temperatureData.length > 0 ? (
+                                      <polyline
+                                        fill="none"
+                                        stroke="#ff6b6b"
+                                        strokeWidth="2"
+                                        points={generateSVGPath(temperatureData, 'temperature')}
+                                      />
+                                    ) : (
+                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                        No temperature data available
+                                      </text>
+                                    )}
+                                  </svg>
+                                </div>
                               </div>
                             </div>
 
-                            <div className="chart-item">
-                              <div className="chart-header">
-                                <h4>Battery</h4>
-                                <span className="current-value">
-                                  {typeof getCurrentValue(batteryData, 'battery') === 'number' 
-                                    ? getCurrentValue(batteryData, 'battery').toFixed(1) + '%'
-                                    : getCurrentValue(batteryData, 'battery')}
-                                </span>
-                              </div>
-                              <div className="inline-chart battery-chart" style={{ position: 'relative' }}>
-                                <svg 
-                                  width="100%" 
-                                  height="60" 
-                                  viewBox="0 0 300 60"                                  style={{ cursor: 'crosshair' }}
-                                  onMouseMove={(e) => handleChartHover(e, batteryData, 'battery', 'Battery', '%')}
-                                  onMouseLeave={() => handleChartLeave('Battery')}
-                                >
-                                  {batteryData.length > 0 ? (
-                                    <polyline
-                                      fill="none"
-                                      stroke="#95e1d3"
-                                      strokeWidth="2"
-                                      points={generateSVGPath(batteryData, 'battery')}
-                                    />
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                      No battery data available
-                                    </text>
-                                  )}
-                                </svg>
+                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
+                              <div className="shipment-details">
+                                <div className="shipment-header">
+                                  <div className="shipment-header-left">
+                                    <span className="shipment-id">Humidity</span>
+                                  </div>
+                                  <span className="current-value">
+                                    {typeof getCurrentValue(humidityData, 'humidity') === 'number' 
+                                      ? getCurrentValue(humidityData, 'humidity').toFixed(1) + '%'
+                                      : getCurrentValue(humidityData, 'humidity')}
+                                  </span>
+                                </div>
+                                <div className="inline-chart humidity-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
+                                  <svg 
+                                    width="100%" 
+                                    height="60" 
+                                    viewBox="0 0 300 60"
+                                    style={{ cursor: 'crosshair', display: 'block' }}
+                                    onMouseMove={(e) => handleChartHover(e, humidityData, 'humidity', 'Humidity', '%')}
+                                    onMouseLeave={() => handleChartLeave('Humidity')}
+                                  >
+                                    {humidityData.length > 0 ? (
+                                      <polyline
+                                        fill="none"
+                                        stroke="#4ecdc4"
+                                        strokeWidth="2"
+                                        points={generateSVGPath(humidityData, 'humidity')}
+                                      />
+                                    ) : (
+                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                        No humidity data available
+                                      </text>
+                                    )}
+                                  </svg>
+                                </div>
                               </div>
                             </div>
 
-                            <div className="chart-item">
-                              <div className="chart-header">
-                                <h4>Speed</h4>
-                                <span className="current-value">
-                                  {typeof getCurrentValue(speedData, 'speed') === 'number' 
-                                    ? getCurrentValue(speedData, 'speed').toFixed(1) + ' km/h'
-                                    : getCurrentValue(speedData, 'speed')}
-                                </span>
+                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
+                              <div className="shipment-details">
+                                <div className="shipment-header">
+                                  <div className="shipment-header-left">
+                                    <span className="shipment-id">Battery</span>
+                                  </div>
+                                  <span className="current-value">
+                                    {typeof getCurrentValue(batteryData, 'battery') === 'number' 
+                                      ? getCurrentValue(batteryData, 'battery').toFixed(1) + '%'
+                                      : getCurrentValue(batteryData, 'battery')}
+                                  </span>
+                                </div>
+                                <div className="inline-chart battery-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
+                                  <svg 
+                                    width="100%" 
+                                    height="60" 
+                                    viewBox="0 0 300 60"
+                                    style={{ cursor: 'crosshair', display: 'block' }}
+                                    onMouseMove={(e) => handleChartHover(e, batteryData, 'battery', 'Battery', '%')}
+                                    onMouseLeave={() => handleChartLeave('Battery')}
+                                  >
+                                    {batteryData.length > 0 ? (
+                                      <polyline
+                                        fill="none"
+                                        stroke="#95e1d3"
+                                        strokeWidth="2"
+                                        points={generateSVGPath(batteryData, 'battery')}
+                                      />
+                                    ) : (
+                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                        No battery data available
+                                      </text>
+                                    )}
+                                  </svg>
+                                </div>
                               </div>
-                              <div className="inline-chart speed-chart" style={{ position: 'relative' }}>
-                                <svg 
-                                  width="100%" 
-                                  height="60" 
-                                  viewBox="0 0 300 60"
-                                  style={{ cursor: 'crosshair' }}                                  onMouseMove={(e) => handleChartHover(e, speedData, 'speed', 'Speed', ' km/h')}
-                                  onMouseLeave={() => handleChartLeave('Speed')}
-                                >
-                                  {speedData.length > 0 ? (
-                                    <polyline
-                                      fill="none"
-                                      stroke="#ffeaa7"
-                                      strokeWidth="2"
-                                      points={generateSVGPath(speedData, 'speed')}
-                                    />
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                      No speed data available
-                                    </text>
-                                  )}
-                                </svg>
+                            </div>
+
+                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
+                              <div className="shipment-details">
+                                <div className="shipment-header">
+                                  <div className="shipment-header-left">
+                                    <span className="shipment-id">Speed</span>
+                                  </div>
+                                  <span className="current-value">
+                                    {typeof getCurrentValue(speedData, 'speed') === 'number' 
+                                      ? getCurrentValue(speedData, 'speed').toFixed(1) + ' km/h'
+                                      : getCurrentValue(speedData, 'speed')}
+                                  </span>
+                                </div>
+                                <div className="inline-chart speed-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
+                                  <svg 
+                                    width="100%" 
+                                    height="60" 
+                                    viewBox="0 0 300 60"
+                                    style={{ cursor: 'crosshair', display: 'block' }}
+                                    onMouseMove={(e) => handleChartHover(e, speedData, 'speed', 'Speed', ' km/h')}
+                                    onMouseLeave={() => handleChartLeave('Speed')}
+                                  >
+                                    {speedData.length > 0 ? (
+                                      <polyline
+                                        fill="none"
+                                        stroke="#ffeaa7"
+                                        strokeWidth="2"
+                                        points={generateSVGPath(speedData, 'speed')}
+                                      />
+                                    ) : (
+                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                        No speed data available
+                                      </text>
+                                    )}
+                                  </svg>
+                                </div>
                               </div>
                             </div>
                           </div>
