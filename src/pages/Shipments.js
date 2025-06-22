@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import './Shipments.css';
@@ -22,7 +22,7 @@ const Shipments = () => {
   const [shipments, setShipments] = useState([]);
   const [trackers, setTrackers] = useState([]);
   const [selectedTracker, setSelectedTracker] = useState('');
-    const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState({
     legs: [{
       shipFrom: '',
       stopAddress: '',
@@ -42,6 +42,7 @@ const Shipments = () => {
   const [humidityData, setHumidityData] = useState([]);
   const [batteryData, setBatteryData] = useState([]);
   const [speedData, setSpeedData] = useState([]);
+  const [locationData, setLocationData] = useState([]);
   const [isLoadingSensorData, setIsLoadingSensorData] = useState(false);
   
   // User timezone (you can make this configurable)
@@ -58,6 +59,8 @@ const Shipments = () => {
   
   // Use ref to track processed shipments to prevent unnecessary re-processing
   const processedShipmentsRef = useRef(new Set());
+  // Add ref for map instance
+  const mapRef = useRef();
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
@@ -302,6 +305,7 @@ const Shipments = () => {
     setHumidityData([]);
     setBatteryData([]);
     setSpeedData([]);
+    setLocationData([]);
 
     const trackerId = shipment.trackerId;
     const legs = shipment.legs || [];
@@ -372,6 +376,36 @@ const Shipments = () => {
                 : null,
           })).filter(item => item.speed !== null)
         );
+
+        // Process location data for polyline
+        setLocationData(
+          data.map((record) => ({
+            timestamp: record.timestamp || 'N/A',
+            latitude: record.latitude !== undefined
+              ? parseFloat(record.latitude)
+              : record.Lat !== undefined
+                ? parseFloat(record.Lat)
+                : record.lat !== undefined
+                  ? parseFloat(record.lat)
+                  : null,
+            longitude: record.longitude !== undefined
+              ? parseFloat(record.longitude)
+              : record.Lng !== undefined
+                ? parseFloat(record.Lng)
+                : record.lng !== undefined
+                  ? parseFloat(record.lng)
+                  : record.lon !== undefined
+                    ? parseFloat(record.lon)
+                    : null,
+          })).filter(item => 
+            item.latitude !== null && 
+            item.longitude !== null && 
+            !isNaN(item.latitude) && 
+            !isNaN(item.longitude) &&
+            Math.abs(item.latitude) <= 90 && 
+            Math.abs(item.longitude) <= 180
+          )
+        );
       } else {
         console.error('Failed to fetch sensor data');
       }
@@ -389,6 +423,7 @@ const Shipments = () => {
     setHumidityData([]);
     setBatteryData([]);
     setSpeedData([]);
+    setLocationData([]);
   };
   // Helper function to generate SVG path from data points
   const generateSVGPath = (data, valueKey, maxHeight = 60, maxWidth = 300) => {
@@ -730,6 +765,41 @@ const Shipments = () => {
   };
 
   const clusters = createClusters(shipmentMarkers);
+
+  // Create polyline coordinates from location data
+  const getPolylineCoordinates = () => {
+    if (!locationData || locationData.length === 0) return [];
+    
+    // Sort by timestamp to ensure correct order
+    const sortedData = [...locationData].sort((a, b) => 
+      new Date(a.timestamp) - new Date(b.timestamp)
+    );
+    
+    return sortedData.map(point => [point.latitude, point.longitude]);
+  };
+
+  // Component to handle map bounds fitting
+  const MapBoundsHandler = () => {
+    const map = useMap();
+    
+    useEffect(() => {
+      if (selectedShipmentDetail && locationData.length > 0) {
+        const coordinates = getPolylineCoordinates();
+        if (coordinates.length > 0) {
+          // Create bounds from coordinates
+          const bounds = L.latLngBounds(coordinates);
+          
+          // Fit map to bounds with padding
+          map.fitBounds(bounds, {
+            padding: [20, 20], // Add padding around the route
+            maxZoom: 15 // Prevent zooming in too much for short routes
+          });
+        }
+      }
+    }, [map]); // Remove selectedShipmentDetail and locationData from dependencies
+
+    return null;
+  };
 
   return (
     <div className="shipments-container">
@@ -1103,19 +1173,24 @@ const Shipments = () => {
 
       <div className="map-container">
         <MapContainer
-          center={[20, 0]} // World view
+          ref={mapRef}
+          center={[20, 0]} // Default world view
           zoom={2}
           minZoom={1}
           maxZoom={18}
           style={{ height: '100%', width: '100%' }}
           worldCopyJump={true}
           preferCanvas={true}
+          key={selectedShipmentDetail ? `detail-${selectedShipmentDetail.trackerId}` : 'overview'}
         >
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             maxZoom={19}
           />
+          
+          {/* Add MapBoundsHandler component */}
+          <MapBoundsHandler />
           
           {/* Show loading indicator */}
           {isLoadingMarkers && (
@@ -1146,8 +1221,83 @@ const Shipments = () => {
             </div>
           )}
           
-          {/* Show all clusters with circle markers */}
-          {clusterViewMode && clusters.map((cluster) => (
+          {/* Show polyline for selected shipment */}
+          {selectedShipmentDetail && locationData.length > 0 && (
+            <>
+              <Polyline
+                positions={getPolylineCoordinates()}
+                pathOptions={{
+                  color: '#667eea',
+                  weight: 4,
+                  opacity: 0.8,
+                  dashArray: '10, 5'
+                }}
+              />
+              
+              {/* Start marker */}
+              {locationData.length > 0 && (
+                <Marker 
+                  position={[locationData[0].latitude, locationData[0].longitude]}
+                  icon={L.divIcon({
+                    className: 'route-marker start-marker',
+                    html: `
+                      <div style="
+                        width: 20px;
+                        height: 20px;
+                        background: #28a745;
+                        border: 3px solid white;
+                        border-radius: 50%;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                      "></div>
+                    `,
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                  })}
+                >
+                  <Popup>
+                    <div>
+                      <strong>Start Point</strong><br />
+                      Time: {formatTimestamp(locationData[0].timestamp)}<br />
+                      Coordinates: {locationData[0].latitude.toFixed(6)}, {locationData[0].longitude.toFixed(6)}
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+              
+              {/* End marker */}
+              {locationData.length > 1 && (
+                <Marker 
+                  position={[locationData[locationData.length - 1].latitude, locationData[locationData.length - 1].longitude]}
+                  icon={L.divIcon({
+                    className: 'route-marker end-marker',
+                    html: `
+                      <div style="
+                        width: 20px;
+                        height: 20px;
+                        background: #dc3545;
+                        border: 3px solid white;
+                        border-radius: 50%;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                      "></div>
+                    `,
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                  })}
+                >
+                  <Popup>
+                    <div>
+                      <strong>End Point</strong><br />
+                      Time: {formatTimestamp(locationData[locationData.length - 1].timestamp)}<br />
+                      Coordinates: {locationData[locationData.length - 1].latitude.toFixed(6)}, {locationData[locationData.length - 1].longitude.toFixed(6)}
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+            </>
+          )}
+          
+          {/* Show all clusters with circle markers when no shipment is selected */}
+          {!selectedShipmentDetail && clusterViewMode && clusters.map((cluster) => (
             <Marker 
               key={cluster.id} 
               position={cluster.position}
@@ -1270,7 +1420,7 @@ const Shipments = () => {
           ))}
 
           {/* Show individual shipment markers only when a specific shipment is selected from sidebar */}
-          {!clusterViewMode && filteredShipments.map(shipment => (
+          {!clusterViewMode && !selectedShipmentDetail && filteredShipments.map(shipment => (
             <Marker key={shipment._id} position={[41.6032, -72.6506]}>
               <Popup>
                 <div>
