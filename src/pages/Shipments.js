@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -57,36 +57,6 @@ const Shipments = () => {
   const [geocodeCache, setGeocodeCache] = useState({});
   const [isGeocodingInProgress, setIsGeocodingInProgress] = useState(false);
   
-  // Add state for geocoding error handling
-  const [geocodingError, setGeocodingError] = useState(null);
-  const [showGeocodingError, setShowGeocodingError] = useState(false);
-
-  // Add fallback coordinates for common locations using useMemo
-  const fallbackCoordinates = useMemo(() => ({
-    'usa': [39.8283, -98.5795],
-    'california': [36.7783, -119.4179],
-    'new york': [40.7128, -74.0060],
-    'texas': [31.9686, -99.9018],
-    'florida': [27.7663, -82.6404],
-    'illinois': [40.6331, -89.3985],
-    'connecticut': [41.6032, -72.7281],
-    'hartford ct': [41.7658, -72.6734],
-    'wethersfield ct': [41.7142, -72.6523],
-    'albany ny': [42.6526, -73.7562],
-    'albania': [41.1533, 20.1683],
-    'colorado': [39.5501, -105.7821],
-    'default': [40.0, -95.0] // Center of US
-  }), []);
-
-  // Add retry function
-  const retryGeocoding = () => {
-    setGeocodingError(null);
-    setShowGeocodingError(false);
-    // Clear cache to force retry
-    setGeocodeCache({});
-    processedShipmentsRef.current = new Set();
-  };
-
   // Use ref to track processed shipments to prevent unnecessary re-processing
   const processedShipmentsRef = useRef(new Set());
   // Add ref for map instance
@@ -581,7 +551,7 @@ const Shipments = () => {
       return; // Skip if shipments haven't changed and we already have markers
     }
 
-    // Enhanced offline-first geocoding function
+    // Dynamic geocoding function using Nominatim API
     const geocodeAddress = async (address) => {
       if (!address || address.trim() === '') return null;
       
@@ -591,89 +561,59 @@ const Shipments = () => {
         return geocodeCache[cacheKey];
       }
 
-      // Enhanced fallback coordinate matching
-      const cleanAddress = cacheKey.replace(/[^a-z\s]/g, '').trim();
-      
-      // Try exact matches first
-      if (fallbackCoordinates[cleanAddress]) {
-        const coords = fallbackCoordinates[cleanAddress];
-        setGeocodeCache(prev => ({ ...prev, [cacheKey]: coords }));
-        return coords;
-      }
-
-      // Try partial matches for cities and states
-      const patterns = [
-        /\b(hartford)\b.*\b(ct|connecticut)\b/,
-        /\b(wethersfield)\b.*\b(ct|connecticut)\b/,
-        /\b(albany)\b.*\b(ny|new york)\b/,
-        /\b(connecticut|ct)\b/,
-        /\b(california|ca)\b/,
-        /\b(colorado|co)\b/,
-        /\b(texas|tx)\b/,
-        /\b(florida|fl)\b/,
-        /\b(illinois|il)\b/,
-        /\b(new york|ny)\b/,
-        /\b(albania)\b/
-      ];
-
-      for (const pattern of patterns) {
-        const match = cleanAddress.match(pattern);
-        if (match) {
-          let coords = null;
-          
-          // Map specific patterns to coordinates
-          if (match[0].includes('hartford')) {
-            coords = fallbackCoordinates['hartford ct'];
-          } else if (match[0].includes('wethersfield')) {
-            coords = fallbackCoordinates['wethersfield ct'];
-          } else if (match[0].includes('albany')) {
-            coords = fallbackCoordinates['albany ny'];
-          } else if (match[0].includes('connecticut') || match[0] === 'ct') {
-            coords = fallbackCoordinates['connecticut'];
-          } else if (match[0].includes('california') || match[0] === 'ca') {
-            coords = fallbackCoordinates['california'];
-          } else if (match[0].includes('colorado') || match[0] === 'co') {
-            coords = fallbackCoordinates['colorado'];
-          } else if (match[0].includes('texas') || match[0] === 'tx') {
-            coords = fallbackCoordinates['texas'];
-          } else if (match[0].includes('florida') || match[0] === 'fl') {
-            coords = fallbackCoordinates['florida'];
-          } else if (match[0].includes('illinois') || match[0] === 'il') {
-            coords = fallbackCoordinates['illinois'];
-          } else if (match[0].includes('new york') || match[0] === 'ny') {
-            coords = fallbackCoordinates['new york'];
-          } else if (match[0].includes('albania')) {
-            coords = fallbackCoordinates['albania'];
+      try {
+        // Use Nominatim (OpenStreetMap) - Free, no API key required
+        const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&addressdetails=1`;
+        
+        const response = await fetch(nominatimUrl, {
+          headers: {
+            'User-Agent': 'ShipmentTracker/1.0'
           }
-          
-          if (coords) {
-            setGeocodeCache(prev => ({ ...prev, [cacheKey]: coords }));
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.length > 0) {
+            const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+            
+            // Cache the result
+            setGeocodeCache(prev => ({
+              ...prev,
+              [cacheKey]: coords
+            }));
+            
             return coords;
           }
         }
+      } catch (error) {
+        console.warn('Geocoding failed for:', address, error);
       }
 
-      // Default fallback
-      const defaultCoords = fallbackCoordinates['default'];
-      setGeocodeCache(prev => ({ ...prev, [cacheKey]: defaultCoords }));
-      return defaultCoords;
+      return null;
     };
 
-    // Simplified batch processing without network requests
+    // Batch geocoding with rate limiting
     const batchGeocodeAddresses = async (addresses) => {
       const results = new Map();
+      const BATCH_DELAY = 1000; // 1 second between requests to respect rate limits
       
-      for (const address of addresses) {
+      for (let i = 0; i < addresses.length; i++) {
+        const address = addresses[i];
+        
         const coords = await geocodeAddress(address);
         if (coords) {
           results.set(address, coords);
+        }
+        
+        // Rate limiting delay (except for last item)
+        if (i < addresses.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
         }
       }
       
       return results;
     };
 
-    // Simplified marker creation without network dependencies
     const createShipmentMarkers = async () => {
       if (!shipments || shipments.length === 0) {
         setShipmentMarkers([]);
@@ -683,8 +623,6 @@ const Shipments = () => {
 
       setIsLoadingMarkers(true);
       setIsGeocodingInProgress(true);
-      setGeocodingError(null);
-      setShowGeocodingError(false);
 
       try {
         // Group shipments by origin address
@@ -701,16 +639,32 @@ const Shipments = () => {
 
         const uniqueAddresses = Object.keys(originGroups);
         
-        if (uniqueAddresses.length === 0) {
-          setShipmentMarkers([]);
-          processedShipmentsRef.current = new Set();
-          return;
+        // Filter out addresses that are already cached
+        const uncachedAddresses = uniqueAddresses.filter(address => {
+          const cacheKey = address.toLowerCase().trim();
+          return !geocodeCache[cacheKey];
+        });
+
+        // Only geocode uncached addresses
+        let geocodedResults = new Map();
+        
+        // Add cached results first
+        uniqueAddresses.forEach(address => {
+          const cacheKey = address.toLowerCase().trim();
+          if (geocodeCache[cacheKey]) {
+            geocodedResults.set(address, geocodeCache[cacheKey]);
+          }
+        });
+
+        // Geocode remaining addresses if any
+        if (uncachedAddresses.length > 0) {
+          const newResults = await batchGeocodeAddresses(uncachedAddresses);
+          newResults.forEach((coords, address) => {
+            geocodedResults.set(address, coords);
+          });
         }
 
-        // Process all addresses using offline geocoding
-        const geocodedResults = await batchGeocodeAddresses(uniqueAddresses);
-
-        // Create markers from results
+        // Create markers from geocoded results
         const markers = [];
         geocodedResults.forEach((coords, address) => {
           markers.push({
@@ -723,24 +677,10 @@ const Shipments = () => {
         });
 
         setShipmentMarkers(markers);
-        processedShipmentsRef.current = new Set(shipments.map(s => s._id || s.trackerId));
-        
+        processedShipmentsRef.current = currentShipmentIds;
       } catch (error) {
         console.error('Error creating shipment markers:', error);
-        
-        // Create single fallback marker for all shipments
-        const fallbackMarkers = [];
-        const allShipments = shipments.filter(s => s.legs?.[0]?.shipFromAddress);
-        if (allShipments.length > 0) {
-          fallbackMarkers.push({
-            id: 'fallback-marker',
-            position: fallbackCoordinates['default'],
-            address: 'Multiple Locations',
-            shipments: allShipments,
-            count: allShipments.length
-          });
-        }
-        setShipmentMarkers(fallbackMarkers);
+        setShipmentMarkers([]);
       } finally {
         setIsLoadingMarkers(false);
         setIsGeocodingInProgress(false);
@@ -748,7 +688,7 @@ const Shipments = () => {
     };
 
     createShipmentMarkers();
-  }, [shipments, geocodeCache, isGeocodingInProgress, shipmentMarkers.length, fallbackCoordinates]);
+  }, [shipments, geocodeCache, isGeocodingInProgress, shipmentMarkers.length]);
 
   // Improved clustering function
   const createClusters = (markers, zoom = 2) => {
@@ -1254,29 +1194,30 @@ const Shipments = () => {
           
           {/* Show loading indicator */}
           {isLoadingMarkers && (
-            <div className="loading-clusters">
-              <div className="loading-spinner"></div>
+            <div style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              background: 'rgba(255, 255, 255, 0.9)',
+              padding: '10px 15px',
+              borderRadius: '8px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              zIndex: 1000,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '14px',
+              color: '#666'
+            }}>
+              <div style={{
+                width: '16px',
+                height: '16px',
+                border: '2px solid #ddd',
+                borderTop: '2px solid #1976d2',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }}></div>
               Loading clusters...
-            </div>
-          )}
-          
-          {/* Show geocoding error */}
-          {showGeocodingError && geocodingError && (
-            <div className="geocoding-error">
-              <h4>📍 Location Info</h4>
-              <p>{geocodingError}</p>
-              {geocodingError.includes('network') && (
-                <button className="retry-btn" onClick={retryGeocoding}>
-                  Retry Loading
-                </button>
-              )}
-            </div>
-          )}
-          
-          {/* Show connection warning */}
-          {!isLoadingMarkers && shipmentMarkers.length === 0 && shipments.length > 0 && (
-            <div className="map-overlay-message">
-              📍 Using approximate locations for map markers.
             </div>
           )}
           
