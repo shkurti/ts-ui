@@ -45,8 +45,12 @@ const Shipments = () => {
   const [locationData, setLocationData] = useState([]);
   const [isLoadingSensorData, setIsLoadingSensorData] = useState(false);
   
+  // User timezone (you can make this configurable)
+  const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   // Add state for shipment markers
   const [shipmentMarkers, setShipmentMarkers] = useState([]);
+  const [isLoadingMarkers, setIsLoadingMarkers] = useState(false);
   // Add state for cluster view mode
   const [clusterViewMode] = useState(true);
   // Add geocoding cache state
@@ -314,66 +318,24 @@ const Shipments = () => {
       return;
     }
 
-    // Convert EST dates to UTC for backend query
-    // The shipment dates are in EST (local time) but GPS data is in UTC
-    const convertEstToUtc = (estDateString) => {
-      if (!estDateString) return null;
-      
-      try {
-        // Parse the date as if it's in EST (UTC-5 or UTC-4 depending on DST)
-        const estDate = new Date(estDateString);
-        
-        // Check if we're in daylight saving time (rough approximation)
-        // DST typically runs from second Sunday in March to first Sunday in November
-        const year = estDate.getFullYear();
-        const dstStart = new Date(year, 2, 14 - new Date(year, 2, 1).getDay()); // Second Sunday in March
-        const dstEnd = new Date(year, 10, 7 - new Date(year, 10, 1).getDay()); // First Sunday in November
-        
-        const isDst = estDate >= dstStart && estDate <= dstEnd;
-        const offsetHours = isDst ? 4 : 5; // EDT is UTC-4, EST is UTC-5
-        
-        // Add the offset to convert to UTC
-        const utcDate = new Date(estDate.getTime() + (offsetHours * 60 * 60 * 1000));
-        
-        // Format as ISO string for backend
-        return utcDate.toISOString();
-      } catch (error) {
-        console.error('Error converting EST to UTC:', error);
-        return null;
-      }
-    };
-
-    const utcShipDate = convertEstToUtc(shipDate);
-    const utcArrivalDate = convertEstToUtc(arrivalDate);
-
-    if (!utcShipDate || !utcArrivalDate) {
-      console.error('Failed to convert dates to UTC');
-      return;
-    }
-
-    console.log('Original dates:', { shipDate, arrivalDate });
-    console.log('Converted UTC dates:', { utcShipDate, utcArrivalDate });
-
-    // Fetch sensor data from backend using UTC dates
+    // Fetch sensor data from backend
     setIsLoadingSensorData(true);
     try {
       const params = new URLSearchParams({
         tracker_id: trackerId,
-        start: utcShipDate,
-        end: utcArrivalDate,
-        timezone: 'UTC' // Use UTC since we converted the dates
+        start: shipDate,
+        end: arrivalDate,
+        timezone: userTimezone
       });
       
       const response = await fetch(`/shipment_route_data?${params}`);
       if (response.ok) {
         const data = await response.json();
         
-        console.log('Fetched sensor data:', data.length, 'records');
-        
-        // Process sensor data - timestamps should now be properly matched
+        // Process sensor data - timestamps are now in local time
         setTemperatureData(
           data.map((record) => ({
-            timestamp: record.timestamp || record.DT || 'N/A',
+            timestamp: record.timestamp || 'N/A',
             temperature: record.temperature !== undefined
               ? parseFloat(record.temperature)
               : record.Temp !== undefined
@@ -384,7 +346,7 @@ const Shipments = () => {
         
         setHumidityData(
           data.map((record) => ({
-            timestamp: record.timestamp || record.DT || 'N/A',
+            timestamp: record.timestamp || 'N/A',
             humidity: record.humidity !== undefined
               ? parseFloat(record.humidity)
               : record.Hum !== undefined
@@ -395,7 +357,7 @@ const Shipments = () => {
         
         setBatteryData(
           data.map((record) => ({
-            timestamp: record.timestamp || record.DT || 'N/A',
+            timestamp: record.timestamp || 'N/A',
             battery: record.battery !== undefined
               ? parseFloat(record.battery)
               : record.Batt !== undefined
@@ -406,7 +368,7 @@ const Shipments = () => {
         
         setSpeedData(
           data.map((record) => ({
-            timestamp: record.timestamp || record.DT || 'N/A',
+            timestamp: record.timestamp || 'N/A',
             speed: record.speed !== undefined
               ? parseFloat(record.speed)
               : record.Speed !== undefined
@@ -418,7 +380,7 @@ const Shipments = () => {
         // Process location data for polyline
         setLocationData(
           data.map((record) => ({
-            timestamp: record.timestamp || record.DT || 'N/A',
+            timestamp: record.timestamp || 'N/A',
             latitude: record.latitude !== undefined
               ? parseFloat(record.latitude)
               : record.Lat !== undefined
@@ -445,7 +407,7 @@ const Shipments = () => {
           )
         );
       } else {
-        console.error('Failed to fetch sensor data - Response not OK');
+        console.error('Failed to fetch sensor data');
       }
     } catch (error) {
       console.error('Error fetching sensor data:', error);
@@ -596,11 +558,9 @@ const Shipments = () => {
       // Check cache first
       const cacheKey = address.toLowerCase().trim();
       if (geocodeCache[cacheKey]) {
-        console.log('Using cached coordinates for:', address);
         return geocodeCache[cacheKey];
       }
 
-      console.log('Geocoding address:', address);
       try {
         // Use Nominatim (OpenStreetMap) - Free, no API key required
         const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&addressdetails=1`;
@@ -613,10 +573,8 @@ const Shipments = () => {
 
         if (response.ok) {
           const data = await response.json();
-          console.log('Geocoding response for', address, ':', data);
           if (data && data.length > 0) {
             const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-            console.log('Geocoded coordinates:', coords);
             
             // Cache the result
             setGeocodeCache(prev => ({
@@ -625,11 +583,7 @@ const Shipments = () => {
             }));
             
             return coords;
-          } else {
-            console.warn('No geocoding results for:', address);
           }
-        } else {
-          console.error('Geocoding API error:', response.status, response.statusText);
         }
       } catch (error) {
         console.warn('Geocoding failed for:', address, error);
@@ -641,23 +595,18 @@ const Shipments = () => {
     // Batch geocoding with rate limiting
     const batchGeocodeAddresses = async (addresses) => {
       const results = new Map();
-      const BATCH_DELAY = 1100; // 1.1 seconds between requests to respect rate limits
+      const BATCH_DELAY = 1000; // 1 second between requests to respect rate limits
       
       for (let i = 0; i < addresses.length; i++) {
         const address = addresses[i];
-        console.log(`Geocoding ${i + 1}/${addresses.length}: ${address}`);
         
         const coords = await geocodeAddress(address);
         if (coords) {
           results.set(address, coords);
-          console.log(`Successfully geocoded: ${address} -> ${coords}`);
-        } else {
-          console.warn(`Failed to geocode: ${address}`);
         }
         
         // Rate limiting delay (except for last item)
         if (i < addresses.length - 1) {
-          console.log(`Waiting ${BATCH_DELAY}ms before next request...`);
           await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
         }
       }
@@ -667,13 +616,12 @@ const Shipments = () => {
 
     const createShipmentMarkers = async () => {
       if (!shipments || shipments.length === 0) {
-        console.log('No shipments to process');
         setShipmentMarkers([]);
         processedShipmentsRef.current = new Set();
         return;
       }
 
-      console.log('Creating shipment markers for', shipments.length, 'shipments');
+      setIsLoadingMarkers(true);
       setIsGeocodingInProgress(true);
 
       try {
@@ -690,23 +638,12 @@ const Shipments = () => {
         });
 
         const uniqueAddresses = Object.keys(originGroups);
-        console.log('Found unique addresses:', uniqueAddresses);
-        
-        if (uniqueAddresses.length === 0) {
-          console.warn('No valid origin addresses found in shipments');
-          setShipmentMarkers([]);
-          setIsGeocodingInProgress(false);
-          return;
-        }
         
         // Filter out addresses that are already cached
         const uncachedAddresses = uniqueAddresses.filter(address => {
           const cacheKey = address.toLowerCase().trim();
           return !geocodeCache[cacheKey];
         });
-
-        console.log('Uncached addresses:', uncachedAddresses.length);
-        console.log('Cached addresses:', uniqueAddresses.length - uncachedAddresses.length);
 
         // Only geocode uncached addresses
         let geocodedResults = new Map();
@@ -721,14 +658,11 @@ const Shipments = () => {
 
         // Geocode remaining addresses if any
         if (uncachedAddresses.length > 0) {
-          console.log('Starting geocoding of', uncachedAddresses.length, 'addresses...');
           const newResults = await batchGeocodeAddresses(uncachedAddresses);
           newResults.forEach((coords, address) => {
             geocodedResults.set(address, coords);
           });
         }
-
-        console.log('Total geocoded results:', geocodedResults.size);
 
         // Create markers from geocoded results
         const markers = [];
@@ -742,20 +676,19 @@ const Shipments = () => {
           });
         });
 
-        console.log('Created', markers.length, 'markers');
         setShipmentMarkers(markers);
         processedShipmentsRef.current = currentShipmentIds;
       } catch (error) {
         console.error('Error creating shipment markers:', error);
         setShipmentMarkers([]);
       } finally {
+        setIsLoadingMarkers(false);
         setIsGeocodingInProgress(false);
       }
     };
 
     createShipmentMarkers();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shipments, geocodeCache, isGeocodingInProgress]);
+  }, [shipments, geocodeCache, isGeocodingInProgress, shipmentMarkers.length]);
 
   // Improved clustering function
   const createClusters = (markers, zoom = 2) => {
@@ -1260,7 +1193,7 @@ const Shipments = () => {
           <MapBoundsHandler />
           
           {/* Show loading indicator */}
-          {isGeocodingInProgress && (
+          {isLoadingMarkers && (
             <div style={{
               position: 'absolute',
               top: '20px',
@@ -1284,7 +1217,7 @@ const Shipments = () => {
                 borderRadius: '50%',
                 animation: 'spin 1s linear infinite'
               }}></div>
-              Geocoding addresses...
+              Loading clusters...
             </div>
           )}
           
