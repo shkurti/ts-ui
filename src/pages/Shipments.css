@@ -387,44 +387,35 @@
   gap: 1rem;
 }
 
-/* Circle Cluster Marker Styles */
-.circle-cluster-marker {
-  background: transparent !important;
-  border: none !important;
-}
-
-.circle-cluster {
-  animation: clusterFadeIn 0.4s ease-out;
-}
-
-.circle-cluster:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.3) !important;
-  opacity: 1.9;
-}
-
-@keyframes clusterFadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
 /* Loading animation */
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 
+/* Pulse animation for hover marker */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Hover marker specific styling */
+.route-marker.hover-marker {
+  z-index: 1000;
+}
+
 /* Responsive circle sizes */
 @media (max-width: 768px) {
-  .circle-cluster {
-    transform: scale(0.9);
-  }
   .sidebar {
     width: 280px;
   }
