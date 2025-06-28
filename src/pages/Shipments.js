@@ -1101,10 +1101,168 @@ const Shipments = () => {
             crossOrigin={true}
             maxZoom={19}
           />
-          {/* Add MapTiler Geocoding Control */}
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
-          {/* Add MapBoundsHandler component */}
           <MapBoundsHandler />
+
+          {/* Show all leg markers */}
+          {selectedShipmentDetail && legPoints.length > 0 && legPoints.map((point, idx) => (
+            <Marker
+              key={`leg-marker-${idx}`}
+              position={[point.lat, point.lng]}
+              icon={createNumberedMarkerIcon(point.number, idx === 0, idx === legPoints.length - 1)}
+            >
+              <Popup>
+                <div>
+                  <strong>
+                    {idx === 0 ? 'Origin' : (idx === legPoints.length - 1 ? 'Destination' : `Stop ${idx}`)}
+                  </strong>
+                  <br />
+                  {point.address}
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+
+          {/* Show dashed planned route ONLY if no GPS data */}
+          {selectedShipmentDetail && legPoints.length > 1 && locationData.length === 0 && (
+            <Polyline
+              positions={legPoints.map(p => [p.lat, p.lng])}
+              pathOptions={{
+                color: '#1976d2',
+                weight: 3,
+                opacity: 0.7,
+                dashArray: '8, 8'
+              }}
+            />
+          )}
+
+          {/* Draw actual GPS path as solid line */}
+          {selectedShipmentDetail && locationData.length > 1 && (
+            <Polyline
+              positions={locationData.map(p => [p.latitude, p.longitude])}
+              pathOptions={{
+                color: '#ff4444',
+                weight: 4,
+                opacity: 0.95
+              }}
+            />
+          )}
+
+          {/* Red marker at current GPS, connected to next destination marker by dashed line */}
+          {selectedShipmentDetail && locationData.length > 0 && legPoints.length > 1 && (() => {
+            const lastGps = locationData[locationData.length - 1];
+            const gpsPos = [lastGps.latitude, lastGps.longitude];
+            // Find the next destination marker (first marker after closest)
+            let minDist = Infinity, closestIdx = 0;
+            for (let i = 0; i < legPoints.length; i++) {
+              const d = Math.hypot(legPoints[i].lat - gpsPos[0], legPoints[i].lng - gpsPos[1]);
+              if (d < minDist) {
+                minDist = d;
+                closestIdx = i;
+              }
+            }
+            // Next destination is the next marker after closest, or last marker if at the end
+            const nextIdx = Math.min(closestIdx + 1, legPoints.length - 1);
+            // Only show dashed line if not already at the last marker
+            const showDashedToNext = nextIdx !== 0 && (gpsPos[0] !== legPoints[nextIdx].lat || gpsPos[1] !== legPoints[nextIdx].lng);
+            return (
+              <>
+                {/* Dashed line from current GPS to next destination marker */}
+                {showDashedToNext && (
+                  <Polyline
+                    positions={[gpsPos, [legPoints[nextIdx].lat, legPoints[nextIdx].lng]]}
+                    pathOptions={{
+                      color: '#1976d2',
+                      weight: 3,
+                      opacity: 0.7,
+                      dashArray: '8, 8'
+                    }}
+                  />
+                )}
+                {/* Red dot at current GPS */}
+                <Marker
+                  position={gpsPos}
+                  icon={L.divIcon({
+                    className: 'current-gps-dot',
+                    html: `<div style="
+                      width: 18px;
+                      height: 18px;
+                      background: #ff4444;
+                      border: 3px solid #fff;
+                      border-radius: 50%;
+                      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                    "></div>`,
+                    iconSize: [18, 18],
+                    iconAnchor: [9, 9]
+                  })}
+                >
+                  <Popup>
+                    <div>
+                      <strong>Current Location</strong><br />
+                      Lat: {gpsPos[0].toFixed(6)}<br />
+                      Lng: {gpsPos[1].toFixed(6)}
+                    </div>
+                  </Popup>
+                </Marker>
+                {/* Green dot at start (origin) */}
+                <Marker
+                  position={[legPoints[0].lat, legPoints[0].lng]}
+                  icon={L.divIcon({
+                    className: 'origin-dot',
+                    html: `<div style="
+                      width: 18px;
+                      height: 18px;
+                      background: #28a745;
+                      border: 3px solid #fff;
+                      border-radius: 50%;
+                      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                    "></div>`,
+                    iconSize: [18, 18],
+                    iconAnchor: [9, 9]
+                  })}
+                >
+                  <Popup>
+                    <div>
+                      <strong>Origin</strong><br />
+                      {legPoints[0].address}
+                    </div>
+                  </Popup>
+                </Marker>
+              </>
+            );
+          })()}
+
+          {/* Remove this: Show all leg markers and polyline for selected shipment (always, even if no sensor data) */}
+          {/* {selectedShipmentDetail && legPoints.length > 0 && (
+            <>
+              <Polyline
+                positions={legPoints.map(p => [p.lat, p.lng])}
+                pathOptions={{
+                  color: '#1976d2',
+                  weight: 3,
+                  opacity: 0.7,
+                  dashArray: '8, 8'
+                }}
+              />
+              {legPoints.map((point, idx) => (
+                <Marker
+                  key={`leg-marker-${idx}`}
+                  position={[point.lat, point.lng]}
+                  icon={createNumberedMarkerIcon(point.number, idx === 0, idx === legPoints.length - 1)}
+                >
+                  <Popup>
+                    <div>
+                      <strong>
+                        {idx === 0 ? 'Origin' : (idx === legPoints.length - 1 ? 'Destination' : `Stop ${idx}`)}
+                      </strong>
+                      <br />
+                      {point.address}
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+            </>
+          )} */}
 
           {/* Show polyline for selected shipment */}
           {selectedShipmentDetail && locationData.length > 0 && (
@@ -1210,38 +1368,6 @@ const Shipments = () => {
                   </Popup>
                 </Marker>
               )}
-            </>
-          )}
-
-          {/* Show all leg markers and polyline for selected shipment (always, even if no sensor data) */}
-          {selectedShipmentDetail && legPoints.length > 0 && (
-            <>
-              <Polyline
-                positions={legPoints.map(p => [p.lat, p.lng])}
-                pathOptions={{
-                  color: '#1976d2',
-                  weight: 3,
-                  opacity: 0.7,
-                  dashArray: '8, 8'
-                }}
-              />
-              {legPoints.map((point, idx) => (
-                <Marker
-                  key={`leg-marker-${idx}`}
-                  position={[point.lat, point.lng]}
-                  icon={createNumberedMarkerIcon(point.number, idx === 0, idx === legPoints.length - 1)}
-                >
-                  <Popup>
-                    <div>
-                      <strong>
-                        {idx === 0 ? 'Origin' : (idx === legPoints.length - 1 ? 'Destination' : `Stop ${idx}`)}
-                      </strong>
-                      <br />
-                      {point.address}
-                    </div>
-                  </Popup>
-                </Marker>
-              ))}
             </>
           )}
         </MapContainer>
