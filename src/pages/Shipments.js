@@ -614,6 +614,101 @@ const Shipments = () => {
     return null;
   };
 
+  // MapTiler Geocoding Control React wrapper
+  const MapTilerGeocodingControl = ({ apiKey }) => {
+    const map = useMap();
+    useEffect(() => {
+      // Only run if window.L and window.maptiler exist (CDN loaded)
+      if (window.L && window.maptiler && window.maptiler.geocoding) {
+        const geocodingControl = window.maptiler.geocoding.control({
+          apiKey,
+          marker: true,
+          showResultsWhileTyping: true,
+          collapsed: false,
+          placeholder: 'Search address…'
+        }).addTo(map);
+
+        // Optionally, listen for geocode result events
+        geocodingControl.on('select', (e) => {
+          // e.data contains the selected result
+          // e.data.lat, e.data.lon
+          // You can update your state or do something here if needed
+        });
+
+        return () => {
+          map.removeControl(geocodingControl);
+        };
+      }
+    }, [map, apiKey]);
+    return null;
+  };
+
+  // Helper to create a numbered marker icon for legs (origin, stops, destination)
+  const createNumberedMarkerIcon = (number, isFirst, isLast) => {
+    let bg = "#1976d2";
+    if (isFirst) bg = "#28a745";
+    if (isLast) bg = "#dc3545";
+    return L.divIcon({
+      className: 'numbered-marker',
+      html: `<div style="
+        background: ${bg};
+        color: #fff;
+        border-radius: 50%;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 15px;
+        border: 2px solid #fff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        font-family: Arial, sans-serif;
+      ">${number}</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      popupAnchor: [0, -14],
+    });
+  };
+
+  // Geocode all legs for selectedShipmentDetail (fix: use MapTiler API for better reliability)
+  const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
+  const [legPoints, setLegPoints] = useState([]);
+
+  useEffect(() => {
+    const geocodeLegs = async () => {
+      if (!selectedShipmentDetail || !selectedShipmentDetail.legs || selectedShipmentDetail.legs.length === 0) {
+        setLegPoints([]);
+        return;
+      }
+      // Build ordered addresses: origin, stops, destination
+      const addresses = [];
+      const legs = selectedShipmentDetail.legs;
+      if (legs[0]?.shipFromAddress) addresses.push(legs[0].shipFromAddress);
+      legs.forEach(leg => {
+        if (leg.stopAddress) addresses.push(leg.stopAddress);
+      });
+      // Geocode all using MapTiler API
+      const results = await Promise.all(addresses.map(async (address) => {
+        try {
+          const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(address)}.json?key=${MAPTILER_API_KEY}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data && data.features && data.features.length > 0) {
+            return {
+              lat: data.features[0].geometry.coordinates[1],
+              lng: data.features[0].geometry.coordinates[0],
+              address,
+            };
+          }
+        } catch {}
+        return null;
+      }));
+      setLegPoints(results.map((r, i) => r && { ...r, number: i + 1 }).filter(Boolean));
+    };
+    geocodeLegs();
+  }, [selectedShipmentDetail]);
+
   return (
     <div className="shipments-container">
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
@@ -996,15 +1091,21 @@ const Shipments = () => {
           preferCanvas={true}
           key={selectedShipmentDetail ? `detail-${selectedShipmentDetail.trackerId}` : 'overview'}
         >
+          {/* Use MapTiler tiles for better geocoding/visual consistency */}
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url={`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_API_KEY}`}
+            tileSize={512}
+            zoomOffset={-1}
+            minZoom={1}
+            attribution='<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a>, <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>'
+            crossOrigin={true}
             maxZoom={19}
           />
-          
+          {/* Add MapTiler Geocoding Control */}
+          <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
           {/* Add MapBoundsHandler component */}
           <MapBoundsHandler />
-          
+
           {/* Show polyline for selected shipment */}
           {selectedShipmentDetail && locationData.length > 0 && (
             <>
@@ -1109,6 +1210,38 @@ const Shipments = () => {
                   </Popup>
                 </Marker>
               )}
+            </>
+          )}
+
+          {/* Show all leg markers and polyline for selected shipment (always, even if no sensor data) */}
+          {selectedShipmentDetail && legPoints.length > 0 && (
+            <>
+              <Polyline
+                positions={legPoints.map(p => [p.lat, p.lng])}
+                pathOptions={{
+                  color: '#1976d2',
+                  weight: 3,
+                  opacity: 0.7,
+                  dashArray: '8, 8'
+                }}
+              />
+              {legPoints.map((point, idx) => (
+                <Marker
+                  key={`leg-marker-${idx}`}
+                  position={[point.lat, point.lng]}
+                  icon={createNumberedMarkerIcon(point.number, idx === 0, idx === legPoints.length - 1)}
+                >
+                  <Popup>
+                    <div>
+                      <strong>
+                        {idx === 0 ? 'Origin' : (idx === legPoints.length - 1 ? 'Destination' : `Stop ${idx}`)}
+                      </strong>
+                      <br />
+                      {point.address}
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
             </>
           )}
         </MapContainer>
