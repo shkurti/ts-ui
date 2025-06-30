@@ -709,8 +709,145 @@ const Shipments = () => {
     geocodeLegs();
   }, [selectedShipmentDetail]);
 
+  // Add WebSocket connection status state
+  const [wsConnected, setWsConnected] = useState(false);
+  const wsRef = useRef(null);
+
+  useEffect(() => {
+    let reconnectTimeout = null;
+    let isUnmounted = false;
+
+    function connectWebSocket() {
+      // Only close if OPEN or CLOSING (never if CONNECTING)
+      if (
+        wsRef.current &&
+        (wsRef.current.readyState === 1 || wsRef.current.readyState === 2)
+      ) {
+        wsRef.current.close();
+      }
+      // Always use the full backend URL
+      const websocket = new window.WebSocket('wss://backend-ts-68222fd8cfc0.herokuapp.com/ws');
+      wsRef.current = websocket;
+
+      websocket.onopen = () => {
+        setWsConnected(true);
+        console.log('WebSocket connected');
+      };
+
+      websocket.onclose = () => {
+        setWsConnected(false);
+        console.log('WebSocket disconnected');
+        if (!isUnmounted) {
+          reconnectTimeout = setTimeout(connectWebSocket, 3000);
+        }
+      };
+
+      websocket.onerror = (err) => {
+        setWsConnected(false);
+        console.error('WebSocket error:', err);
+      };
+    }
+
+    connectWebSocket();
+
+    return () => {
+      isUnmounted = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      // Only close if OPEN or CLOSING (never if CONNECTING)
+      if (
+        wsRef.current &&
+        (wsRef.current.readyState === 1 || wsRef.current.readyState === 2)
+      ) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  // Handle incoming WebSocket messages
+  useEffect(() => {
+    const ws = wsRef.current;
+    if (!ws) return;
+    const handleMessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        // Debug: log all incoming messages
+        console.log('WebSocket message received:', msg);
+
+        // Normalize tracker IDs to string for comparison
+        const msgTrackerId = (msg.tracker_id ?? msg.trackerID ?? '').toString();
+        const selectedTrackerId = selectedShipmentDetail?.trackerId?.toString();
+
+        // Only process if a shipment is selected and tracker matches
+        if (
+          selectedShipmentDetail &&
+          msgTrackerId &&
+          selectedTrackerId &&
+          msgTrackerId === selectedTrackerId
+        ) {
+          // The backend sends: { operationType, tracker_id, new_record, geolocation }
+          const record = msg.new_record || {};
+          // Defensive: support both camelCase and original keys
+          const timestamp = record.timestamp_local || record.timestamp || record.DT || 'N/A';
+          const temperature = record.temperature !== undefined ? record.temperature : record.Temp;
+          const humidity = record.humidity !== undefined ? record.humidity : record.Hum;
+          const battery = record.battery !== undefined ? record.battery : record.Batt;
+          const speed = record.speed !== undefined ? record.speed : record.Speed;
+          const latitude = record.latitude !== undefined ? record.latitude : record.Lat;
+          const longitude = record.longitude !== undefined ? record.longitude : record.Lng;
+
+          // Append to sensor data arrays if value exists
+          if (temperature !== undefined) setTemperatureData(prev => [...prev, { timestamp, temperature: parseFloat(temperature) }]);
+          if (humidity !== undefined) setHumidityData(prev => [...prev, { timestamp, humidity: parseFloat(humidity) }]);
+          if (battery !== undefined) setBatteryData(prev => [...prev, { timestamp, battery: parseFloat(battery) }]);
+          if (speed !== undefined) setSpeedData(prev => [...prev, { timestamp, speed: parseFloat(speed) }]);
+          if (
+            latitude !== undefined && longitude !== undefined &&
+            !isNaN(parseFloat(latitude)) && !isNaN(parseFloat(longitude))
+          ) {
+            setLocationData(prev => [
+              ...prev,
+              {
+                timestamp,
+                latitude: parseFloat(latitude),
+                longitude: parseFloat(longitude)
+              }
+            ]);
+          }
+        } else {
+          // Debug: log ignored messages
+          if (selectedShipmentDetail) {
+            console.log(
+              `Ignored WebSocket message: msgTrackerId=${msgTrackerId}, selectedTrackerId=${selectedTrackerId}`
+            );
+          }
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    };
+    ws.addEventListener('message', handleMessage);
+    return () => ws.removeEventListener('message', handleMessage);
+  }, [selectedShipmentDetail]);
+
   return (
     <div className="shipments-container">
+      {/* WebSocket status indicator */}
+      <div style={{
+        position: 'fixed',
+        top: 8,
+        right: 16,
+        zIndex: 9999,
+        background: wsConnected ? '#28a745' : '#dc3545',
+        color: 'white',
+        padding: '4px 12px',
+        borderRadius: '8px',
+        fontSize: '12px',
+        fontWeight: 600,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+      }}>
+        WebSocket: {wsConnected ? 'Connected' : 'Disconnected'}
+      </div>
+
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <button 
           className="collapse-btn"
