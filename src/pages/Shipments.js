@@ -60,7 +60,7 @@ const Shipments = () => {
     const fetchShipments = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch('/shipment_meta');
+        const response = await fetch('https://backend-ts-68222fd8cfc0.herokuapp.com/shipment_meta');
         if (response.ok) {
           const data = await response.json();
           console.log('Fetched shipments:', data); // Debug log
@@ -77,7 +77,7 @@ const Shipments = () => {
 
     const fetchTrackers = async () => {
       try {
-        const response = await fetch('/registered_trackers');
+        const response = await fetch('https://backend-ts-68222fd8cfc0.herokuapp.com/registered_trackers');
         if (response.ok) {
           const data = await response.json();
           setTrackers(data);
@@ -126,7 +126,7 @@ const Shipments = () => {
     if (selectedShipments.length > 0) {
       try {
         const deletePromises = selectedShipments.map(shipmentId =>
-          fetch(`/shipment_meta/${shipmentId}`, {
+          fetch(`https://backend-ts-68222fd8cfc0.herokuapp.com/shipment_meta/${shipmentId}`, {
             method: 'DELETE'
           })
         );
@@ -228,7 +228,7 @@ const Shipments = () => {
         }))
       };
 
-      const response = await fetch('/shipment_meta', {
+      const response = await fetch('https://backend-ts-68222fd8cfc0.herokuapp.com/shipment_meta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(shipmentData),
@@ -240,7 +240,7 @@ const Shipments = () => {
         
         // Refetch all shipments from the database to get the correct data structure
         try {
-          const fetchResponse = await fetch('/shipment_meta');
+          const fetchResponse = await fetch('https://backend-ts-68222fd8cfc0.herokuapp.com/shipment_meta');
           if (fetchResponse.ok) {
             const updatedShipments = await fetchResponse.json();
             setShipments(updatedShipments);
@@ -322,7 +322,7 @@ const Shipments = () => {
       console.log('Sensor data fetch params:', params.toString());
       
       
-      const response = await fetch(`/shipment_route_data?${params}`);
+      const response = await fetch(`https://backend-ts-68222fd8cfc0.herokuapp.com/shipment_route_data?${params}`);
       if (response.ok) {
         const data = await response.json();
         console.log('Sensor data fetch params:', params.toString());
