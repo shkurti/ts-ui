@@ -55,6 +55,9 @@ const Shipments = () => {
   // Add ref for map instance
   const mapRef = useRef();
 
+  // Add at the top of your component
+  const processedRecords = useRef(new Set());
+
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
     const fetchShipments = async () => {
@@ -785,7 +788,15 @@ const Shipments = () => {
           msgTrackerId === selectedTrackerId
         ) {
           // The backend sends: { operationType, tracker_id, new_record, geolocation }
+          
+          // Deduplication: use trackerId + timestamp as unique key
           const record = msg.new_record || {};
+          const uniqueKey = `${msg.tracker_id}_${record.timestamp_local || record.timestamp || record.DT || ''}`;
+          if (processedRecords.current.has(uniqueKey)) {
+            return; // Already processed in this tab
+          }
+          processedRecords.current.add(uniqueKey);
+
           // Defensive: support both camelCase and original keys
           const timestamp = record.timestamp_local || record.timestamp || record.DT || 'N/A';
           const temperature = record.temperature !== undefined ? record.temperature : record.Temp;
