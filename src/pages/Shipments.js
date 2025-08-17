@@ -741,6 +741,26 @@ const Shipments = () => {
         console.log('WebSocket connected');
       };
 
+      websocket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          console.log('WebSocket message received:', message);
+          // Process the message (e.g., update state with new data)
+          // Example: Add new location data
+          if (message.fullDocument) {
+            const { latitude, longitude, timestamp } = message.fullDocument;
+            if (latitude && longitude) {
+              setLocationData((prev) => [
+                ...prev,
+                { latitude, longitude, timestamp },
+              ]);
+            }
+          }
+        } catch (error) {
+          console.error('Error processing WebSocket message:', error);
+        }
+      };
+
       websocket.onclose = () => {
         setWsConnected(false);
         console.log('WebSocket disconnected');
