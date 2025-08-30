@@ -719,6 +719,9 @@ const Shipments = () => {
   const [wsConnected, setWsConnected] = useState(false);
   const wsRef = useRef(null);
 
+  // Persisted set of processed message IDs to avoid duplicates
+  const processedMessagesRef = useRef(new Set());
+
   useEffect(() => {
     let reconnectTimeout = null;
     let isUnmounted = false;
@@ -741,25 +744,8 @@ const Shipments = () => {
         console.log('WebSocket connected');
       };
 
-      websocket.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          console.log('WebSocket message received:', message);
-          // Process the message (e.g., update state with new data)
-          // Example: Add new location data
-          if (message.fullDocument) {
-            const { latitude, longitude, timestamp } = message.fullDocument;
-            if (latitude && longitude) {
-              setLocationData((prev) => [
-                ...prev,
-                { latitude, longitude, timestamp },
-              ]);
-            }
-          }
-        } catch (error) {
-          console.error('Error processing WebSocket message:', error);
-        }
-      };
+      // DO NOT set websocket.onmessage here — we add a single, managed listener below
+      // websocket.onmessage = (event) => { ... }  <-- removed to avoid duplicate handlers
 
       websocket.onclose = () => {
         setWsConnected(false);
@@ -790,71 +776,131 @@ const Shipments = () => {
     };
   }, []);
 
-  // Handle incoming WebSocket messages
+  // Handle incoming WebSocket messages (single centralized listener)
   useEffect(() => {
     const ws = wsRef.current;
     if (!ws) return;
+
     const handleMessage = (event) => {
       try {
-        const msg = JSON.parse(event.data);
-        // Debug: log all incoming messages
+        const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        // Debug: log all incoming messages once
         console.log('WebSocket message received:', msg);
 
-        // Normalize tracker IDs to string for comparison
-        const msgTrackerId = (msg.tracker_id ?? msg.trackerID ?? '').toString();
-        const selectedTrackerId = selectedShipmentDetail?.trackerId?.toString();
+        // Determine a stable message id to dedupe:
+        // try raw oplog _data, then fullDocument._id.$oid, then wallTime.$date, then fallback to JSON stringify
+        const msgId =
+          msg._id?._data ||
+          msg.fullDocument?._id?.$oid ||
+          (msg.wallTime && (msg.wallTime.$date || JSON.stringify(msg.wallTime))) ||
+          JSON.stringify(msg).slice(0, 200);
 
-        // Only process if a shipment is selected and tracker matches
-        if (
-          selectedShipmentDetail &&
-          msgTrackerId &&
-          selectedTrackerId &&
-          msgTrackerId === selectedTrackerId
-        ) {
-          // The backend sends: { operationType, tracker_id, new_record, geolocation }
-          const record = msg.new_record || {};
-          // Defensive: support both camelCase and original keys
-          const timestamp = record.timestamp_local || record.timestamp || record.DT || 'N/A';
-          const temperature = record.temperature !== undefined ? record.temperature : record.Temp;
-          const humidity = record.humidity !== undefined ? record.humidity : record.Hum;
-          const battery = record.battery !== undefined ? record.battery : record.Batt;
-          const speed = record.speed !== undefined ? record.speed : record.Speed;
-          const latitude = record.latitude !== undefined ? record.latitude : record.Lat;
-          const longitude = record.longitude !== undefined ? record.longitude : record.Lng;
+        if (processedMessagesRef.current.has(msgId)) {
+          // already processed
+          return;
+        }
+        processedMessagesRef.current.add(msgId);
 
-          // Append to sensor data arrays if value exists
-          if (temperature !== undefined) setTemperatureData(prev => [...prev, { timestamp, temperature: parseFloat(temperature) }]);
-          if (humidity !== undefined) setHumidityData(prev => [...prev, { timestamp, humidity: parseFloat(humidity) }]);
-          if (battery !== undefined) setBatteryData(prev => [...prev, { timestamp, battery: parseFloat(battery) }]);
-          if (speed !== undefined) setSpeedData(prev => [...prev, { timestamp, speed: parseFloat(speed) }]);
-          if (
-            latitude !== undefined && longitude !== undefined &&
-            !isNaN(parseFloat(latitude)) && !isNaN(parseFloat(longitude))
-          ) {
-            setLocationData(prev => [
-              ...prev,
-              {
-                timestamp,
-                latitude: parseFloat(latitude),
-                longitude: parseFloat(longitude)
-              }
-            ]);
-          }
+        // Normalize possible shapes: fullDocument may contain an array field "data" with multiple records,
+        // or fullDocument may be the record itself.
+        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
+        if (!full) return;
+
+        // If full.data is an array of readings, append them
+        if (Array.isArray(full.data) && full.data.length > 0) {
+          setLocationData((prev) => {
+            const newPoints = full.data
+              .map((r) => {
+                const lat = r.Lat ?? r.latitude ?? r.lat;
+                const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
+                const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
+                return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
+              })
+              .filter(Boolean);
+            return [...prev, ...newPoints];
+          });
+
+          // Also update sensor arrays (temperature/humidity/etc.) if present
+          setTemperatureData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const t = r.Temp ?? r.temperature;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (t === undefined || t === null) return null;
+                return { timestamp: ts, temperature: parseFloat(t) };
+              })
+              .filter(Boolean)
+          ]);
+
+          setHumidityData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const h = r.Hum ?? r.humidity;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (h === undefined || h === null) return null;
+                return { timestamp: ts, humidity: parseFloat(h) };
+              })
+              .filter(Boolean)
+          ]);
+
+          setBatteryData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const b = r.Batt ?? r.battery;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (b === undefined || b === null) return null;
+                return { timestamp: ts, battery: parseFloat(b) };
+              })
+              .filter(Boolean)
+          ]);
+
+          setSpeedData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const s = r.Speed ?? r.speed;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (s === undefined || s === null) return null;
+                return { timestamp: ts, speed: parseFloat(s) };
+              })
+              .filter(Boolean)
+          ]);
         } else {
-          // Debug: log ignored messages
-          if (selectedShipmentDetail) {
-            console.log(
-              `Ignored WebSocket message: msgTrackerId=${msgTrackerId}, selectedTrackerId=${selectedTrackerId}`
-            );
+          // If full is a single record with Lat/Lng, handle that
+          const lat = full.Lat ?? full.latitude ?? full.lat;
+          const lng = full.Lng ?? full.longitude ?? full.lng ?? full.lon;
+          const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? new Date().toISOString();
+
+          if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
+            setLocationData(prev => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
           }
+
+          const t = full.Temp ?? full.temperature;
+          if (t !== undefined && t !== null) setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
+
+          const h = full.Hum ?? full.humidity;
+          if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
+
+          const b = full.Batt ?? full.battery;
+          if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
+
+          const s = full.Speed ?? full.speed;
+          if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
         }
       } catch (e) {
-        // Ignore parse errors
+        console.error('Error parsing WS message', e);
       }
     };
+
     ws.addEventListener('message', handleMessage);
-    return () => ws.removeEventListener('message', handleMessage);
-  }, [selectedShipmentDetail]);
+    return () => {
+      ws.removeEventListener('message', handleMessage);
+    };
+  }, [selectedShipmentDetail]); // keep dependency as you had it
 
   return (
     <div className="shipments-container">
