@@ -737,7 +737,7 @@ const Shipments = () => {
         wsRef.current.close();
       }
       // Always use the full backend URL
-      const websocket = new window.WebSocket('wss://https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
+      const websocket = new window.WebSocket('wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
       
       wsRef.current = websocket;
 
