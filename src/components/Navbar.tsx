@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Navbar.css';
 
-const Navbar: React.FC = () => {
+const Navbar = () => {
   const location = useLocation();
 
   const isActive = (path: string) => {
