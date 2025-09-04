@@ -51,88 +51,8 @@
   padding: 0.2rem;
   height: 100%;
   overflow-y: auto;
-  overflow-x: hidden;
-  height: 100%;
-  max-height: 100vh;
-  padding-bottom: 20px; /* Add some bottom padding for better UX */
   display: flex;
   flex-direction: column;
-}
-
-/* Enhanced scrolling for mobile landscape */
-@media (max-width: 768px) and (orientation: landscape) {
-  .sidebar {
-    height: 100vh;
-    overflow: hidden;
-  }
-  
-  .sidebar-content {
-    height: calc(100vh - 60px); /* Account for any header space */
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
-    scrollbar-width: thin; /* Firefox */
-    scrollbar-color: rgba(255, 255, 255, 0.3) transparent; /* Firefox */
-  }
-  
-  /* Custom scrollbar for webkit browsers */
-  .sidebar-content::-webkit-scrollbar {
-    width: 6px;
-  }
-  
-  .sidebar-content::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 3px;
-  }
-  
-  .sidebar-content::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 3px;
-  }
-  
-  .sidebar-content::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.5);
-  }
-  
-  /* Ensure form content is also scrollable */
-  .modal-body {
-    max-height: 70vh;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  
-  /* Adjust sensor charts for landscape */
-  .sensor-charts {
-    padding-bottom: 40px;
-  }
-  
-  /* Make sure tab content is scrollable */
-  .tab-content {
-    overflow-y: auto;
-    max-height: calc(100vh - 200px);
-    -webkit-overflow-scrolling: touch;
-  }
-}
-
-/* Additional mobile optimizations */
-@media (max-width: 768px) {
-  .sidebar-content {
-    padding: 1rem;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  
-  .shipments-list {
-    max-height: none; /* Remove any height constraints */
-    overflow: visible;
-  }
-  
-  /* Ensure modal is scrollable on small screens */
-  .modal-content {
-    max-height: 90vh;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
 }
 
 .sidebar-header {
@@ -394,9 +314,6 @@
 
 .modal-body {
   padding: 1.5rem;
-  max-height: 70vh;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .leg-section {
