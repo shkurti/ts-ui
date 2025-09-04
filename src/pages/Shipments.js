@@ -587,6 +587,111 @@ const Shipments = () => {
     }
   };
 
+  // Helper function to handle chart hover and touch events
+  const handleChartInteraction = (e, data, valueKey, sensorName, unit) => {
+    e.preventDefault(); // Prevent default touch behaviors
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    let clientX;
+    
+    // Handle both mouse and touch events
+    if (e.type === 'touchstart' || e.type === 'touchmove') {
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+      } else {
+        return;
+      }
+    } else {
+      clientX = e.clientX;
+    }
+    
+    const mouseX = ((clientX - rect.left) / rect.width) * 300; // Scale to viewBox width
+    
+    const closestPoint = findClosestDataPoint(data, valueKey, mouseX);
+    
+    if (closestPoint) {
+      // Find corresponding location on polyline
+      const locationPoint = findLocationByTimestamp(closestPoint.timestamp);
+      
+      if (locationPoint) {
+        setHoverMarkerPosition([locationPoint.latitude, locationPoint.longitude]);
+        setHoverMarkerData({
+          timestamp: closestPoint.timestamp,
+          sensorName: sensorName,
+          sensorValue: closestPoint.value,
+          unit: unit,
+          location: locationPoint
+        });
+      }
+
+      // Create unique ID for each chart's vertical line
+      const chartId = sensorName.toLowerCase().replace(' ', '-');
+      const verticalLineId = `chart-vertical-line-${chartId}`;
+      
+      // Show vertical line
+      let verticalLine = document.getElementById(verticalLineId);
+      if (!verticalLine) {
+        verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        verticalLine.id = verticalLineId;
+        verticalLine.setAttribute('stroke', '#666');
+        verticalLine.setAttribute('stroke-width', '1');
+        verticalLine.setAttribute('stroke-dasharray', '3,3');
+        verticalLine.setAttribute('opacity', '0.7');
+        e.currentTarget.appendChild(verticalLine);
+      }
+      
+      verticalLine.setAttribute('x1', closestPoint.x);
+      verticalLine.setAttribute('y1', '0');
+      verticalLine.setAttribute('x2', closestPoint.x);
+      verticalLine.setAttribute('y2', '60');
+      verticalLine.style.display = 'block';
+      
+      // Show tooltip for desktop (don't show on mobile as it can interfere with touch)
+      if (e.type !== 'touchstart' && e.type !== 'touchmove') {
+        const tooltip = document.getElementById('chart-tooltip');
+        if (tooltip) {
+          tooltip.style.display = 'block';
+          tooltip.style.left = clientX + 15 + 'px';
+          tooltip.style.top = e.pageY - 60 + 'px';
+          tooltip.innerHTML = `
+            <strong>${sensorName}:</strong> ${closestPoint.value.toFixed(1)}${unit}<br/>
+            <strong>Time:</strong> ${formatTimestamp(closestPoint.timestamp)}<br/>
+            <strong>Location:</strong> ${locationPoint ? `${locationPoint.latitude.toFixed(4)}, ${locationPoint.longitude.toFixed(4)}` : 'N/A'}
+          `;
+        }
+      }
+    }
+  };
+
+  // Helper function to handle chart leave and touch end
+  const handleChartLeaveOrEnd = (sensorName, e) => {
+    // Only hide on mouse leave or touch end, not on touch move
+    if (e && (e.type === 'touchmove' || e.type === 'touchstart')) {
+      return;
+    }
+    
+    // Hide hover marker after a delay on mobile to allow for better UX
+    const isMobile = window.innerWidth <= 768;
+    const delay = isMobile ? 2000 : 0; // 2 second delay on mobile
+    
+    setTimeout(() => {
+      setHoverMarkerPosition(null);
+      setHoverMarkerData(null);
+      
+      const chartId = sensorName.toLowerCase().replace(' ', '-');
+      const verticalLineId = `chart-vertical-line-${chartId}`;
+      const verticalLine = document.getElementById(verticalLineId);
+      if (verticalLine) {
+        verticalLine.style.display = 'none';
+      }
+      
+      const tooltip = document.getElementById('chart-tooltip');
+      if (tooltip) {
+        tooltip.style.display = 'none';
+      }
+    }, delay);
+  };
+
   // Create polyline coordinates from location data
   const getPolylineCoordinates = () => {
     if (!locationData || locationData.length === 0) return [];
@@ -1015,9 +1120,12 @@ const Shipments = () => {
                                     width="100%" 
                                     height="60" 
                                     viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block' }}
-                                    onMouseMove={(e) => handleChartHover(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                    onMouseLeave={() => handleChartLeave('Temperature')}
+                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                    onMouseMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Temperature', e)}
+                                    onTouchStart={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                    onTouchMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Temperature', e)}
                                   >
                                     {temperatureData.length > 0 ? (
                                       <polyline
@@ -1053,9 +1161,12 @@ const Shipments = () => {
                                     width="100%" 
                                     height="60" 
                                     viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block' }}
-                                    onMouseMove={(e) => handleChartHover(e, humidityData, 'humidity', 'Humidity', '%')}
-                                    onMouseLeave={() => handleChartLeave('Humidity')}
+                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                    onMouseMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Humidity', e)}
+                                    onTouchStart={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                    onTouchMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Humidity', e)}
                                   >
                                     {humidityData.length > 0 ? (
                                       <polyline
@@ -1091,9 +1202,12 @@ const Shipments = () => {
                                     width="100%" 
                                     height="60" 
                                     viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block' }}
-                                    onMouseMove={(e) => handleChartHover(e, batteryData, 'battery', 'Battery', '%')}
-                                    onMouseLeave={() => handleChartLeave('Battery')}
+                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                    onMouseMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Battery', e)}
+                                    onTouchStart={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                    onTouchMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Battery', e)}
                                   >
                                     {batteryData.length > 0 ? (
                                       <polyline
@@ -1129,9 +1243,12 @@ const Shipments = () => {
                                     width="100%" 
                                     height="60" 
                                     viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block' }}
-                                    onMouseMove={(e) => handleChartHover(e, speedData, 'speed', 'Speed', ' km/h')}
-                                    onMouseLeave={() => handleChartLeave('Speed')}
+                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                    onMouseMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Speed', e)}
+                                    onTouchStart={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                    onTouchMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Speed', e)}
                                   >
                                     {speedData.length > 0 ? (
                                       <polyline
