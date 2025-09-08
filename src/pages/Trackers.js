@@ -13,6 +13,8 @@ const Trackers = () => {
     model_number: ''
   });
   const [submitting, setSubmitting] = useState(false);
+  const [selectedTrackers, setSelectedTrackers] = useState([]);
+  const [deleting, setDeleting] = useState(false);
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
   useEffect(() => {
@@ -113,6 +115,69 @@ const Trackers = () => {
       model_number: ''
     });
     setError(null);
+  };
+
+  // Handle tracker selection
+  const handleTrackerSelect = (trackerId) => {
+    setSelectedTrackers(prev => {
+      if (prev.includes(trackerId)) {
+        return prev.filter(id => id !== trackerId);
+      } else {
+        return [...prev, trackerId];
+      }
+    });
+  };
+
+  // Handle select all
+  const handleSelectAll = () => {
+    if (selectedTrackers.length === trackers.length) {
+      setSelectedTrackers([]);
+    } else {
+      setSelectedTrackers(trackers.map(t => t.tracker_id));
+    }
+  };
+
+  // Handle delete selected trackers
+  const handleDeleteSelected = async () => {
+    if (selectedTrackers.length === 0) {
+      setError('No trackers selected for deletion');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete ${selectedTrackers.length} tracker(s)?`)) {
+      return;
+    }
+
+    setDeleting(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/registered_trackers`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tracker_ids: selectedTrackers }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to delete trackers');
+      }
+
+      const result = await response.json();
+      console.log('Delete success:', result);
+
+      // Clear selected trackers and refresh the list
+      setSelectedTrackers([]);
+      await fetchTrackers();
+
+    } catch (err) {
+      console.error('Error:', err);
+      setError(err.message || 'Failed to delete trackers');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -231,13 +296,44 @@ const Trackers = () => {
 
         {!loading && !error && trackers.length > 0 && (
           <div className="card">
-            <h3>Active Trackers</h3>
+            <div className="tracker-header">
+              <h3>Active Trackers</h3>
+              <div className="tracker-controls">
+                <button 
+                  onClick={handleSelectAll}
+                  className="select-all-btn"
+                  disabled={deleting}
+                >
+                  {selectedTrackers.length === trackers.length ? 'Deselect All' : 'Select All'}
+                </button>
+                {selectedTrackers.length > 0 && (
+                  <button 
+                    onClick={handleDeleteSelected}
+                    className="delete-btn"
+                    disabled={deleting}
+                  >
+                    {deleting ? 'Deleting...' : `Delete Selected (${selectedTrackers.length})`}
+                  </button>
+                )}
+              </div>
+            </div>
             <ul className="tracker-list">
               {trackers.map((t) => (
                 <li key={t.tracker_id || t._id} className="tracker-item">
-                  <strong>{t.tracker_name || 'Unnamed'}</strong> — ID: {t.tracker_id || 'N/A'}
-                  <div>Type: {t.device_type || 'N/A'}</div>
-                  <div>Model: {t.model_number || 'N/A'}</div>
+                  <div className="tracker-checkbox">
+                    <input
+                      type="checkbox"
+                      id={`tracker-${t.tracker_id}`}
+                      checked={selectedTrackers.includes(t.tracker_id)}
+                      onChange={() => handleTrackerSelect(t.tracker_id)}
+                      disabled={deleting}
+                    />
+                  </div>
+                  <div className="tracker-info">
+                    <strong>{t.tracker_name || 'Unnamed'}</strong> — ID: {t.tracker_id || 'N/A'}
+                    <div>Type: {t.device_type || 'N/A'}</div>
+                    <div>Model: {t.model_number || 'N/A'}</div>
+                  </div>
                 </li>
               ))}
             </ul>
