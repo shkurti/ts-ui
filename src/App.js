@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Shipments from './pages/Shipments';
 import Trackers from './pages/Trackers';
+import Analysis from './pages/Analysis';
 import Configure from './pages/Configure';
 import './App.css';
 
@@ -16,6 +17,7 @@ function App() {
             <Route path="/" element={<Shipments />} />
             <Route path="/shipments" element={<Shipments />} />
             <Route path="/trackers" element={<Trackers />} />
+            <Route path="/analysis" element={<Analysis />} />
             <Route path="/configure" element={<Configure />} />
           </Routes>
         </main>
