@@ -3,63 +3,57 @@ import './Page.css';
 
 const Analysis = () => {
   const [analyticsData, setAnalyticsData] = useState({
-    totalShipments: 0,
-    activeTrackers: 0,
-    totalTrackers: 0,
-    shipmentsByStatus: {},
-    recentShipments: []
+    totalShipments: 1007,
+    shipmentsWithAlerts: 281,
+    roadLegs: 136,
+    oceanLegs: 0,
+    airLegs: 910,
+    railLegs: 0,
+    avgDepartureDelay: { hours: 20, minutes: 12 },
+    avgArrivalDelay: { days: 6, hours: 9 }
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [dateRange, setDateRange] = useState('May 9, 2023 - Nov 9, 2023');
+  const [viewMode, setViewMode] = useState('Monthly');
+  const [filters, setFilters] = useState({
+    unspecified: 39,
+    road: true,
+    ocean: true
+  });
+  const [chartType, setChartType] = useState('donut'); // 'donut' or 'bar'
+
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
+
+  // Carrier performance data
+  const carrierData = [
+    { name: 'SOUTHWEST AIRLINES', performance: 95, color: '#4f46e5' },
+    { name: 'UNITED AIRLINES', performance: 88, color: '#7dd3fc' },
+    { name: 'AMERICAN AIRLINES', performance: 75, color: '#ef4444' },
+    { name: 'ALASKA AIRLINES', performance: 82, color: '#fb7185' },
+    { name: 'DELTA AIRLINES', performance: 92, color: '#06b6d4' },
+    { name: 'UA00 (Air)', performance: 87, color: '#d1d5db' },
+    { name: 'KLM DUTCH AIRLINES', performance: 98, color: '#8b5cf6' }
+  ];
 
   useEffect(() => {
     const fetchAnalyticsData = async () => {
       try {
         setLoading(true);
         
-        // Fetch trackers data
+        // Fetch real data from API if available
         const trackersRes = await fetch(`${API_BASE}/registered_trackers`);
-        if (!trackersRes.ok) throw new Error('Failed to fetch trackers data');
-        const trackersData = await trackersRes.json();
-        
-        // Fetch shipments data (if available)
-        let shipmentsData = [];
-        try {
-          const shipmentsRes = await fetch(`${API_BASE}/shipments`);
-          if (shipmentsRes.ok) {
-            shipmentsData = await shipmentsRes.json();
-          }
-        } catch (err) {
-          console.log('Shipments endpoint not available:', err.message);
+        if (trackersRes.ok) {
+          const trackersData = await trackersRes.json();
+          // Update with real data if needed
+          setAnalyticsData(prev => ({
+            ...prev,
+            totalShipments: Math.max(prev.totalShipments, trackersData.length * 10)
+          }));
         }
 
-        // Process the data for analytics
-        const totalTrackers = trackersData.length;
-        const totalShipments = shipmentsData.length;
-        
-        // Group shipments by status (if available)
-        const shipmentsByStatus = shipmentsData.reduce((acc, shipment) => {
-          const status = shipment.status || 'Unknown';
-          acc[status] = (acc[status] || 0) + 1;
-          return acc;
-        }, {});
-
-        // Get recent shipments (last 5)
-        const recentShipments = shipmentsData
-          .sort((a, b) => new Date(b.created_at || b.timestamp) - new Date(a.created_at || a.timestamp))
-          .slice(0, 5);
-
-        setAnalyticsData({
-          totalShipments,
-          activeTrackers: totalTrackers, // For now, assume all trackers are active
-          totalTrackers,
-          shipmentsByStatus,
-          recentShipments
-        });
-
       } catch (err) {
-        setError(err.message || 'Failed to load analytics data');
+        console.log('API not available, using mock data');
       } finally {
         setLoading(false);
       }
@@ -68,119 +62,313 @@ const Analysis = () => {
     fetchAnalyticsData();
   }, [API_BASE]);
 
-  if (loading) {
+  const BarChart = () => {
+    // Calculate total for percentages
+    const total = carrierData.reduce((sum, carrier) => sum + carrier.performance, 0);
+    
     return (
-      <div className="page-container">
-        <div className="page-header">
-          <h1>Analysis</h1>
-          <p>Analytics and insights for your logistics operations</p>
+      <div className="carrier-bar-chart">
+        <div className="carrier-chart">
+          <div className="chart-y-axis">
+            <span>100</span>
+            <span>50</span>
+            <span>0</span>
+          </div>
+          <div className="chart-container">
+            {carrierData.map((carrier, index) => (
+              <div key={index} className="carrier-bar">
+                <div 
+                  className="bar" 
+                  style={{ 
+                    height: `${Math.max(carrier.performance * 0.8, 4)}%`, 
+                    backgroundColor: carrier.color 
+                  }}
+                />
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="page-content">
-          <div className="card">
-            <p>Loading analytics data...</p>
+        
+        {/* Legend for bar chart */}
+        <div className="bar-chart-legend">
+          {carrierData.map((carrier, index) => {
+            const percentage = ((carrier.performance / total) * 100).toFixed(1);
+            return (
+              <div key={index} className="bar-legend-item">
+                <div className="bar-label-line" style={{ borderColor: carrier.color }}>
+                  <div 
+                    className="bar-label-dot" 
+                    style={{ backgroundColor: carrier.color }}
+                  ></div>
+                  <div className="bar-label-content">
+                    <span className="bar-label-name">{carrier.name.toLowerCase()}</span>
+                    <span className="bar-label-value">{percentage}%</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const CarrierChart = () => {
+    const radius = 170;
+    const strokeWidth = 55; // Increased from 40 to 60 for thicker donut
+    const normalizedRadius = radius - strokeWidth / 2;
+    const circumference = normalizedRadius * 2 * Math.PI;
+    const svgSize = (radius + 50) * 2;
+    
+    // Calculate total for percentages
+    const total = carrierData.reduce((sum, carrier) => sum + carrier.performance, 0);
+    
+    let cumulativePercentage = 0;
+    
+    return (
+      <div className="carrier-donut-chart">
+        <div className="single-donut-container">
+          <svg
+            height={svgSize}
+            width={svgSize}
+            viewBox={`0 0 ${svgSize} ${svgSize}`}
+            className="single-donut-svg"
+          >
+            {/* Background circle */}
+            <circle
+              stroke="#f1f5f9"
+              fill="transparent"
+              strokeWidth={strokeWidth}
+              r={normalizedRadius}
+              cx={svgSize / 2}
+              cy={svgSize / 2}
+            />
+            
+            {/* Data segments */}
+            {carrierData.map((carrier, index) => {
+              const percentage = (carrier.performance / total) * 100;
+              const strokeDasharray = `${percentage / 100 * circumference} ${circumference}`;
+              const strokeDashoffset = -cumulativePercentage / 100 * circumference;
+              
+              cumulativePercentage += percentage;
+              
+              return (
+                <circle
+                  key={index}
+                  stroke={carrier.color}
+                  fill="transparent"
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={strokeDasharray}
+                  strokeDashoffset={strokeDashoffset}
+                  r={normalizedRadius}
+                  cx={svgSize / 2}
+                  cy={svgSize / 2}
+                  style={{
+                    transform: 'rotate(-90deg)',
+                    transformOrigin: `${svgSize / 2}px ${svgSize / 2}px`,
+                  }}
+                  className="donut-segment"
+                />
+              );
+            })}
+          </svg>
+          
+          {/* Labels */}
+          <div className="donut-labels">
+            {carrierData.map((carrier, index) => {
+              const percentage = ((carrier.performance / total) * 100).toFixed(1);
+              return (
+                <div key={index} className="donut-label-item">
+                  <div className="label-line" style={{ borderColor: carrier.color }}>
+                    <div 
+                      className="label-dot" 
+                      style={{ backgroundColor: carrier.color }}
+                    ></div>
+                    <div className="label-content">
+                      <span className="label-name">{carrier.name.toLowerCase()}</span>
+                      <span className="label-value">{carrier.performance}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
     );
-  }
+  };
 
-  if (error) {
+  if (loading) {
     return (
-      <div className="page-container">
-        <div className="page-header">
-          <h1>Analysis</h1>
-          <p>Analytics and insights for your logistics operations</p>
+      <div className="tive-container">
+        <div className="tive-header">
+          <h1>Tive Analytics</h1>
+          <p>Data Last Updated: 6 hours ago</p>
         </div>
-        <div className="page-content">
-          <div className="card">
-            <p>Error: {error}</p>
-          </div>
-        </div>
+        <div className="loading-state">Loading analytics data...</div>
       </div>
     );
   }
 
   return (
-    <div className="page-container">
-      <div className="page-header">
-        <h1>Analysis</h1>
-        <p>Analytics and insights for your logistics operations</p>
+    <div className="tive-container">
+      <div className="tive-header">
+        <h1>Tive Analytics</h1>
+        <p className="last-updated">Data Last Updated: 6 hours ago</p>
       </div>
 
-      <div className="page-content">
-        {/* Key Metrics Cards */}
-        <div className="metrics-grid">
-          <div className="metric-card">
-            <div className="metric-value">{analyticsData.totalShipments}</div>
-            <div className="metric-label">Total Shipments</div>
-          </div>
+      <div className="tive-controls">
+        <select className="tive-select" value="Tive">
+          <option>Tive</option>
+        </select>
+        
+        <input 
+          type="text" 
+          className="date-range-input" 
+          value={dateRange}
+          onChange={(e) => setDateRange(e.target.value)}
+        />
+        
+        <select 
+          className="tive-select" 
+          value={viewMode}
+          onChange={(e) => setViewMode(e.target.value)}
+        >
+          <option>Monthly</option>
+          <option>Weekly</option>
+          <option>Daily</option>
+        </select>
+        
+        <div className="filter-group">
+          <span className="filter-item">
+            <span className="filter-icon">👤</span>
+            Unspecified +{filters.unspecified}
+          </span>
+          <span className="filter-item">
+            <span className="filter-icon transport-road">🚛</span>
+            Road
+          </span>
+          <span className="filter-item">
+            <span className="filter-icon transport-ocean">🚢</span>
+            Ocean +2
+          </span>
+        </div>
+        
+        <button className="all-filters-btn">All Filters</button>
+      </div>
+
+      <div className="tive-content">
+        {/* Shipments Overview */}
+        <div className="overview-section">
+          <h2>📦 Shipments Overview</h2>
           
-          <div className="metric-card">
-            <div className="metric-value">{analyticsData.activeTrackers}</div>
-            <div className="metric-label">Active Trackers</div>
-          </div>
-          
-          <div className="metric-card">
-            <div className="metric-value">{analyticsData.totalTrackers}</div>
-            <div className="metric-label">Total Trackers</div>
-          </div>
-          
-          <div className="metric-card">
-            <div className="metric-value">
-              {Object.keys(analyticsData.shipmentsByStatus).length}
+          <div className="overview-grid">
+            <div className="overview-card">
+              <div className="overview-number">{analyticsData.totalShipments}</div>
+              <div className="overview-label">Shipments</div>
             </div>
-            <div className="metric-label">Status Types</div>
+            
+            <div className="overview-card">
+              <div className="overview-number">{analyticsData.shipmentsWithAlerts}</div>
+              <div className="overview-label">Shipments with Alerts</div>
+            </div>
           </div>
         </div>
 
-        {/* Shipments by Status */}
-        {Object.keys(analyticsData.shipmentsByStatus).length > 0 && (
-          <div className="card">
-            <h3>Shipments by Status</h3>
-            <div className="status-breakdown">
-              {Object.entries(analyticsData.shipmentsByStatus).map(([status, count]) => (
-                <div key={status} className="status-item">
-                  <span className="status-name">{status}</span>
-                  <span className="status-count">{count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Recent Shipments */}
-        {analyticsData.recentShipments.length > 0 && (
-          <div className="card">
-            <h3>Recent Shipments</h3>
-            <div className="recent-shipments">
-              {analyticsData.recentShipments.map((shipment, index) => (
-                <div key={shipment.id || index} className="shipment-item">
-                  <div className="shipment-info">
-                    <strong>{shipment.shipment_id || `Shipment ${index + 1}`}</strong>
-                    <div>Status: {shipment.status || 'Unknown'}</div>
-                    <div>Date: {shipment.created_at || shipment.timestamp || 'Unknown'}</div>
+        {/* Main Content Grid */}
+        <div className="main-grid">
+          {/* Left Column */}
+          <div className="left-column">
+            {/* Highlights */}
+            <div className="highlights-section">
+              <h3>📈 Highlights</h3>
+              
+              <div className="highlights-grid">
+                <div className="highlight-group">
+                  <h4>SHIPMENTS & LEGS</h4>
+                  <div className="highlight-items">
+                    <div className="highlight-item">
+                      <span className="highlight-number">{analyticsData.totalShipments}</span>
+                      <span className="highlight-label">Shipments</span>
+                    </div>
+                    <div className="highlight-item">
+                      <span className="highlight-number">{analyticsData.shipmentsWithAlerts}</span>
+                      <span className="highlight-label">Shipments with Alerts</span>
+                    </div>
                   </div>
                 </div>
-              ))}
+
+                <div className="highlight-group">
+                  <div className="highlight-items">
+                    <div className="highlight-item">
+                      <span className="highlight-number">{analyticsData.roadLegs}</span>
+                      <span className="highlight-label">Road Legs</span>
+                    </div>
+                    <div className="highlight-item">
+                      <span className="highlight-number">{analyticsData.oceanLegs}</span>
+                      <span className="highlight-label">Ocean Legs</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="highlight-group">
+                  <div className="highlight-items">
+                    <div className="highlight-item">
+                      <span className="highlight-number">{analyticsData.airLegs}</span>
+                      <span className="highlight-label">Air Legs</span>
+                    </div>
+                    <div className="highlight-item">
+                      <span className="highlight-number">{analyticsData.railLegs}</span>
+                      <span className="highlight-label">Rail Legs</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Delays & Stops */}
+            <div className="delays-section">
+              <h3>⏰ Delays & Stops</h3>
+              
+              <div className="delays-grid">
+                <div className="delay-item">
+                  <div className="delay-time">
+                    {analyticsData.avgDepartureDelay.hours} Hours {analyticsData.avgDepartureDelay.minutes} Minutes
+                  </div>
+                  <div className="delay-label">Avg. Departure Delay</div>
+                </div>
+                
+                <div className="delay-item">
+                  <div className="delay-time">
+                    {analyticsData.avgArrivalDelay.days} Days {analyticsData.avgArrivalDelay.hours} Hours
+                  </div>
+                  <div className="delay-label">Avg. Arrival Delay</div>
+                </div>
+              </div>
             </div>
           </div>
-        )}
 
-        {/* Summary Statistics */}
-        <div className="card">
-          <h3>System Overview</h3>
-          <div className="overview-stats">
-            <div className="stat-row">
-              <span>Total Trackers Registered:</span>
-              <span>{analyticsData.totalTrackers}</span>
-            </div>
-            <div className="stat-row">
-              <span>Total Shipments Processed:</span>
-              <span>{analyticsData.totalShipments}</span>
-            </div>
-            <div className="stat-row">
-              <span>System Status:</span>
-              <span className="status-active">Active</span>
+          {/* Right Column - Carrier Performance */}
+          <div className="right-column">
+            <div className="carrier-section">
+              <div className="carrier-header">
+                <h3>🏢 Carrier Performance</h3>
+                <div className="chart-toggle">
+                  <button 
+                    className={`toggle-btn ${chartType === 'donut' ? 'active' : ''}`}
+                    onClick={() => setChartType('donut')}
+                  >
+                    🍩 Donut
+                  </button>
+                  <button 
+                    className={`toggle-btn ${chartType === 'bar' ? 'active' : ''}`}
+                    onClick={() => setChartType('bar')}
+                  >
+                    📊 Bar
+                  </button>
+                </div>
+              </div>
+              {chartType === 'donut' ? <CarrierChart /> : <BarChart />}
             </div>
           </div>
         </div>

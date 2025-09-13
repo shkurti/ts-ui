@@ -1,0 +1,154 @@
+.carrier-chart {
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  height: 100%;
+}
+
+.chart-header {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.chart-header h3 {
+  margin: 0 0 5px 0;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.chart-subtitle {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.chart-grid {
+  display: flex;
+  height: 300px;
+  margin-bottom: 20px;
+}
+
+.y-axis-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 40px;
+  margin-right: 10px;
+  padding-top: 10px;
+}
+
+.y-label {
+  font-size: 0.8rem;
+  color: #666;
+  text-align: right;
+}
+
+.chart-bars {
+  display: flex;
+  align-items: end;
+  justify-content: space-around;
+  flex: 1;
+  border-left: 2px solid #ddd;
+  border-bottom: 2px solid #ddd;
+  padding: 10px;
+  gap: 10px;
+}
+
+.bar-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  height: 100%;
+}
+
+.performance-bar {
+  width: 100%;
+  max-width: 60px;
+  border-radius: 4px 4px 0 0;
+  transition: all 0.3s ease;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 5px;
+  cursor: pointer;
+  min-height: 20px;
+}
+
+.performance-bar:hover {
+  opacity: 0.8;
+  transform: scale(1.05);
+}
+
+.bar-value {
+  color: white;
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-shadow: 1px 1px 1px rgba(0,0,0,0.3);
+}
+
+.bar-label {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: #333;
+  text-align: center;
+  font-weight: 500;
+}
+
+.chart-legend {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  border-top: 1px solid #eee;
+  padding-top: 15px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.legend-color.excellent {
+  background-color: #28a745;
+}
+
+.legend-color.good {
+  background-color: #ffc107;
+}
+
+.legend-color.fair {
+  background-color: #fd7e14;
+}
+
+.legend-color.poor {
+  background-color: #dc3545;
+}
+
+@media (max-width: 768px) {
+  .chart-bars {
+    gap: 5px;
+  }
+  
+  .performance-bar {
+    max-width: 40px;
+  }
+  
+  .bar-label {
+    font-size: 0.7rem;
+  }
+  
+  .chart-legend {
+    gap: 10px;
+  }
+}
