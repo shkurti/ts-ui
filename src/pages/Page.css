@@ -936,7 +936,7 @@ input[type="checkbox"] {
   font-weight: 700;
 }
 
-/* Bar chart legend - separate from donut chart styling */
+/* Bar chart legend - make it match donut chart layout */
 .bar-chart-legend {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1107,7 +1107,7 @@ input[type="checkbox"] {
   }
 
   .bar-chart-legend {
-    grid-template-columns: 1fr;
+    /* grid-template-columns: 1fr; */
     max-width: 100%;
   }
 
