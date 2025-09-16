@@ -22,6 +22,8 @@ const Analysis = () => {
     ocean: true
   });
   const [chartType, setChartType] = useState('donut'); // 'donut' or 'bar'
+  const [carriers, setCarriers] = useState(['Tive']); // Default value
+  const [selectedCarrier, setSelectedCarrier] = useState('Tive');
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -40,6 +42,16 @@ const Analysis = () => {
     const fetchAnalyticsData = async () => {
       try {
         setLoading(true);
+        
+        // Fetch carriers
+        const carriersRes = await fetch(`${API_BASE}/carriers`);
+        if (carriersRes.ok) {
+          const carriersData = await carriersRes.json();
+          if (carriersData.carriers && carriersData.carriers.length > 0) {
+            setCarriers(['All', ...carriersData.carriers]);
+            setSelectedCarrier('All');
+          }
+        }
         
         // Fetch real data from API if available
         const trackersRes = await fetch(`${API_BASE}/registered_trackers`);
@@ -202,7 +214,7 @@ const Analysis = () => {
     return (
       <div className="tive-container">
         <div className="tive-header">
-          <h1>Tive Analytics</h1>
+          <h1>TS Logics</h1>
           <p>Data Last Updated: 6 hours ago</p>
         </div>
         <div className="loading-state">Loading analytics data...</div>
@@ -213,13 +225,21 @@ const Analysis = () => {
   return (
     <div className="tive-container">
       <div className="tive-header">
-        <h1>Tive Analytics</h1>
+        <h1>TS Logics</h1>
         <p className="last-updated">Data Last Updated: 6 hours ago</p>
       </div>
 
       <div className="tive-controls">
-        <select className="tive-select" value="Tive">
-          <option>Tive</option>
+        <select 
+          className="tive-select" 
+          value={selectedCarrier}
+          onChange={(e) => setSelectedCarrier(e.target.value)}
+        >
+          {carriers.map((carrier, index) => (
+            <option key={index} value={carrier}>
+              {carrier}
+            </option>
+          ))}
         </select>
         
         <input 
