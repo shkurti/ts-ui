@@ -56,11 +56,12 @@ const Analysis = () => {
 
       const analyticsRes = await fetch(`${API_BASE}/analytics?${params.toString()}`);
       if (analyticsRes.ok) {
-        const analyticsData = await analyticsRes.json();
+        const newAnalyticsData = await analyticsRes.json();
         setAnalyticsData(prev => ({
           ...prev,
-          ...analyticsData
+          ...newAnalyticsData
         }));
+        console.log('Updated analytics data:', newAnalyticsData);
       }
     } catch (err) {
       console.log('Error fetching filtered analytics:', err);
@@ -104,6 +105,7 @@ const Analysis = () => {
   // Handle carrier change
   const handleCarrierChange = (newCarrier) => {
     setSelectedCarrier(newCarrier);
+    console.log('Carrier changed to:', newCarrier);
     fetchFilteredAnalytics(newCarrier, startDate, endDate);
   };
 
@@ -111,12 +113,14 @@ const Analysis = () => {
   const handleStartDateChange = (newStartDate) => {
     setStartDate(newStartDate);
     setDateRange(`${newStartDate} - ${endDate}`);
+    console.log('Start date changed to:', newStartDate);
     fetchFilteredAnalytics(selectedCarrier, newStartDate, endDate);
   };
 
   const handleEndDateChange = (newEndDate) => {
     setEndDate(newEndDate);
     setDateRange(`${startDate} - ${newEndDate}`);
+    console.log('End date changed to:', newEndDate);
     fetchFilteredAnalytics(selectedCarrier, startDate, newEndDate);
   };
 
