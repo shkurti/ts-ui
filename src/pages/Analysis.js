@@ -22,8 +22,10 @@ const Analysis = () => {
     ocean: true
   });
   const [chartType, setChartType] = useState('donut'); // 'donut' or 'bar'
-  const [carriers, setCarriers] = useState(['Tive']); // Default value
-  const [selectedCarrier, setSelectedCarrier] = useState('Tive');
+  const [carriers, setCarriers] = useState(['All']); // Default value
+  const [selectedCarrier, setSelectedCarrier] = useState('All');
+  const [startDate, setStartDate] = useState('2023-05-09');
+  const [endDate, setEndDate] = useState('2023-11-09');
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -38,6 +40,33 @@ const Analysis = () => {
     { name: 'KLM DUTCH AIRLINES', performance: 98, color: '#8b5cf6' }
   ];
 
+  // Function to fetch analytics data with filters
+  const fetchFilteredAnalytics = async (carrier = selectedCarrier, start = startDate, end = endDate) => {
+    try {
+      const params = new URLSearchParams();
+      if (carrier && carrier !== 'All') {
+        params.append('carrier', carrier);
+      }
+      if (start) {
+        params.append('start_date', `${start}T00:00:00Z`);
+      }
+      if (end) {
+        params.append('end_date', `${end}T23:59:59Z`);
+      }
+
+      const analyticsRes = await fetch(`${API_BASE}/analytics?${params.toString()}`);
+      if (analyticsRes.ok) {
+        const analyticsData = await analyticsRes.json();
+        setAnalyticsData(prev => ({
+          ...prev,
+          ...analyticsData
+        }));
+      }
+    } catch (err) {
+      console.log('Error fetching filtered analytics:', err);
+    }
+  };
+
   useEffect(() => {
     const fetchAnalyticsData = async () => {
       try {
@@ -49,19 +78,17 @@ const Analysis = () => {
           const carriersData = await carriersRes.json();
           if (carriersData.carriers && carriersData.carriers.length > 0) {
             setCarriers(['All', ...carriersData.carriers]);
-            setSelectedCarrier('All');
           }
         }
         
-        // Fetch real data from API if available
+        // Fetch initial analytics data
+        await fetchFilteredAnalytics();
+        
+        // Fetch trackers for additional data
         const trackersRes = await fetch(`${API_BASE}/registered_trackers`);
         if (trackersRes.ok) {
           const trackersData = await trackersRes.json();
-          // Update with real data if needed
-          setAnalyticsData(prev => ({
-            ...prev,
-            totalShipments: Math.max(prev.totalShipments, trackersData.length * 10)
-          }));
+          console.log('Trackers data available:', trackersData.length);
         }
 
       } catch (err) {
@@ -73,6 +100,25 @@ const Analysis = () => {
 
     fetchAnalyticsData();
   }, [API_BASE]);
+
+  // Handle carrier change
+  const handleCarrierChange = (newCarrier) => {
+    setSelectedCarrier(newCarrier);
+    fetchFilteredAnalytics(newCarrier, startDate, endDate);
+  };
+
+  // Handle date range changes
+  const handleStartDateChange = (newStartDate) => {
+    setStartDate(newStartDate);
+    setDateRange(`${newStartDate} - ${endDate}`);
+    fetchFilteredAnalytics(selectedCarrier, newStartDate, endDate);
+  };
+
+  const handleEndDateChange = (newEndDate) => {
+    setEndDate(newEndDate);
+    setDateRange(`${startDate} - ${newEndDate}`);
+    fetchFilteredAnalytics(selectedCarrier, startDate, newEndDate);
+  };
 
   const BarChart = () => {
     // Calculate total for percentages
@@ -233,7 +279,7 @@ const Analysis = () => {
         <select 
           className="tive-select" 
           value={selectedCarrier}
-          onChange={(e) => setSelectedCarrier(e.target.value)}
+          onChange={(e) => handleCarrierChange(e.target.value)}
         >
           {carriers.map((carrier, index) => (
             <option key={index} value={carrier}>
@@ -242,12 +288,23 @@ const Analysis = () => {
           ))}
         </select>
         
-        <input 
-          type="text" 
-          className="date-range-input" 
-          value={dateRange}
-          onChange={(e) => setDateRange(e.target.value)}
-        />
+        <div className="date-range-container">
+          <input 
+            type="date" 
+            className="date-input" 
+            value={startDate}
+            onChange={(e) => handleStartDateChange(e.target.value)}
+            title="Start Date"
+          />
+          <span className="date-separator">to</span>
+          <input 
+            type="date" 
+            className="date-input" 
+            value={endDate}
+            onChange={(e) => handleEndDateChange(e.target.value)}
+            title="End Date"
+          />
+        </div>
         
         <select 
           className="tive-select" 
