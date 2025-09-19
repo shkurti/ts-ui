@@ -1570,3 +1570,125 @@ input[type="checkbox"] {
     justify-content: space-between;
   }
 }
+
+/* Clean Highlights improvements - scoped to avoid chart conflicts */
+.highlights-section {
+  background: white;
+  padding: 1.75rem;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+}
+
+.highlights-section h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 1.75rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.highlights-section .highlights-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.highlights-section .highlight-group {
+  background: #fafbfc;
+  border-radius: 10px;
+  padding: 1.5rem;
+  border: 1px solid #f1f3f4;
+  transition: all 0.2s ease;
+}
+
+.highlights-section .highlight-group:hover {
+  background: #f8f9fa;
+  border-color: #e9ecef;
+}
+
+.highlights-section .highlight-group h4 {
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin: 0 0 1.25rem 0;
+  font-weight: 600;
+  text-align: center;
+  position: relative;
+}
+
+.highlights-section .highlight-group h4::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 2px;
+  background: #3b82f6;
+  border-radius: 1px;
+}
+
+.highlights-section .highlight-items {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.highlights-section .highlight-item {
+  text-align: center;
+  background: white;
+  padding: 1.25rem 1rem;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f3f4f6;
+  transition: all 0.2s ease;
+}
+
+.highlights-section .highlight-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: #e2e8f0;
+}
+
+.highlights-section .highlight-number {
+  display: block;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+  line-height: 1;
+}
+
+.highlights-section .highlight-label {
+  display: block;
+  font-size: 0.8rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+/* Responsive for highlights only */
+@media (max-width: 768px) {
+  .highlights-section .highlight-items {
+    grid-template-columns: 1fr;
+    gap: 0.875rem;
+  }
+  
+  .highlights-section .highlight-number {
+    font-size: 1.75rem;
+  }
+  
+  .highlights-section .highlight-group {
+    padding: 1.25rem;
+  }
+  
+  .highlights-section {
+    padding: 1.5rem;
+  }
+}
