@@ -24,8 +24,8 @@ const Analysis = () => {
   const [chartType, setChartType] = useState('donut'); // 'donut' or 'bar'
   const [carriers, setCarriers] = useState(['All']); // Default value
   const [selectedCarrier, setSelectedCarrier] = useState('All');
-  const [startDate, setStartDate] = useState('2023-05-09');
-  const [endDate, setEndDate] = useState('2023-11-09');
+  const [startDate, setStartDate] = useState('2023-01-01');
+  const [endDate, setEndDate] = useState('2025-12-31');
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -82,8 +82,8 @@ const Analysis = () => {
           }
         }
         
-        // Fetch initial analytics data
-        await fetchFilteredAnalytics();
+        // Fetch initial analytics data with broader date range
+        await fetchFilteredAnalytics('All', '2023-01-01', '2025-12-31');
         
         // Fetch trackers for additional data
         const trackersRes = await fetch(`${API_BASE}/registered_trackers`);
