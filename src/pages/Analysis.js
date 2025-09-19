@@ -227,15 +227,26 @@ const Analysis = () => {
                   style={{
                     transform: 'rotate(-90deg)',
                     transformOrigin: `${svgSize / 2}px ${svgSize / 2}px`,
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease'
                   }}
-                  className="donut-segment"
-                  title={`${carrier.name}: ${carrier.percentage.toFixed(1)}% (${carrier.shipmentCount} shipments)`}
-                />
+                  className="donut-segment-interactive"
+                  onMouseEnter={(e) => {
+                    e.target.style.strokeWidth = strokeWidth + 8;
+                    e.target.style.filter = 'brightness(1.2)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.strokeWidth = strokeWidth;
+                    e.target.style.filter = 'brightness(1)';
+                  }}
+                >
+                  <title>{`${carrier.name}: ${carrier.percentage.toFixed(1)}% (${carrier.shipmentCount} shipments)`}</title>
+                </circle>
               );
             })}
           </svg>
           
-          {/* Labels */}
+          {/* Labels - keeping existing code unchanged */}
           <div className="donut-labels">
             {carrierPerformanceData.map((carrier, index) => (
               <div key={index} className="donut-label-item">

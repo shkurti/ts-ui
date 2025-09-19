@@ -1525,3 +1525,17 @@ input[type="checkbox"] {
     align-self: flex-start;
   }
 }
+
+/* Donut Chart Interactive Hover Effects - Added at the end of file */
+.donut-segment-interactive {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.donut-segment-interactive:hover {
+  filter: brightness(1.2) !important;
+}
+
+.single-donut-svg {
+  overflow: visible;
+}
