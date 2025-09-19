@@ -26,19 +26,9 @@ const Analysis = () => {
   const [selectedCarrier, setSelectedCarrier] = useState('All');
   const [startDate, setStartDate] = useState('2023-01-01');
   const [endDate, setEndDate] = useState('2025-12-31');
+  const [carrierPerformanceData, setCarrierPerformanceData] = useState([]);
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
-
-  // Carrier performance data
-  const carrierData = [
-    { name: 'SOUTHWEST AIRLINES', performance: 95, color: '#4f46e5' },
-    { name: 'UNITED AIRLINES', performance: 88, color: '#7dd3fc' },
-    { name: 'AMERICAN AIRLINES', performance: 75, color: '#ef4444' },
-    { name: 'ALASKA AIRLINES', performance: 82, color: '#fb7185' },
-    { name: 'DELTA AIRLINES', performance: 92, color: '#06b6d4' },
-    { name: 'UA00 (Air)', performance: 87, color: '#d1d5db' },
-    { name: 'KLM DUTCH AIRLINES', performance: 98, color: '#8b5cf6' }
-  ];
 
   // Function to fetch analytics data with filters
   const fetchFilteredAnalytics = async (carrier = selectedCarrier, start = startDate, end = endDate) => {
@@ -61,6 +51,12 @@ const Analysis = () => {
           ...prev,
           ...newAnalyticsData
         }));
+        
+        // Update carrier performance data
+        if (newAnalyticsData.carrierPerformance) {
+          setCarrierPerformanceData(newAnalyticsData.carrierPerformance);
+        }
+        
         console.log('Updated analytics data:', newAnalyticsData);
       }
     } catch (err) {
@@ -125,26 +121,28 @@ const Analysis = () => {
   };
 
   const BarChart = () => {
-    // Calculate total for percentages
-    const total = carrierData.reduce((sum, carrier) => sum + carrier.performance, 0);
+    if (!carrierPerformanceData || carrierPerformanceData.length === 0) {
+      return <div className="no-data">No carrier data available</div>;
+    }
     
     return (
       <div className="carrier-bar-chart">
         <div className="carrier-chart">
           <div className="chart-y-axis">
-            <span>100</span>
-            <span>50</span>
-            <span>0</span>
+            <span>100%</span>
+            <span>50%</span>
+            <span>0%</span>
           </div>
           <div className="chart-container">
-            {carrierData.map((carrier, index) => (
+            {carrierPerformanceData.map((carrier, index) => (
               <div key={index} className="carrier-bar">
                 <div 
                   className="bar" 
                   style={{ 
-                    height: `${Math.max(carrier.performance * 0.8, 4)}%`, 
+                    height: `${Math.max(carrier.percentage * 0.8, 4)}%`, 
                     backgroundColor: carrier.color 
                   }}
+                  title={`${carrier.name}: ${carrier.percentage.toFixed(1)}% (${carrier.shipmentCount} shipments)`}
                 />
               </div>
             ))}
@@ -153,37 +151,38 @@ const Analysis = () => {
         
         {/* Legend for bar chart */}
         <div className="bar-chart-legend">
-          {carrierData.map((carrier, index) => {
-            const percentage = ((carrier.performance / total) * 100).toFixed(1);
-            return (
-              <div key={index} className="bar-legend-item">
-                <div className="bar-label-line" style={{ borderColor: carrier.color }}>
-                  <div 
-                    className="bar-label-dot" 
-                    style={{ backgroundColor: carrier.color }}
-                  ></div>
-                  <div className="bar-label-content">
-                    <span className="bar-label-name">{carrier.name.toLowerCase()}</span>
-                    <span className="bar-label-value">{percentage}%</span>
-                  </div>
+          {carrierPerformanceData.map((carrier, index) => (
+            <div key={index} className="bar-legend-item">
+              <div className="bar-label-line" style={{ borderColor: carrier.color }}>
+                <div 
+                  className="bar-label-dot" 
+                  style={{ backgroundColor: carrier.color }}
+                ></div>
+                <div className="bar-label-content">
+                  <span className="bar-label-name">{carrier.name.toLowerCase()}</span>
+                  <span className="bar-label-value">{carrier.percentage.toFixed(1)}%</span>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </div>
     );
   };
 
   const CarrierChart = () => {
+    if (!carrierPerformanceData || carrierPerformanceData.length === 0) {
+      return <div className="no-data">No carrier data available</div>;
+    }
+
     const radius = 170;
-    const strokeWidth = 55; // Increased from 40 to 60 for thicker donut
+    const strokeWidth = 55;
     const normalizedRadius = radius - strokeWidth / 2;
     const circumference = normalizedRadius * 2 * Math.PI;
     const svgSize = (radius + 50) * 2;
     
     // Calculate total for percentages
-    const total = carrierData.reduce((sum, carrier) => sum + carrier.performance, 0);
+    const total = carrierPerformanceData.reduce((sum, carrier) => sum + carrier.percentage, 0);
     
     let cumulativePercentage = 0;
     
@@ -207,8 +206,8 @@ const Analysis = () => {
             />
             
             {/* Data segments */}
-            {carrierData.map((carrier, index) => {
-              const percentage = (carrier.performance / total) * 100;
+            {carrierPerformanceData.map((carrier, index) => {
+              const percentage = (carrier.percentage / total) * 100;
               const strokeDasharray = `${percentage / 100 * circumference} ${circumference}`;
               const strokeDashoffset = -cumulativePercentage / 100 * circumference;
               
@@ -230,6 +229,7 @@ const Analysis = () => {
                     transformOrigin: `${svgSize / 2}px ${svgSize / 2}px`,
                   }}
                   className="donut-segment"
+                  title={`${carrier.name}: ${carrier.percentage.toFixed(1)}% (${carrier.shipmentCount} shipments)`}
                 />
               );
             })}
@@ -237,23 +237,20 @@ const Analysis = () => {
           
           {/* Labels */}
           <div className="donut-labels">
-            {carrierData.map((carrier, index) => {
-              const percentage = ((carrier.performance / total) * 100).toFixed(1);
-              return (
-                <div key={index} className="donut-label-item">
-                  <div className="label-line" style={{ borderColor: carrier.color }}>
-                    <div 
-                      className="label-dot" 
-                      style={{ backgroundColor: carrier.color }}
-                    ></div>
-                    <div className="label-content">
-                      <span className="label-name">{carrier.name.toLowerCase()}</span>
-                      <span className="label-value">{carrier.performance}</span>
-                    </div>
+            {carrierPerformanceData.map((carrier, index) => (
+              <div key={index} className="donut-label-item">
+                <div className="label-line" style={{ borderColor: carrier.color }}>
+                  <div 
+                    className="label-dot" 
+                    style={{ backgroundColor: carrier.color }}
+                  ></div>
+                  <div className="label-content">
+                    <span className="label-name">{carrier.name.toLowerCase()}</span>
+                    <span className="label-value">{carrier.percentage.toFixed(1)}%</span>
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </div>
       </div>
