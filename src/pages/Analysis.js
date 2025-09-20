@@ -27,6 +27,7 @@ const Analysis = () => {
   const [startDate, setStartDate] = useState('2023-01-01');
   const [endDate, setEndDate] = useState('2025-12-31');
   const [carrierPerformanceData, setCarrierPerformanceData] = useState([]);
+  const [carrierTemperatureData, setCarrierTemperatureData] = useState([]);
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -58,6 +59,22 @@ const Analysis = () => {
         }
         
         console.log('Updated analytics data:', newAnalyticsData);
+      }
+
+      // Fetch carrier temperature data separately
+      const tempParams = new URLSearchParams();
+      if (start) {
+        tempParams.append('start_date', `${start}T00:00:00Z`);
+      }
+      if (end) {
+        tempParams.append('end_date', `${end}T23:59:59Z`);
+      }
+
+      const tempRes = await fetch(`${API_BASE}/average_leg_temperature_by_carrier?${tempParams.toString()}`);
+      if (tempRes.ok) {
+        const tempData = await tempRes.json();
+        setCarrierTemperatureData(tempData);
+        console.log('Updated carrier temperature data:', tempData);
       }
     } catch (err) {
       console.log('Error fetching filtered analytics:', err);
@@ -365,6 +382,100 @@ const Analysis = () => {
     );
   };
 
+  const CarrierTemperatureChart = () => {
+    if (!carrierTemperatureData || carrierTemperatureData.length === 0) {
+      return <div className="no-data">No temperature data available</div>;
+    }
+    
+    const maxTemp = Math.max(...carrierTemperatureData.map(c => c.averageTemperature));
+    const minTemp = Math.min(...carrierTemperatureData.map(c => c.averageTemperature));
+    const tempRange = maxTemp - minTemp || 1;
+    
+    return (
+      <div className="carrier-temperature-chart">
+        <div className="modern-bar-container">
+          <div className="chart-title">Average Leg Temperature by Carrier</div>
+          
+          <div className="bar-chart-area">
+            <div className="bar-chart-grid">
+              <div className="y-axis-modern">
+                <div className="y-label-modern">{maxTemp.toFixed(1)}°C</div>
+                <div className="y-label-modern">{(minTemp + tempRange * 0.75).toFixed(1)}°C</div>
+                <div className="y-label-modern">{(minTemp + tempRange * 0.5).toFixed(1)}°C</div>
+                <div className="y-label-modern">{(minTemp + tempRange * 0.25).toFixed(1)}°C</div>
+                <div className="y-label-modern">{minTemp.toFixed(1)}°C</div>
+              </div>
+              
+              <div className="bars-area">
+                {/* Grid lines */}
+                <div className="grid-lines">
+                  <div className="grid-line" style={{top: '0%'}}></div>
+                  <div className="grid-line" style={{top: '25%'}}></div>
+                  <div className="grid-line" style={{top: '50%'}}></div>
+                  <div className="grid-line" style={{top: '75%'}}></div>
+                  <div className="grid-line" style={{top: '100%'}}></div>
+                </div>
+                
+                <div className="bars-container-modern">
+                  {carrierTemperatureData.map((carrier, index) => {
+                    const heightPercent = ((carrier.averageTemperature - minTemp) / tempRange) * 100;
+                    const trackerInfo = carrier.trackerIds ? ` (Trackers: ${carrier.trackerIds.join(', ')})` : '';
+                    return (
+                      <div key={index} className="bar-item-modern">
+                        <div 
+                          className="modern-bar" 
+                          style={{ 
+                            height: `${Math.max(heightPercent, 5)}%`, 
+                            backgroundColor: carrier.color 
+                          }}
+                          title={`${carrier.carrier}: ${carrier.averageTemperature}°C (${carrier.shipmentCount} shipments)${trackerInfo}`}
+                        >
+                          <span className="bar-value-modern">
+                            {carrier.averageTemperature}°C
+                          </span>
+                        </div>
+                        <div className="bar-label-modern">{carrier.carrier}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Enhanced Legend with shipment count and tracker info */}
+        <div className="donut-labels">
+          {carrierTemperatureData.map((carrier, index) => (
+            <div key={index} className="donut-label-item">
+              <div className="label-line" style={{ borderColor: carrier.color }}>
+                <div 
+                  className="label-dot" 
+                  style={{ backgroundColor: carrier.color }}
+                ></div>
+                <div className="label-content">
+                  <span className="label-name">{carrier.carrier.toLowerCase()}</span>
+                  <span className="label-value">
+                    {carrier.averageTemperature}°C ({carrier.shipmentCount} shipments)
+                  </span>
+                  {carrier.trackerIds && (
+                    <span className="label-detail" style={{ 
+                      fontSize: '0.65rem', 
+                      color: '#999', 
+                      marginTop: '2px' 
+                    }}>
+                      Trackers: {carrier.trackerIds.join(', ')}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="tive-container">
@@ -561,6 +672,14 @@ const Analysis = () => {
                 </div>
               </div>
               {chartType === 'donut' ? <CarrierChart /> : <BarChart />}
+            </div>
+
+            {/* New Average Leg Temperature by Carrier Chart */}
+            <div className="carrier-section">
+              <div className="carrier-header">
+                <h3>🌡️ Average Leg Temperature by Carrier</h3>
+              </div>
+              <CarrierTemperatureChart />
             </div>
           </div>
         </div>

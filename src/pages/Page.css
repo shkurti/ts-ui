@@ -824,6 +824,14 @@ input[type="checkbox"] {
   font-weight: 600;
 }
 
+.label-detail {
+  display: block;
+  font-size: 0.65rem !important;
+  color: #999 !important;
+  margin-top: 2px !important;
+  line-height: 1.2;
+}
+
 /* Modern Bar Chart Style - Matching Donut Chart (keeping existing legend unchanged) */
 .modern-bar-container {
   display: flex;
@@ -1732,22 +1740,38 @@ input[type="checkbox"] {
   line-height: 1.3;
 }
 
-/* Responsive for highlights only */
-@media (max-width: 768px) {
-  .highlights-section .highlight-items {
-    grid-template-columns: 1fr;
-    gap: 0.875rem;
-  }
-  
-  .highlights-section .highlight-number {
-    font-size: 1.75rem;
-  }
-  
-  .highlights-section .highlight-group {
-    padding: 1.25rem;
-  }
-  
-  .highlights-section {
-    padding: 1.5rem;
-  }
+/* Grid lines for temperature chart */
+.grid-lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.grid-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: #f1f5f9;
+  opacity: 0.7;
+}
+
+/* Enhanced temperature chart styling */
+.carrier-temperature-chart .bar-value-modern {
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.carrier-temperature-chart .modern-bar {
+  transition: all 0.3s ease;
+}
+
+.carrier-temperature-chart .modern-bar:hover {
+  filter: brightness(1.1);
+  transform: scaleY(1.02);
 }
