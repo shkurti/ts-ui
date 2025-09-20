@@ -27,6 +27,7 @@ const Analysis = () => {
   const [startDate, setStartDate] = useState('2023-01-01');
   const [endDate, setEndDate] = useState('2025-12-31');
   const [carrierPerformanceData, setCarrierPerformanceData] = useState([]);
+  const [temperatureData, setTemperatureData] = useState([]);
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -55,6 +56,11 @@ const Analysis = () => {
         // Update carrier performance data
         if (newAnalyticsData.carrierPerformance) {
           setCarrierPerformanceData(newAnalyticsData.carrierPerformance);
+        }
+        
+        // Update temperature data
+        if (newAnalyticsData.temperatureAnalysis && newAnalyticsData.temperatureAnalysis.temperatureByCarrier) {
+          setTemperatureData(newAnalyticsData.temperatureAnalysis.temperatureByCarrier);
         }
         
         console.log('Updated analytics data:', newAnalyticsData);
@@ -361,6 +367,83 @@ const Analysis = () => {
     );
   };
 
+  const TemperatureChart = () => {
+    if (!temperatureData || temperatureData.length === 0) {
+      return <div className="no-data">No temperature data available</div>;
+    }
+    
+    const maxTemp = Math.max(...temperatureData.map(d => d.avgTemperature));
+    const minTemp = Math.min(...temperatureData.map(d => d.avgTemperature));
+    const tempRange = maxTemp - minTemp;
+    
+    return (
+      <div className="temperature-chart">
+        <div className="modern-bar-container">
+          <div className="chart-title">Average Temperature by Carrier (°C)</div>
+          
+          <div className="bar-chart-area">
+            <div className="bar-chart-grid">
+              <div className="y-axis-modern">
+                <div className="y-label-modern">{Math.round(maxTemp)}°</div>
+                <div className="y-label-modern">{Math.round(maxTemp - tempRange * 0.25)}°</div>
+                <div className="y-label-modern">{Math.round(maxTemp - tempRange * 0.5)}°</div>
+                <div className="y-label-modern">{Math.round(maxTemp - tempRange * 0.75)}°</div>
+                <div className="y-label-modern">{Math.round(minTemp)}°</div>
+              </div>
+              
+              <div className="bars-area">
+                <div className="bars-container-modern">
+                  {temperatureData.map((carrier, index) => {
+                    const heightPercentage = tempRange > 0 ? ((carrier.avgTemperature - minTemp) / tempRange) * 100 : 50;
+                    return (
+                      <div key={index} className="bar-item-modern">
+                        <div 
+                          className="modern-bar" 
+                          style={{ 
+                            height: `${heightPercentage}%`, 
+                            backgroundColor: carrier.color,
+                            background: `linear-gradient(180deg, ${carrier.color} 0%, ${carrier.color}dd 100%)`
+                          }}
+                          title={`${carrier.carrier}: ${carrier.avgTemperature}°C (${carrier.totalLegsWithTemp} legs, ${carrier.totalTempReadings} readings)`}
+                        >
+                          <span className="bar-value-modern">
+                            {carrier.avgTemperature}°
+                          </span>
+                        </div>
+                        <div className="bar-label-modern">{carrier.carrier}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Temperature data details */}
+        <div className="temperature-details">
+          {temperatureData.map((carrier, index) => (
+            <div key={index} className="temp-detail-item">
+              <div className="label-line">
+                <div 
+                  className="label-dot" 
+                  style={{ backgroundColor: carrier.color }}
+                ></div>
+                <div className="label-content">
+                  <span className="label-name">{carrier.carrier}</span>
+                  <span className="label-value">{carrier.avgTemperature}°C</span>
+                  <span className="label-extra">
+                    {carrier.totalLegsWithTemp} legs • {carrier.totalTempReadings} readings
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="tive-container">
@@ -533,6 +616,12 @@ const Analysis = () => {
                   <div className="delay-label">Avg. Arrival Delay</div>
                 </div>
               </div>
+            </div>
+
+            {/* Temperature Analysis */}
+            <div className="temperature-section">
+              <h3>🌡️ Temperature Analysis</h3>
+              <TemperatureChart />
             </div>
           </div>
 
