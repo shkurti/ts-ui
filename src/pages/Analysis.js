@@ -242,9 +242,9 @@ const Analysis = () => {
                 const strokeDasharray = `${(percentage / 100) * circumference} ${circumference}`;
                 const strokeDashoffset = -((cumulativePercentage / 100) * circumference);
                 
-                // Calculate position for label
+                // Calculate position for label - position directly on the segment
                 const angle = (cumulativePercentage + percentage / 2) * 3.6 - 90; // Convert to degrees
-                const labelRadius = normalizedRadius;
+                const labelRadius = normalizedRadius; // Position on the center of the segment stroke
                 const labelX = svgSize / 2 + labelRadius * Math.cos(angle * Math.PI / 180);
                 const labelY = svgSize / 2 + labelRadius * Math.sin(angle * Math.PI / 180);
                 
@@ -276,8 +276,8 @@ const Analysis = () => {
                       }}
                     />
                     
-                    {/* Value labels on segments */}
-                    {percentage > 8 && (
+                    {/* Value labels on the segments */}
+                    {carrier.shipmentCount > 0 && (
                       <text
                         x={labelX}
                         y={labelY}
@@ -285,8 +285,12 @@ const Analysis = () => {
                         dominantBaseline="middle"
                         className="segment-label"
                         fill="white"
-                        fontSize="11"
-                        fontWeight="600"
+                        fontSize={percentage < 8 ? "10" : "12"}
+                        fontWeight="700"
+                        style={{
+                          textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
+                          pointerEvents: 'none'
+                        }}
                       >
                         {carrier.shipmentCount}
                       </text>
