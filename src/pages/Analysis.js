@@ -28,6 +28,19 @@ const Analysis = () => {
   const [endDate, setEndDate] = useState('2025-12-31');
   const [carrierPerformanceData, setCarrierPerformanceData] = useState([]);
   const [carrierTemperatureData, setCarrierTemperatureData] = useState([]);
+  const [shipmentDurationData, setShipmentDurationData] = useState({
+    trendData: [],
+    performanceStats: {
+      on_time: 0,
+      late: 0,
+      unknown: 0,
+      total: 0,
+      on_time_percentage: 0,
+      late_percentage: 0,
+      unknown_percentage: 0
+    },
+    totalLegs: 0
+  });
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -75,6 +88,22 @@ const Analysis = () => {
         const tempData = await tempRes.json();
         setCarrierTemperatureData(tempData);
         console.log('Updated carrier temperature data:', tempData);
+      }
+
+      // Fetch shipment duration data separately
+      const durationParams = new URLSearchParams();
+      if (start) {
+        durationParams.append('start_date', `${start}T00:00:00Z`);
+      }
+      if (end) {
+        durationParams.append('end_date', `${end}T23:59:59Z`);
+      }
+
+      const durationRes = await fetch(`${API_BASE}/shipment_leg_duration?${durationParams.toString()}`);
+      if (durationRes.ok) {
+        const durationData = await durationRes.json();
+        setShipmentDurationData(durationData);
+        console.log('Updated shipment duration data:', durationData);
       }
     } catch (err) {
       console.log('Error fetching filtered analytics:', err);
@@ -476,6 +505,211 @@ const Analysis = () => {
     );
   };
 
+  const ShipmentDurationChart = () => {
+    const { trendData, performanceStats } = shipmentDurationData;
+    
+    if (!trendData || trendData.length === 0) {
+      return <div className="no-data">No duration data available</div>;
+    }
+
+    // Calculate chart dimensions and scales
+    const chartWidth = 500;
+    const chartHeight = 200;
+    const margin = { top: 20, right: 50, bottom: 40, left: 50 };
+    const innerWidth = chartWidth - margin.left - margin.right;
+    const innerHeight = chartHeight - margin.top - margin.bottom;
+
+    // Find min/max values for scaling
+    const allDurations = [...trendData.map(d => d.averagePlannedDuration), ...trendData.map(d => d.averageActualDuration)];
+    const minDuration = Math.min(...allDurations);
+    const maxDuration = Math.max(...allDurations);
+    const durationRange = maxDuration - minDuration || 1;
+
+    // Create points for the lines
+    const plannedPoints = trendData.map((d, i) => {
+      const x = (i / (trendData.length - 1)) * innerWidth;
+      const y = innerHeight - ((d.averagePlannedDuration - minDuration) / durationRange) * innerHeight;
+      return `${x},${y}`;
+    }).join(' ');
+
+    const actualPoints = trendData.map((d, i) => {
+      const x = (i / (trendData.length - 1)) * innerWidth;
+      const y = innerHeight - ((d.averageActualDuration - minDuration) / durationRange) * innerHeight;
+      return `${x},${y}`;
+    }).join(' ');
+
+    // Format month labels
+    const formatMonth = (monthYear) => {
+      const [year, month] = monthYear.split('-');
+      const date = new Date(year, month - 1);
+      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    };
+
+    return (
+      <div className="shipment-duration-chart">
+        <div className="duration-chart-container">
+          <div className="chart-title">Shipment Leg Duration Over Time</div>
+          
+          <div className="duration-chart-main">
+            {/* Chart Area */}
+            <div className="chart-area">
+              <svg width={chartWidth} height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
+                {/* Background */}
+                <rect width={chartWidth} height={chartHeight} fill="#fafbfc" />
+                
+                {/* Chart content area */}
+                <g transform={`translate(${margin.left}, ${margin.top})`}>
+                  {/* Grid lines */}
+                  {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => (
+                    <line
+                      key={i}
+                      x1={0}
+                      y1={ratio * innerHeight}
+                      x2={innerWidth}
+                      y2={ratio * innerHeight}
+                      stroke="#e5e7eb"
+                      strokeWidth={1}
+                      opacity={0.5}
+                    />
+                  ))}
+                  
+                  {/* Planned duration line */}
+                  <polyline
+                    fill="none"
+                    stroke="#4ecdc4"
+                    strokeWidth="3"
+                    points={plannedPoints}
+                  />
+                  
+                  {/* Actual duration line */}
+                  <polyline
+                    fill="none"
+                    stroke="#667eea"
+                    strokeWidth="3"
+                    points={actualPoints}
+                  />
+                  
+                  {/* Data points */}
+                  {trendData.map((d, i) => {
+                    const x = (i / (trendData.length - 1)) * innerWidth;
+                    const plannedY = innerHeight - ((d.averagePlannedDuration - minDuration) / durationRange) * innerHeight;
+                    const actualY = innerHeight - ((d.averageActualDuration - minDuration) / durationRange) * innerHeight;
+                    
+                    return (
+                      <g key={i}>
+                        {/* Planned duration point */}
+                        <circle
+                          cx={x}
+                          cy={plannedY}
+                          r="4"
+                          fill="#4ecdc4"
+                          stroke="white"
+                          strokeWidth="2"
+                        />
+                        
+                        {/* Actual duration point */}
+                        <circle
+                          cx={x}
+                          cy={actualY}
+                          r="4"
+                          fill="#667eea"
+                          stroke="white"
+                          strokeWidth="2"
+                        />
+                      </g>
+                    );
+                  })}
+                  
+                  {/* Y-axis labels */}
+                  {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
+                    const value = minDuration + (ratio * durationRange);
+                    return (
+                      <text
+                        key={i}
+                        x={-10}
+                        y={innerHeight - (ratio * innerHeight) + 4}
+                        textAnchor="end"
+                        fontSize="11"
+                        fill="#6b7280"
+                      >
+                        {value.toFixed(1)}
+                      </text>
+                    );
+                  })}
+                  
+                  {/* X-axis labels */}
+                  {trendData.map((d, i) => {
+                    if (i % Math.ceil(trendData.length / 4) === 0 || i === trendData.length - 1) {
+                      const x = (i / (trendData.length - 1)) * innerWidth;
+                      return (
+                        <text
+                          key={i}
+                          x={x}
+                          y={innerHeight + 25}
+                          textAnchor="middle"
+                          fontSize="10"
+                          fill="#6b7280"
+                        >
+                          {formatMonth(d.month)}
+                        </text>
+                      );
+                    }
+                    return null;
+                  })}
+                </g>
+                
+                {/* Y-axis title */}
+                <text
+                  x={15}
+                  y={chartHeight / 2}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fill="#6b7280"
+                  transform={`rotate(-90, 15, ${chartHeight / 2})`}
+                >
+                  DURATION TIME (DAY)
+                </text>
+              </svg>
+              
+              {/* Legend */}
+              <div className="chart-legend">
+                <div className="legend-item">
+                  <div className="legend-color" style={{ backgroundColor: '#4ecdc4' }}></div>
+                  <span>Average Shipment Leg Duration</span>
+                </div>
+                <div className="legend-item">
+                  <div className="legend-color" style={{ backgroundColor: '#667eea' }}></div>
+                  <span>Average Over Time</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Performance Stats */}
+            <div className="performance-stats">
+              <div className="stat-circle on-time">
+                <div className="stat-percentage">{performanceStats.on_time_percentage}%</div>
+                <div className="stat-label">{performanceStats.on_time} ON TIME</div>
+                <div className="stat-total">out of {performanceStats.total}</div>
+              </div>
+              
+              <div className="stat-circle late">
+                <div className="stat-percentage">{performanceStats.late_percentage}%</div>
+                <div className="stat-label">{performanceStats.late} LATE</div>
+                <div className="stat-total">out of {performanceStats.total}</div>
+              </div>
+              
+              <div className="stat-circle unknown">
+                <div className="stat-percentage">{performanceStats.unknown_percentage}%</div>
+                <div className="stat-label">{performanceStats.unknown} UNKNOWN</div>
+                <div className="stat-total">out of {performanceStats.total}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="tive-container">
@@ -648,6 +882,12 @@ const Analysis = () => {
                   <div className="delay-label">Avg. Arrival Delay</div>
                 </div>
               </div>
+            </div>
+
+            {/* New Shipment Leg Duration Chart */}
+            <div className="highlights-section">
+              <h3>⏱️ Shipment Leg Duration Over Time</h3>
+              <ShipmentDurationChart />
             </div>
           </div>
 
