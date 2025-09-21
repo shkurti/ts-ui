@@ -90,7 +90,8 @@ const Analysis = () => {
         console.log('Updated carrier temperature data:', tempData);
       }
 
-      // Fetch shipment duration data separately
+      // Fetch shipment duration data separately with enhanced debugging
+      console.log('=== DURATION DATA FETCH START ===');
       const durationParams = new URLSearchParams();
       if (start) {
         durationParams.append('start_date', `${start}T00:00:00Z`);
@@ -99,14 +100,45 @@ const Analysis = () => {
         durationParams.append('end_date', `${end}T23:59:59Z`);
       }
 
-      const durationRes = await fetch(`${API_BASE}/shipment_leg_duration?${durationParams.toString()}`);
+      const durationUrl = `${API_BASE}/shipment_leg_duration?${durationParams.toString()}`;
+      console.log('Duration API URL:', durationUrl);
+      console.log('Duration request params:', durationParams.toString());
+      
+      const durationRes = await fetch(durationUrl);
+      console.log('Duration response status:', durationRes.status);
+      console.log('Duration response headers:', Object.fromEntries(durationRes.headers.entries()));
+      
       if (durationRes.ok) {
-        const durationData = await durationRes.json();
-        setShipmentDurationData(durationData);
-        console.log('Updated shipment duration data:', durationData);
+        const durationText = await durationRes.text();
+        console.log('Raw duration response text:', durationText);
+        
+        try {
+          const durationData = JSON.parse(durationText);
+          console.log('Parsed duration data:', durationData);
+          console.log('Duration data type:', typeof durationData);
+          console.log('Duration data keys:', Object.keys(durationData));
+          console.log('TrendData length:', durationData.trendData?.length);
+          console.log('TrendData content:', durationData.trendData);
+          console.log('Performance stats:', durationData.performanceStats);
+          console.log('Total legs:', durationData.totalLegs);
+          
+          setShipmentDurationData(durationData);
+          console.log('Duration data set in state successfully');
+          
+          // Force a re-render by also updating a dummy state
+          console.log('=== DURATION DATA FETCH SUCCESS ===');
+        } catch (parseError) {
+          console.error('Error parsing duration JSON:', parseError);
+          console.error('Raw response that failed to parse:', durationText);
+        }
+      } else {
+        console.error('Duration request failed with status:', durationRes.status, durationRes.statusText);
+        const errorText = await durationRes.text();
+        console.error('Duration error response body:', errorText);
       }
     } catch (err) {
-      console.log('Error fetching filtered analytics:', err);
+      console.error('Error in fetchFilteredAnalytics:', err);
+      console.error('Full error object:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
     }
   };
 
@@ -509,16 +541,23 @@ const Analysis = () => {
     const { trendData, performanceStats } = shipmentDurationData;
     
     console.log('ShipmentDurationChart render - trendData:', trendData, 'performanceStats:', performanceStats);
+    console.log('Full shipmentDurationData:', shipmentDurationData);
     
-    if (!trendData || trendData.length === 0) {
+    if (!trendData || !Array.isArray(trendData) || trendData.length === 0) {
       return (
         <div className="no-data">
           <div>No duration data available</div>
           <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
-            Total legs processed: {shipmentDurationData.totalLegs || 0}
+            Total legs processed: {shipmentDurationData?.totalLegs || 0}
           </div>
           <div style={{ fontSize: '0.8rem', color: '#999' }}>
             Performance stats: On-time: {performanceStats?.on_time || 0}, Late: {performanceStats?.late || 0}, Unknown: {performanceStats?.unknown || 0}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            Debug - trendData type: {typeof trendData}, isArray: {Array.isArray(trendData) ? 'true' : 'false'}, length: {trendData?.length || 'undefined'}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            Debug - Raw state: {JSON.stringify(shipmentDurationData).substring(0, 300)}...
           </div>
         </div>
       );
@@ -527,26 +566,39 @@ const Analysis = () => {
     // Calculate chart dimensions and scales
     const chartWidth = 500;
     const chartHeight = 200;
-    const margin = { top: 20, right: 50, bottom: 40, left: 50 };
+    const margin = { top: 20, right: 50, bottom: 40, left: 60 }; // Increased left margin for longer labels
     const innerWidth = chartWidth - margin.left - margin.right;
     const innerHeight = chartHeight - margin.top - margin.bottom;
 
-    // Find min/max values for scaling
+    // Find min/max values for scaling and determine if we should show hours or days
     const allDurations = [...trendData.map(d => d.averagePlannedDuration), ...trendData.map(d => d.averageActualDuration)];
-    const minDuration = Math.min(...allDurations);
-    const maxDuration = Math.max(...allDurations);
+    const maxDurationDays = Math.max(...allDurations);
+    const minDurationDays = Math.min(...allDurations);
+    
+    // If max duration is less than 1 day, show in hours
+    const showInHours = maxDurationDays < 1;
+    const conversionFactor = showInHours ? 24 : 1; // Convert days to hours if needed
+    const unit = showInHours ? 'HOURS' : 'DAYS';
+    const unitSymbol = showInHours ? 'h' : 'd';
+    
+    // Convert durations for display
+    const allDurationsConverted = allDurations.map(d => d * conversionFactor);
+    const minDuration = Math.min(...allDurationsConverted);
+    const maxDuration = Math.max(...allDurationsConverted);
     const durationRange = maxDuration - minDuration || 1;
 
     // Create points for the lines
     const plannedPoints = trendData.map((d, i) => {
       const x = (i / (trendData.length - 1)) * innerWidth;
-      const y = innerHeight - ((d.averagePlannedDuration - minDuration) / durationRange) * innerHeight;
+      const convertedDuration = d.averagePlannedDuration * conversionFactor;
+      const y = innerHeight - ((convertedDuration - minDuration) / durationRange) * innerHeight;
       return `${x},${y}`;
     }).join(' ');
 
     const actualPoints = trendData.map((d, i) => {
       const x = (i / (trendData.length - 1)) * innerWidth;
-      const y = innerHeight - ((d.averageActualDuration - minDuration) / durationRange) * innerHeight;
+      const convertedDuration = d.averageActualDuration * conversionFactor;
+      const y = innerHeight - ((convertedDuration - minDuration) / durationRange) * innerHeight;
       return `${x},${y}`;
     }).join(' ');
 
@@ -555,6 +607,12 @@ const Analysis = () => {
       const [year, month] = monthYear.split('-');
       const date = new Date(year, month - 1);
       return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    };
+
+    // Format duration for display
+    const formatDuration = (durationInOriginalUnit) => {
+      const converted = durationInOriginalUnit * conversionFactor;
+      return showInHours ? converted.toFixed(1) : converted.toFixed(2);
     };
 
     return (
@@ -604,8 +662,10 @@ const Analysis = () => {
                   {/* Data points */}
                   {trendData.map((d, i) => {
                     const x = (i / (trendData.length - 1)) * innerWidth;
-                    const plannedY = innerHeight - ((d.averagePlannedDuration - minDuration) / durationRange) * innerHeight;
-                    const actualY = innerHeight - ((d.averageActualDuration - minDuration) / durationRange) * innerHeight;
+                    const plannedConverted = d.averagePlannedDuration * conversionFactor;
+                    const actualConverted = d.averageActualDuration * conversionFactor;
+                    const plannedY = innerHeight - ((plannedConverted - minDuration) / durationRange) * innerHeight;
+                    const actualY = innerHeight - ((actualConverted - minDuration) / durationRange) * innerHeight;
                     
                     return (
                       <g key={i}>
@@ -644,7 +704,7 @@ const Analysis = () => {
                         fontSize="11"
                         fill="#6b7280"
                       >
-                        {value.toFixed(1)}
+                        {value.toFixed(1)}{unitSymbol}
                       </text>
                     );
                   })}
@@ -679,7 +739,7 @@ const Analysis = () => {
                   fill="#6b7280"
                   transform={`rotate(-90, 15, ${chartHeight / 2})`}
                 >
-                  DURATION TIME (DAY)
+                  DURATION TIME ({unit})
                 </text>
               </svg>
               
@@ -696,35 +756,39 @@ const Analysis = () => {
               </div>
             </div>
             
-            {/* Performance Stats */}
-            <div className="performance-stats">
-              <div className="stat-circle on-time">
-                <div className="stat-percentage">{performanceStats.on_time_percentage}%</div>
-                <div className="stat-label">{performanceStats.on_time} ON TIME</div>
-                <div className="stat-total">out of {performanceStats.total}</div>
-              </div>
-              
-              <div className="stat-circle late">
-                <div className="stat-percentage">{performanceStats.late_percentage}%</div>
-                <div className="stat-label">{performanceStats.late} LATE</div>
-                <div className="stat-total">out of {performanceStats.total}</div>
-              </div>
-              
-              <div className="stat-circle unknown">
-                <div className="stat-percentage">{performanceStats.unknown_percentage}%</div>
-                <div className="stat-label">{performanceStats.unknown} UNKNOWN</div>
-                <div className="stat-total">out of {performanceStats.total}</div>
-              </div>
-            </div>
-            
             {/* Debug Info */}
             <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '1rem', textAlign: 'center' }}>
               Debug: {shipmentDurationData.totalLegs} legs processed, {trendData.length} monthly data points
+              {showInHours && <span> (Showing in hours for short durations)</span>}
             </div>
           </div>
         </div>
       </div>
     );
+  };
+
+  // Add test function for debugging
+  const testDurationAPI = async () => {
+    console.log('=== MANUAL DURATION API TEST ===');
+    try {
+      const testUrl = `${API_BASE}/shipment_leg_duration`;
+      console.log('Test URL:', testUrl);
+      
+      const response = await fetch(testUrl);
+      console.log('Test response status:', response.status);
+      
+      const text = await response.text();
+      console.log('Test response text:', text);
+      
+      const data = JSON.parse(text);
+      console.log('Test parsed data:', data);
+      
+      // Manually set the data to see if it renders
+      setShipmentDurationData(data);
+      console.log('Test data set in state');
+    } catch (error) {
+      console.error('Test API call failed:', error);
+    }
   };
 
   if (loading) {
@@ -803,6 +867,22 @@ const Analysis = () => {
         </div>
         
         <button className="all-filters-btn">All Filters</button>
+      </div>
+
+      {/* Add test button for debugging - remove this after fixing */}
+      <div style={{ 
+        position: 'fixed', 
+        bottom: '20px', 
+        right: '20px', 
+        zIndex: 9999,
+        background: '#007bff',
+        color: 'white',
+        padding: '10px 15px',
+        borderRadius: '5px',
+        cursor: 'pointer',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+      }} onClick={testDurationAPI}>
+        Test Duration API
       </div>
 
       <div className="tive-content">
