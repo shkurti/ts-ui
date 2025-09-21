@@ -508,8 +508,20 @@ const Analysis = () => {
   const ShipmentDurationChart = () => {
     const { trendData, performanceStats } = shipmentDurationData;
     
+    console.log('ShipmentDurationChart render - trendData:', trendData, 'performanceStats:', performanceStats);
+    
     if (!trendData || trendData.length === 0) {
-      return <div className="no-data">No duration data available</div>;
+      return (
+        <div className="no-data">
+          <div>No duration data available</div>
+          <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
+            Total legs processed: {shipmentDurationData.totalLegs || 0}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            Performance stats: On-time: {performanceStats?.on_time || 0}, Late: {performanceStats?.late || 0}, Unknown: {performanceStats?.unknown || 0}
+          </div>
+        </div>
+      );
     }
 
     // Calculate chart dimensions and scales
@@ -675,11 +687,11 @@ const Analysis = () => {
               <div className="chart-legend">
                 <div className="legend-item">
                   <div className="legend-color" style={{ backgroundColor: '#4ecdc4' }}></div>
-                  <span>Average Shipment Leg Duration</span>
+                  <span>Average Planned Duration</span>
                 </div>
                 <div className="legend-item">
                   <div className="legend-color" style={{ backgroundColor: '#667eea' }}></div>
-                  <span>Average Over Time</span>
+                  <span>Average Actual Duration</span>
                 </div>
               </div>
             </div>
@@ -703,6 +715,11 @@ const Analysis = () => {
                 <div className="stat-label">{performanceStats.unknown} UNKNOWN</div>
                 <div className="stat-total">out of {performanceStats.total}</div>
               </div>
+            </div>
+            
+            {/* Debug Info */}
+            <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '1rem', textAlign: 'center' }}>
+              Debug: {shipmentDurationData.totalLegs} legs processed, {trendData.length} monthly data points
             </div>
           </div>
         </div>
