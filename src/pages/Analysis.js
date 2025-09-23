@@ -84,10 +84,16 @@ const Analysis = () => {
         temperatureParams.append('end_date', `${end}T23:59:59Z`);
       }
 
+      console.log('Fetching temperature data with params:', temperatureParams.toString());
       const temperatureRes = await fetch(`${API_BASE}/average_leg_temperature_by_carrier?${temperatureParams.toString()}`);
       if (temperatureRes.ok) {
         const tempData = await temperatureRes.json();
+        console.log('Temperature data received:', tempData);
         setTemperatureData(tempData);
+      } else {
+        console.error('Temperature request failed:', temperatureRes.status, temperatureRes.statusText);
+        const errorText = await temperatureRes.text();
+        console.error('Temperature error response:', errorText);
       }
 
       // Fetch shipment duration data separately
@@ -99,10 +105,18 @@ const Analysis = () => {
         durationParams.append('end_date', `${end}T23:59:59Z`);
       }
 
+      console.log('Fetching duration data with params:', durationParams.toString());
       const durationRes = await fetch(`${API_BASE}/shipment_leg_duration?${durationParams.toString()}`);
+      console.log('Duration response status:', durationRes.status);
+      
       if (durationRes.ok) {
         const durationData = await durationRes.json();
+        console.log('Duration data received:', durationData);
         setShipmentDurationData(durationData);
+      } else {
+        console.error('Duration request failed:', durationRes.status, durationRes.statusText);
+        const errorText = await durationRes.text();
+        console.error('Duration error response:', errorText);
       }
     } catch (err) {
       console.error('Error fetching filtered analytics:', err);
@@ -479,12 +493,17 @@ const Analysis = () => {
 
   // Temperature Chart Component
   const TemperatureChart = () => {
+    console.log('TemperatureChart render - temperatureData:', temperatureData);
+    
     if (!temperatureData || temperatureData.length === 0) {
       return (
         <div className="no-data">
           <div>No temperature data available</div>
           <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
             Try adjusting the date range or carrier filter
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            Debug - temperatureData: {JSON.stringify(temperatureData).substring(0, 200)}...
           </div>
         </div>
       );
@@ -523,6 +542,8 @@ const Analysis = () => {
           <span>Total Carriers: {temperatureData.length}</span>
           <span>•</span>
           <span>Total Shipments: {temperatureData.reduce((sum, item) => sum + item.shipmentCount, 0)}</span>
+          <span>•</span>
+          <span>Avg Temperature: {temperatureData.length > 0 ? (temperatureData.reduce((sum, item) => sum + item.averageTemperature, 0) / temperatureData.length).toFixed(1) : 0}°C</span>
         </div>
       </div>
     );
