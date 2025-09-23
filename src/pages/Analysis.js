@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './Page.css';
 
@@ -14,10 +14,8 @@ const Analysis = () => {
     avgArrivalDelay: { days: 6, hours: 9 }
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [dateRange, setDateRange] = useState('May 9, 2023 - Nov 9, 2023');
   const [viewMode, setViewMode] = useState('Monthly');
-  const [filters, setFilters] = useState({
+  const [filters] = useState({
     unspecified: 39,
     road: true,
     ocean: true
@@ -28,6 +26,8 @@ const Analysis = () => {
   const [startDate, setStartDate] = useState('2023-01-01');
   const [endDate, setEndDate] = useState('2025-12-31');
   const [carrierPerformanceData, setCarrierPerformanceData] = useState([]);
+  
+  // Add state for shipment duration data
   const [shipmentDurationData, setShipmentDurationData] = useState({
     trendData: [],
     performanceStats: {
@@ -45,7 +45,7 @@ const Analysis = () => {
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
   // Function to fetch analytics data with filters
-  const fetchFilteredAnalytics = async (carrier = selectedCarrier, start = startDate, end = endDate) => {
+  const fetchFilteredAnalytics = useCallback(async (carrier = selectedCarrier, start = startDate, end = endDate) => {
     try {
       const params = new URLSearchParams();
       if (carrier && carrier !== 'All') {
@@ -99,7 +99,7 @@ const Analysis = () => {
     } catch (err) {
       console.error('Error fetching filtered analytics:', err);
     }
-  };
+  }, [API_BASE, selectedCarrier, startDate, endDate]);
 
   useEffect(() => {
     const fetchAnalyticsData = async () => {
@@ -133,7 +133,7 @@ const Analysis = () => {
     };
 
     fetchAnalyticsData();
-  }, [API_BASE]);
+  }, [API_BASE, fetchFilteredAnalytics]);
 
   // Handle carrier change
   const handleCarrierChange = (newCarrier) => {
@@ -145,14 +145,12 @@ const Analysis = () => {
   // Handle date range changes
   const handleStartDateChange = (newStartDate) => {
     setStartDate(newStartDate);
-    setDateRange(`${newStartDate} - ${endDate}`);
     console.log('Start date changed to:', newStartDate);
     fetchFilteredAnalytics(selectedCarrier, newStartDate, endDate);
   };
 
   const handleEndDateChange = (newEndDate) => {
     setEndDate(newEndDate);
-    setDateRange(`${startDate} - ${newEndDate}`);
     console.log('End date changed to:', newEndDate);
     fetchFilteredAnalytics(selectedCarrier, startDate, newEndDate);
   };
@@ -163,6 +161,7 @@ const Analysis = () => {
     }
     
     // Use the actual percentage values for proper scaling
+    // eslint-disable-next-line no-unused-vars
     const maxValue = 100; // Always scale to 100% for proper grid alignment
     
     return (
