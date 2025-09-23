@@ -405,6 +405,9 @@ const Analysis = () => {
   // Custom tooltip for duration chart
   const DurationTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      const hasActualData = data.hasActualData;
+      
       return (
         <div className="custom-tooltip">
           <p className="tooltip-label">{`Month: ${label}`}</p>
@@ -415,15 +418,22 @@ const Analysis = () => {
                   ? `${(entry.value * 24).toFixed(1)} hours`
                   : `${entry.value.toFixed(1)} days`
               }`}
+              {entry.dataKey === 'averageActualDuration' && !hasActualData && (
+                <span style={{ color: '#999', fontSize: '0.8em' }}> (based on planned)</span>
+              )}
             </p>
           ))}
           <p className="tooltip-performance">
-            <span style={{ color: '#28a745' }}>On-time: {payload[0].payload.onTimePercentage}%</span><br/>
-            <span style={{ color: '#dc3545' }}>Late: {payload[0].payload.latePercentage}%</span><br/>
-            <span style={{ color: '#6c757d' }}>Unknown: {payload[0].payload.unknownPercentage}%</span>
+            <span style={{ color: '#28a745' }}>On-time: {data.onTimePercentage}%</span><br/>
+            <span style={{ color: '#dc3545' }}>Late: {data.latePercentage}%</span><br/>
+            <span style={{ color: '#6c757d' }}>Unknown: {data.unknownPercentage}%</span>
           </p>
           <p className="tooltip-count">
-            <span style={{ color: '#666' }}>Total Legs: {payload[0].payload.totalLegs}</span>
+            <span style={{ color: '#666' }}>
+              Total Legs: {data.totalLegs}<br/>
+              GPS Data: {data.actualDataCount || 0} legs<br/>
+              Planned Data: {data.plannedDataCount || 0} legs
+            </span>
           </p>
         </div>
       );
@@ -461,6 +471,14 @@ const Analysis = () => {
           <div style={{ fontSize: '0.8rem', color: '#999' }}>
             Performance stats: On-time: {performanceStats?.on_time || 0}, Late: {performanceStats?.late || 0}, Unknown: {performanceStats?.unknown || 0}
           </div>
+          {shipmentDurationData.debug && (
+            <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '1rem', textAlign: 'left' }}>
+              <strong>Debug Info:</strong><br/>
+              Total shipments in DB: {shipmentDurationData.debug.totalShipmentsInDatabase}<br/>
+              Search dates: {shipmentDurationData.debug.searchCriteria.start_date} to {shipmentDurationData.debug.searchCriteria.end_date}<br/>
+              Sample shipments: {JSON.stringify(shipmentDurationData.debug.sampleShipments).substring(0, 200)}...
+            </div>
+          )}
         </div>
       );
     }
@@ -505,6 +523,7 @@ const Analysis = () => {
               dataKey="averagePlannedDuration" 
               stroke="#4ecdc4" 
               strokeWidth={3}
+              strokeDasharray="5,5"
               dot={{ fill: '#4ecdc4', strokeWidth: 2, r: 4 }}
               name="Average Planned Duration"
             />
@@ -542,6 +561,8 @@ const Analysis = () => {
           <span>Total legs processed: {shipmentDurationData.totalLegs}</span>
           <span>•</span>
           <span>{trendData.length} monthly data points</span>
+          <span>•</span>
+          <span>GPS-based calculations: {trendData.reduce((sum, item) => sum + (item.actualDataCount || 0), 0)} legs</span>
         </div>
       </div>
     );
