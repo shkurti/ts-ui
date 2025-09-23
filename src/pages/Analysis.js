@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import './Page.css';
 
 const Analysis = () => {
@@ -27,6 +28,20 @@ const Analysis = () => {
   const [startDate, setStartDate] = useState('2023-01-01');
   const [endDate, setEndDate] = useState('2025-12-31');
   const [carrierPerformanceData, setCarrierPerformanceData] = useState([]);
+  const [shipmentDurationData, setShipmentDurationData] = useState({
+    trendData: [],
+    performanceStats: {
+      on_time: 0,
+      late: 0,
+      unknown: 0,
+      total: 0,
+      on_time_percentage: 0,
+      late_percentage: 0,
+      unknown_percentage: 0
+    },
+    totalLegs: 0
+  });
+  const [temperatureData, setTemperatureData] = useState([]);
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -59,8 +74,38 @@ const Analysis = () => {
         
         console.log('Updated analytics data:', newAnalyticsData);
       }
+
+      // Fetch temperature data separately
+      const temperatureParams = new URLSearchParams();
+      if (start) {
+        temperatureParams.append('start_date', `${start}T00:00:00Z`);
+      }
+      if (end) {
+        temperatureParams.append('end_date', `${end}T23:59:59Z`);
+      }
+
+      const temperatureRes = await fetch(`${API_BASE}/average_leg_temperature_by_carrier?${temperatureParams.toString()}`);
+      if (temperatureRes.ok) {
+        const tempData = await temperatureRes.json();
+        setTemperatureData(tempData);
+      }
+
+      // Fetch shipment duration data separately
+      const durationParams = new URLSearchParams();
+      if (start) {
+        durationParams.append('start_date', `${start}T00:00:00Z`);
+      }
+      if (end) {
+        durationParams.append('end_date', `${end}T23:59:59Z`);
+      }
+
+      const durationRes = await fetch(`${API_BASE}/shipment_leg_duration?${durationParams.toString()}`);
+      if (durationRes.ok) {
+        const durationData = await durationRes.json();
+        setShipmentDurationData(durationData);
+      }
     } catch (err) {
-      console.log('Error fetching filtered analytics:', err);
+      console.error('Error fetching filtered analytics:', err);
     }
   };
 
@@ -365,6 +410,224 @@ const Analysis = () => {
     );
   };
 
+  // Custom tooltip for temperature chart
+  const TemperatureTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="custom-tooltip">
+          <p className="tooltip-label">{`Carrier: ${label}`}</p>
+          <p className="tooltip-temp">
+            <span style={{ color: payload[0].color }}>
+              {`Average Temperature: ${payload[0].value.toFixed(1)}°C`}
+            </span>
+          </p>
+          <p className="tooltip-count">
+            <span style={{ color: '#666' }}>
+              {`Shipment Count: ${payload[0].payload.shipmentCount}`}
+            </span>
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Custom tooltip for duration chart
+  const DurationTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="custom-tooltip">
+          <p className="tooltip-label">{`Month: ${label}`}</p>
+          {payload.map((entry, index) => (
+            <p key={index} style={{ color: entry.color }}>
+              {`${entry.dataKey === 'averagePlannedDuration' ? 'Planned' : 'Actual'}: ${
+                entry.value < 1 
+                  ? `${(entry.value * 24).toFixed(1)} hours`
+                  : `${entry.value.toFixed(1)} days`
+              }`}
+            </p>
+          ))}
+          <p className="tooltip-performance">
+            <span style={{ color: '#28a745' }}>On-time: {payload[0].payload.onTimePercentage}%</span><br/>
+            <span style={{ color: '#dc3545' }}>Late: {payload[0].payload.latePercentage}%</span><br/>
+            <span style={{ color: '#6c757d' }}>Unknown: {payload[0].payload.unknownPercentage}%</span>
+          </p>
+          <p className="tooltip-count">
+            <span style={{ color: '#666' }}>Total Legs: {payload[0].payload.totalLegs}</span>
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Format month for display
+  const formatMonth = (monthStr) => {
+    if (!monthStr) return '';
+    const [year, month] = monthStr.split('-');
+    const date = new Date(year, month - 1);
+    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  };
+
+  // Format duration for Y-axis
+  const formatDuration = (value) => {
+    if (value < 1) {
+      return `${(value * 24).toFixed(0)}h`;
+    }
+    return `${value.toFixed(1)}d`;
+  };
+
+  // Temperature Chart Component
+  const TemperatureChart = () => {
+    if (!temperatureData || temperatureData.length === 0) {
+      return (
+        <div className="no-data">
+          <div>No temperature data available</div>
+          <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
+            Try adjusting the date range or carrier filter
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="chart-container">
+        <h4 className="chart-title">🌡️ Average Leg Temperature by Carrier</h4>
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={temperatureData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
+            <XAxis 
+              dataKey="carrier" 
+              angle={-45}
+              textAnchor="end"
+              height={80}
+              fontSize={12}
+              stroke="#666"
+            />
+            <YAxis 
+              label={{ value: 'Temperature (°C)', angle: -90, position: 'insideLeft' }}
+              fontSize={12}
+              stroke="#666"
+            />
+            <Tooltip content={<TemperatureTooltip />} />
+            <Bar 
+              dataKey="averageTemperature" 
+              fill="#4ecdc4"
+              radius={[4, 4, 0, 0]}
+              stroke="#fff"
+              strokeWidth={1}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+        <div className="chart-summary">
+          <span>Total Carriers: {temperatureData.length}</span>
+          <span>•</span>
+          <span>Total Shipments: {temperatureData.reduce((sum, item) => sum + item.shipmentCount, 0)}</span>
+        </div>
+      </div>
+    );
+  };
+
+  // Shipment Duration Chart Component
+  const ShipmentDurationChart = () => {
+    const { trendData, performanceStats } = shipmentDurationData;
+    
+    if (!trendData || trendData.length === 0) {
+      return (
+        <div className="no-data">
+          <div>No duration data available</div>
+          <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
+            Total legs processed: {shipmentDurationData.totalLegs || 0}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            Performance stats: On-time: {performanceStats?.on_time || 0}, Late: {performanceStats?.late || 0}, Unknown: {performanceStats?.unknown || 0}
+          </div>
+        </div>
+      );
+    }
+
+    // Process data for chart - convert days to hours for better readability if values are small
+    const chartData = trendData.map(item => ({
+      ...item,
+      month: formatMonth(item.month),
+      // Convert to hours if duration is less than 1 day for better visualization
+      averagePlannedDuration: item.averagePlannedDuration < 1 ? item.averagePlannedDuration * 24 : item.averagePlannedDuration,
+      averageActualDuration: item.averageActualDuration < 1 ? item.averageActualDuration * 24 : item.averageActualDuration,
+      unit: item.averagePlannedDuration < 1 ? 'hours' : 'days'
+    }));
+
+    const isHourUnit = chartData.length > 0 && chartData[0].unit === 'hours';
+
+    return (
+      <div className="chart-container">
+        <h4 className="chart-title">⏱️ Shipment Leg Duration Over Time</h4>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
+            <XAxis 
+              dataKey="month" 
+              fontSize={12}
+              stroke="#666"
+            />
+            <YAxis 
+              label={{ 
+                value: `Duration (${isHourUnit ? 'Hours' : 'Days'})`, 
+                angle: -90, 
+                position: 'insideLeft' 
+              }}
+              tickFormatter={isHourUnit ? (value) => `${value.toFixed(0)}h` : formatDuration}
+              fontSize={12}
+              stroke="#666"
+            />
+            <Tooltip content={<DurationTooltip />} />
+            <Legend />
+            <Line 
+              type="monotone" 
+              dataKey="averagePlannedDuration" 
+              stroke="#4ecdc4" 
+              strokeWidth={3}
+              dot={{ fill: '#4ecdc4', strokeWidth: 2, r: 4 }}
+              name="Average Planned Duration"
+            />
+            <Line 
+              type="monotone" 
+              dataKey="averageActualDuration" 
+              stroke="#667eea" 
+              strokeWidth={3}
+              dot={{ fill: '#667eea', strokeWidth: 2, r: 4 }}
+              name="Average Actual Duration"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+        
+        {/* Performance Summary */}
+        <div className="performance-summary">
+          <div className="performance-item">
+            <span className="performance-label">On-time:</span>
+            <span className="performance-value on-time">{performanceStats.on_time_percentage}%</span>
+            <span className="performance-count">({performanceStats.on_time})</span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Late:</span>
+            <span className="performance-value late">{performanceStats.late_percentage}%</span>
+            <span className="performance-count">({performanceStats.late})</span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Unknown:</span>
+            <span className="performance-value unknown">{performanceStats.unknown_percentage}%</span>
+            <span className="performance-count">({performanceStats.unknown})</span>
+          </div>
+        </div>
+
+        <div className="chart-summary">
+          <span>Total legs processed: {shipmentDurationData.totalLegs}</span>
+          <span>•</span>
+          <span>{trendData.length} monthly data points</span>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="tive-container">
@@ -538,6 +801,11 @@ const Analysis = () => {
                 </div>
               </div>
             </div>
+
+            {/* Add Temperature Chart */}
+            <div className="chart-section">
+              <TemperatureChart />
+            </div>
           </div>
 
           {/* Right Column - Carrier Performance */}
@@ -561,6 +829,11 @@ const Analysis = () => {
                 </div>
               </div>
               {chartType === 'donut' ? <CarrierChart /> : <BarChart />}
+            </div>
+
+            {/* Add Duration Chart */}
+            <div className="chart-section">
+              <ShipmentDurationChart />
             </div>
           </div>
         </div>
