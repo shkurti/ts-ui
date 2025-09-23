@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import './Page.css';
 
 const Analysis = () => {
@@ -41,7 +41,6 @@ const Analysis = () => {
     },
     totalLegs: 0
   });
-  const [temperatureData, setTemperatureData] = useState([]);
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -73,27 +72,6 @@ const Analysis = () => {
         }
         
         console.log('Updated analytics data:', newAnalyticsData);
-      }
-
-      // Fetch temperature data separately
-      const temperatureParams = new URLSearchParams();
-      if (start) {
-        temperatureParams.append('start_date', `${start}T00:00:00Z`);
-      }
-      if (end) {
-        temperatureParams.append('end_date', `${end}T23:59:59Z`);
-      }
-
-      console.log('Fetching temperature data with params:', temperatureParams.toString());
-      const temperatureRes = await fetch(`${API_BASE}/average_leg_temperature_by_carrier?${temperatureParams.toString()}`);
-      if (temperatureRes.ok) {
-        const tempData = await temperatureRes.json();
-        console.log('Temperature data received:', tempData);
-        setTemperatureData(tempData);
-      } else {
-        console.error('Temperature request failed:', temperatureRes.status, temperatureRes.statusText);
-        const errorText = await temperatureRes.text();
-        console.error('Temperature error response:', errorText);
       }
 
       // Fetch shipment duration data separately
@@ -424,28 +402,6 @@ const Analysis = () => {
     );
   };
 
-  // Custom tooltip for temperature chart
-  const TemperatureTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="custom-tooltip">
-          <p className="tooltip-label">{`Carrier: ${label}`}</p>
-          <p className="tooltip-temp">
-            <span style={{ color: payload[0].color }}>
-              {`Average Temperature: ${payload[0].value.toFixed(1)}°C`}
-            </span>
-          </p>
-          <p className="tooltip-count">
-            <span style={{ color: '#666' }}>
-              {`Shipment Count: ${payload[0].payload.shipmentCount}`}
-            </span>
-          </p>
-        </div>
-      );
-    }
-    return null;
-  };
-
   // Custom tooltip for duration chart
   const DurationTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -489,64 +445,6 @@ const Analysis = () => {
       return `${(value * 24).toFixed(0)}h`;
     }
     return `${value.toFixed(1)}d`;
-  };
-
-  // Temperature Chart Component
-  const TemperatureChart = () => {
-    console.log('TemperatureChart render - temperatureData:', temperatureData);
-    
-    if (!temperatureData || temperatureData.length === 0) {
-      return (
-        <div className="no-data">
-          <div>No temperature data available</div>
-          <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
-            Try adjusting the date range or carrier filter
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#999' }}>
-            Debug - temperatureData: {JSON.stringify(temperatureData).substring(0, 200)}...
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="chart-container">
-        <h4 className="chart-title">🌡️ Average Leg Temperature by Carrier</h4>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={temperatureData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
-            <XAxis 
-              dataKey="carrier" 
-              angle={-45}
-              textAnchor="end"
-              height={80}
-              fontSize={12}
-              stroke="#666"
-            />
-            <YAxis 
-              label={{ value: 'Temperature (°C)', angle: -90, position: 'insideLeft' }}
-              fontSize={12}
-              stroke="#666"
-            />
-            <Tooltip content={<TemperatureTooltip />} />
-            <Bar 
-              dataKey="averageTemperature" 
-              fill="#4ecdc4"
-              radius={[4, 4, 0, 0]}
-              stroke="#fff"
-              strokeWidth={1}
-            />
-          </BarChart>
-        </ResponsiveContainer>
-        <div className="chart-summary">
-          <span>Total Carriers: {temperatureData.length}</span>
-          <span>•</span>
-          <span>Total Shipments: {temperatureData.reduce((sum, item) => sum + item.shipmentCount, 0)}</span>
-          <span>•</span>
-          <span>Avg Temperature: {temperatureData.length > 0 ? (temperatureData.reduce((sum, item) => sum + item.averageTemperature, 0) / temperatureData.length).toFixed(1) : 0}°C</span>
-        </div>
-      </div>
-    );
   };
 
   // Shipment Duration Chart Component
@@ -821,11 +719,6 @@ const Analysis = () => {
                   <div className="delay-label">Avg. Arrival Delay</div>
                 </div>
               </div>
-            </div>
-
-            {/* Add Temperature Chart */}
-            <div className="chart-section">
-              <TemperatureChart />
             </div>
           </div>
 
