@@ -405,11 +405,6 @@ const Analysis = () => {
   // Custom tooltip for duration chart
   const DurationTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      const hasRealGpsData = data.hasRealGpsData;
-      const gpsBasedCount = data.gpsBasedCount || 0;
-      const plannedBasedCount = data.plannedBasedCount || 0;
-      
       return (
         <div className="custom-tooltip">
           <p className="tooltip-label">{`Month: ${label}`}</p>
@@ -420,24 +415,15 @@ const Analysis = () => {
                   ? `${(entry.value * 24).toFixed(1)} hours`
                   : `${entry.value.toFixed(1)} days`
               }`}
-              {entry.dataKey === 'averageActualDuration' && (
-                <span style={{ color: '#999', fontSize: '0.8em' }}>
-                  {hasRealGpsData ? ' (GPS-based)' : ' (planned fallback)'}
-                </span>
-              )}
             </p>
           ))}
           <p className="tooltip-performance">
-            <span style={{ color: '#28a745' }}>On-time: {data.onTimePercentage}%</span><br/>
-            <span style={{ color: '#dc3545' }}>Late: {data.latePercentage}%</span><br/>
-            <span style={{ color: '#6c757d' }}>Unknown: {data.unknownPercentage}%</span>
+            <span style={{ color: '#28a745' }}>On-time: {payload[0].payload.onTimePercentage}%</span><br/>
+            <span style={{ color: '#dc3545' }}>Late: {payload[0].payload.latePercentage}%</span><br/>
+            <span style={{ color: '#6c757d' }}>Unknown: {payload[0].payload.unknownPercentage}%</span>
           </p>
           <p className="tooltip-count">
-            <span style={{ color: '#666' }}>
-              Total Legs: {data.totalLegs}<br/>
-              GPS calculations: {gpsBasedCount} legs<br/>
-              Planned fallbacks: {plannedBasedCount} legs
-            </span>
+            <span style={{ color: '#666' }}>Total Legs: {payload[0].payload.totalLegs}</span>
           </p>
         </div>
       );
@@ -519,7 +505,6 @@ const Analysis = () => {
               dataKey="averagePlannedDuration" 
               stroke="#4ecdc4" 
               strokeWidth={3}
-              strokeDasharray="5,5"
               dot={{ fill: '#4ecdc4', strokeWidth: 2, r: 4 }}
               name="Average Planned Duration"
             />
@@ -557,10 +542,6 @@ const Analysis = () => {
           <span>Total legs processed: {shipmentDurationData.totalLegs}</span>
           <span>•</span>
           <span>{trendData.length} monthly data points</span>
-          <span>•</span>
-          <span>GPS calculations: {shipmentDurationData.gpsBasedCalculations || 0} legs</span>
-          <span>•</span>
-          <span>Planned fallbacks: {shipmentDurationData.plannedBasedCalculations || 0} legs</span>
         </div>
       </div>
     );
