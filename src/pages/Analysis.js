@@ -406,7 +406,7 @@ const Analysis = () => {
   const DurationTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
-      const hasActualData = data.hasActualData;
+      const hasRealGpsData = data.hasRealGpsData;
       const gpsBasedCount = data.gpsBasedCount || 0;
       const plannedBasedCount = data.plannedBasedCount || 0;
       
@@ -420,8 +420,10 @@ const Analysis = () => {
                   ? `${(entry.value * 24).toFixed(1)} hours`
                   : `${entry.value.toFixed(1)} days`
               }`}
-              {entry.dataKey === 'averageActualDuration' && !hasActualData && (
-                <span style={{ color: '#999', fontSize: '0.8em' }}> (no GPS data)</span>
+              {entry.dataKey === 'averageActualDuration' && (
+                <span style={{ color: '#999', fontSize: '0.8em' }}>
+                  {hasRealGpsData ? ' (GPS-based)' : ' (planned fallback)'}
+                </span>
               )}
             </p>
           ))}
@@ -433,8 +435,8 @@ const Analysis = () => {
           <p className="tooltip-count">
             <span style={{ color: '#666' }}>
               Total Legs: {data.totalLegs}<br/>
-              GPS-based: {gpsBasedCount} legs<br/>
-              Planned-based: {plannedBasedCount} legs
+              GPS calculations: {gpsBasedCount} legs<br/>
+              Planned fallbacks: {plannedBasedCount} legs
             </span>
           </p>
         </div>
@@ -517,6 +519,7 @@ const Analysis = () => {
               dataKey="averagePlannedDuration" 
               stroke="#4ecdc4" 
               strokeWidth={3}
+              strokeDasharray="5,5"
               dot={{ fill: '#4ecdc4', strokeWidth: 2, r: 4 }}
               name="Average Planned Duration"
             />
@@ -555,9 +558,9 @@ const Analysis = () => {
           <span>•</span>
           <span>{trendData.length} monthly data points</span>
           <span>•</span>
-          <span>GPS-based calculations: {shipmentDurationData.gpsBasedCalculations || 0} legs</span>
+          <span>GPS calculations: {shipmentDurationData.gpsBasedCalculations || 0} legs</span>
           <span>•</span>
-          <span>Planned-based calculations: {shipmentDurationData.plannedBasedCalculations || 0} legs</span>
+          <span>Planned fallbacks: {shipmentDurationData.plannedBasedCalculations || 0} legs</span>
         </div>
       </div>
     );
