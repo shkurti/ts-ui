@@ -453,10 +453,28 @@ const Analysis = () => {
     return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   };
 
-  // Format duration for Y-axis
+  // Format duration for Y-axis with better tick spacing
   const formatDuration = (value) => {
     if (value < 1) {
-      return `${(value * 24).toFixed(0)}h`;
+      const hours = value * 24;
+      if (hours < 1) {
+        return `${(hours * 60).toFixed(0)}m`;
+      }
+      return `${hours.toFixed(1)}h`;
+    }
+    return `${value.toFixed(1)}d`;
+  };
+
+  // Custom tick formatter that ensures unique labels
+  const formatDurationTicks = (value) => {
+    if (value < 1) {
+      const hours = value * 24;
+      if (hours < 1) {
+        const minutes = hours * 60;
+        return minutes < 1 ? `${(minutes * 60).toFixed(0)}s` : `${minutes.toFixed(0)}m`;
+      }
+      // For hours, show decimal places only when needed
+      return hours % 1 === 0 ? `${Math.round(hours)}h` : `${hours.toFixed(1)}h`;
     }
     return `${value.toFixed(1)}d`;
   };
@@ -508,9 +526,12 @@ const Analysis = () => {
                 angle: -90, 
                 position: 'insideLeft' 
               }}
-              tickFormatter={isHourUnit ? (value) => `${value.toFixed(0)}h` : formatDuration}
+              tickFormatter={formatDurationTicks}
               fontSize={12}
               stroke="#666"
+              domain={['dataMin', 'dataMax']}
+              tickCount={5}
+              allowDuplicatedCategory={false}
             />
             <Tooltip content={<DurationTooltip />} />
             <Legend />
