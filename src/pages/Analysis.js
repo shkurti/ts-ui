@@ -409,24 +409,28 @@ const Analysis = () => {
       const hasRealGpsData = data.hasRealGpsData;
       const gpsBasedCount = data.gpsBasedCount || 0;
       const plannedBasedCount = data.plannedBasedCount || 0;
+      const isHourUnit = data.unit === 'hours'; // Check if we're displaying in hours
       
       return (
         <div className="custom-tooltip">
           <p className="tooltip-label">{`Month: ${label}`}</p>
-          {payload.map((entry, index) => (
-            <p key={index} style={{ color: entry.color }}>
-              {`${entry.dataKey === 'averagePlannedDuration' ? 'Planned' : 'Actual'}: ${
-                entry.value < 1 
-                  ? `${(entry.value * 24).toFixed(1)} hours`
-                  : `${entry.value.toFixed(1)} days`
-              }`}
-              {entry.dataKey === 'averageActualDuration' && (
-                <span style={{ color: '#999', fontSize: '0.8em' }}>
-                  {hasRealGpsData ? ' (GPS-based)' : ' (planned fallback)'}
-                </span>
-              )}
-            </p>
-          ))}
+          {payload.map((entry, index) => {
+            // Use the same display logic as the chart data processing
+            const displayValue = isHourUnit 
+              ? `${entry.value.toFixed(1)}h` 
+              : `${entry.value.toFixed(1)}d`;
+            
+            return (
+              <p key={index} style={{ color: entry.color }}>
+                {`${entry.dataKey === 'averagePlannedDuration' ? 'Planned' : 'Actual'}: ${displayValue}`}
+                {entry.dataKey === 'averageActualDuration' && (
+                  <span style={{ color: '#999', fontSize: '0.8em' }}>
+                    {hasRealGpsData ? ' (GPS-based)' : ' (planned fallback)'}
+                  </span>
+                )}
+              </p>
+            );
+          })}
           <p className="tooltip-performance">
             <span style={{ color: '#28a745' }}>On-time: {data.onTimePercentage}%</span><br/>
             <span style={{ color: '#dc3545' }}>Late: {data.latePercentage}%</span><br/>
