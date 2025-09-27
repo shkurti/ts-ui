@@ -513,6 +513,17 @@ const Analysis = () => {
 
     const isHourUnit = chartData.length > 0 && chartData[0].unit === 'hours';
 
+    // FIXED: Y-axis tick formatter that matches the chart display unit
+    const yAxisTickFormatter = (value) => {
+      if (isHourUnit) {
+        // When displaying in hours, format as hours
+        return `${value.toFixed(1)}h`;
+      } else {
+        // When displaying in days, format as days
+        return `${value.toFixed(1)}d`;
+      }
+    };
+
     return (
       <div className="chart-container">
         <h4 className="chart-title">⏱️ Shipment Leg Duration Over Time</h4>
@@ -530,7 +541,7 @@ const Analysis = () => {
                 angle: -90, 
                 position: 'insideLeft' 
               }}
-              tickFormatter={formatDurationTicks}
+              tickFormatter={yAxisTickFormatter}
               fontSize={12}
               stroke="#666"
               domain={['dataMin', 'dataMax']}
