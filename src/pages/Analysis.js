@@ -413,23 +413,20 @@ const Analysis = () => {
       return (
         <div className="custom-tooltip">
           <p className="tooltip-label">{`Month: ${label}`}</p>
-          {payload.map((entry, index) => {
-            // Convert days to hours for better readability if value is small
-            const valueInDays = entry.value;
-            const valueInHours = valueInDays * 24;
-            const displayValue = valueInHours < 24 ? `${valueInHours.toFixed(2)}h` : `${valueInDays.toFixed(2)}d`;
-            
-            return (
-              <p key={index} style={{ color: entry.color }}>
-                {`${entry.dataKey === 'averagePlannedDuration' ? 'Planned' : 'Actual'}: ${displayValue}`}
-                {entry.dataKey === 'averageActualDuration' && (
-                  <span style={{ color: '#999', fontSize: '0.8em' }}>
-                    {hasRealGpsData ? ' (GPS-based)' : ' (planned fallback)'}
-                  </span>
-                )}
-              </p>
-            );
-          })}
+          {payload.map((entry, index) => (
+            <p key={index} style={{ color: entry.color }}>
+              {`${entry.dataKey === 'averagePlannedDuration' ? 'Planned' : 'Actual'}: ${
+                entry.value < 1 
+                  ? `${(entry.value * 24).toFixed(1)} hours`
+                  : `${entry.value.toFixed(1)} days`
+              }`}
+              {entry.dataKey === 'averageActualDuration' && (
+                <span style={{ color: '#999', fontSize: '0.8em' }}>
+                  {hasRealGpsData ? ' (GPS-based)' : ' (planned fallback)'}
+                </span>
+              )}
+            </p>
+          ))}
           <p className="tooltip-performance">
             <span style={{ color: '#28a745' }}>On-time: {data.onTimePercentage}%</span><br/>
             <span style={{ color: '#dc3545' }}>Late: {data.latePercentage}%</span><br/>
@@ -500,22 +497,17 @@ const Analysis = () => {
       );
     }
 
-    // Process data for chart - FIXED: Always convert to hours for values < 1 day
-    const chartData = trendData.map(item => {
-      const plannedInHours = item.averagePlannedDuration * 24;
-      const actualInHours = item.averageActualDuration * 24;
-      
-      return {
-        ...item,
-        month: formatMonth(item.month),
-        // Show in hours if both planned and actual are < 24 hours, otherwise days
-        averagePlannedDuration: plannedInHours < 24 && actualInHours < 24 ? plannedInHours : item.averagePlannedDuration,
-        averageActualDuration: actualInHours < 24 && plannedInHours < 24 ? actualInHours : item.averageActualDuration,
-        displayUnit: plannedInHours < 24 && actualInHours < 24 ? 'hours' : 'days'
-      };
-    });
+    // Process data for chart - convert days to hours for better readability if values are small
+    const chartData = trendData.map(item => ({
+      ...item,
+      month: formatMonth(item.month),
+      // Convert to hours if duration is less than 1 day for better visualization
+      averagePlannedDuration: item.averagePlannedDuration < 1 ? item.averagePlannedDuration * 24 : item.averagePlannedDuration,
+      averageActualDuration: item.averageActualDuration < 1 ? item.averageActualDuration * 24 : item.averageActualDuration,
+      unit: item.averagePlannedDuration < 1 ? 'hours' : 'days'
+    }));
 
-    const isHourUnit = chartData.length > 0 && chartData[0].displayUnit === 'hours';
+    const isHourUnit = chartData.length > 0 && chartData[0].unit === 'hours';
 
     return (
       <div className="chart-container">
@@ -534,7 +526,7 @@ const Analysis = () => {
                 angle: -90, 
                 position: 'insideLeft' 
               }}
-              tickFormatter={(value) => isHourUnit ? `${value.toFixed(1)}h` : `${value.toFixed(1)}d`}
+              tickFormatter={formatDurationTicks}
               fontSize={12}
               stroke="#666"
               domain={['dataMin', 'dataMax']}
@@ -589,8 +581,6 @@ const Analysis = () => {
           <span>GPS calculations: {shipmentDurationData.gpsBasedCalculations || 0} legs</span>
           <span>•</span>
           <span>Planned fallbacks: {shipmentDurationData.plannedBasedCalculations || 0} legs</span>
-          <span>•</span>
-          <span>Avg actual: {isHourUnit ? `${chartData[0]?.averageActualDuration.toFixed(2)}h` : `${chartData[0]?.averageActualDuration.toFixed(2)}d`}</span>
           {shipmentDurationData.debugInfo && (
             <>
               <span>•</span>
