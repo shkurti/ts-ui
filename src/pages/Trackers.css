@@ -316,6 +316,7 @@
 .trackers-table {
   flex: 1;
   overflow-y: auto;
+  padding-bottom: 80px; /* Add space for pagination */
 }
 
 .trackers-table table {
@@ -445,6 +446,11 @@
   background: #fafafa;
   font-size: 0.9rem;
   color: #666;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  margin-top: auto;
+  flex-shrink: 0;
 }
 
 .pagination-controls {
