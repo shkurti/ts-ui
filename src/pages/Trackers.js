@@ -279,16 +279,65 @@ const Trackers = () => {
 
           <div className="filters-bar">
             <div className="filter-group">
-              <label>Device Type:</label>
-              <select 
-                value={deviceTypeFilter} 
-                onChange={(e) => setDeviceTypeFilter(e.target.value)}
-                className="filter-select"
-              >
-                {deviceTypes.map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
+              <div className="filter-item">
+                <label htmlFor="device-type-filter">Device Type</label>
+                <div className="select-wrapper">
+                  <select 
+                    id="device-type-filter"
+                    value={deviceTypeFilter} 
+                    onChange={(e) => setDeviceTypeFilter(e.target.value)}
+                    className="filter-select"
+                  >
+                    {deviceTypes.map(type => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                  <svg className="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+              </div>
+              
+              <div className="filter-item">
+                <label htmlFor="status-filter">Status</label>
+                <div className="select-wrapper">
+                  <select 
+                    id="status-filter"
+                    className="filter-select"
+                    defaultValue="All"
+                  >
+                    <option value="All">All Status</option>
+                    <option value="Active">Active</option>
+                    <option value="Offline">Offline</option>
+                    <option value="Low Battery">Low Battery</option>
+                  </select>
+                  <svg className="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+              </div>
+
+              <div className="filter-actions">
+                <button 
+                  type="button" 
+                  className="filter-reset-btn"
+                  onClick={() => {
+                    setDeviceTypeFilter('All');
+                    setSearchTerm('');
+                  }}
+                  title="Reset all filters"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path d="M3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12Z" stroke="currentColor" strokeWidth="2"/>
+                    <path d="M9 9L15 15M15 9L9 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                  Reset
+                </button>
+                
+                <div className="filter-badge">
+                  {filteredTrackers.length} of {trackers.length} trackers
+                </div>
+              </div>
             </div>
           </div>
 
