@@ -245,17 +245,46 @@ const Trackers = () => {
         <div className="left-panel">
           <div className="controls-bar">
             <div className="search-container">
-              <input
-                type="text"
-                placeholder="Search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="search-input"
-              />
-              <span className="search-icon">🔍</span>
+              <div className="search-input-wrapper">
+                <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M21 21L16.514 16.506M19 10.5C19 15.194 15.194 19 10.5 19C5.806 19 2 15.194 2 10.5C2 5.806 5.806 2 10.5 2C15.194 2 19 5.806 19 10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search trackers..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="search-input"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    className="search-clear"
+                    onClick={() => setSearchTerm('')}
+                    title="Clear search"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+              {searchTerm && filteredTrackers.length > 0 && (
+                <div className="search-results-badge">
+                  {filteredTrackers.length} result{filteredTrackers.length !== 1 ? 's' : ''}
+                </div>
+              )}
             </div>
             
-            <button className="btn-columns">Columns ▼</button>
+            <button className="btn-columns">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M8 12H16M8 8H20M8 16H13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Columns
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
           </div>
 
           <div className="filters-bar">
