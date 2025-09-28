@@ -17,6 +17,8 @@ const Trackers = () => {
   const [deleting, setDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [deviceTypeFilter, setDeviceTypeFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All Trackers');
+  
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
   useEffect(() => {
@@ -121,18 +123,20 @@ const Trackers = () => {
 
   // Handle tracker selection
   const handleTrackerSelect = (trackerId) => {
+    console.log('Selecting tracker:', trackerId); // Debug log
     setSelectedTrackers(prev => {
-      if (prev.includes(trackerId)) {
-        return prev.filter(id => id !== trackerId);
-      } else {
-        return [...prev, trackerId];
-      }
+      const newSelection = prev.includes(trackerId)
+        ? prev.filter(id => id !== trackerId)
+        : [...prev, trackerId];
+      console.log('New selection:', newSelection); // Debug log
+      return newSelection;
     });
   };
 
   // Handle select all
   const handleSelectAll = () => {
-    if (selectedTrackers.length === trackers.length) {
+    console.log('Select all clicked'); // Debug log
+    if (selectedTrackers.length === trackers.length && trackers.length > 0) {
       setSelectedTrackers([]);
     } else {
       setSelectedTrackers(trackers.map(t => t.tracker_id));
@@ -198,7 +202,6 @@ const Trackers = () => {
     return mockData[trackerId] || { battery: null, lastConnected: 'Unknown', location: '' };
   };
 
-  // Filter trackers based on search term and device type
   const filteredTrackers = trackers.filter(tracker => {
     const matchesSearch = tracker.tracker_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          tracker.tracker_name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -206,275 +209,216 @@ const Trackers = () => {
     return matchesSearch && matchesType;
   });
 
-  // Get unique device types for filter
   const deviceTypes = ['All', ...new Set(trackers.map(t => t.device_type).filter(Boolean))];
+  const activeCount = trackers.filter(t => getMockTrackerData(t.tracker_id).battery > 0).length;
+  const offlineCount = trackers.filter(t => getMockTrackerData(t.tracker_id).battery === null).length;
 
   return (
-    <div className="trackers-dashboard">
-      <div className="dashboard-header">
-        <h1>Trackers</h1>
-        <div className="header-actions">
+    <div className="trackers-layout">
+      {/* Left Panel - Trackers List */}
+      <div className="trackers-panel">
+        {/* Header */}
+        <div className="panel-header">
+          <h1>Trackers</h1>
           <button 
             onClick={() => setShowModal(true)} 
-            className="btn-primary"
+            className="create-btn"
             disabled={loading}
           >
-            Register New Tracker
+            Create New Tracker
           </button>
-          <div className="header-icons">
-            <button className="btn-icon" title="Profile">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9V7L15 3.5C14.1 3 13.5 3 12.5 3S10.9 3 10 3.5L4 7V9H6V20C6 21.1 6.9 22 8 22H16C17.1 22 18 21.1 18 20V9H21ZM8 20V9H16V20H8Z"/>
-              </svg>
-            </button>
-            <button className="btn-icon" title="Refresh">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,14.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z"/>
-              </svg>
-            </button>
-            <button className="btn-icon" title="Settings">
+          <div className="header-controls">
+            <button className="control-btn" title="Settings">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
               </svg>
             </button>
+            <button className="control-btn" title="Columns">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3,3H21V5H3V3M3,7H21V9H3V7M3,11H21V13H3V11M3,15H21V17H3V15M3,19H21V21H3V19Z"/>
+              </svg>
+              Columns
+            </button>
           </div>
         </div>
-      </div>
 
-      <div className="dashboard-content">
-        <div className="left-panel">
-          <div className="controls-bar">
-            <div className="search-container">
-              <div className="search-input-wrapper">
-                <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M21 21L16.514 16.506M19 10.5C19 15.194 15.194 19 10.5 19C5.806 19 2 15.194 2 10.5C2 5.806 5.806 2 10.5 2C15.194 2 19 5.806 19 10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Search trackers..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="search-input"
-                />
-                {searchTerm && (
-                  <button
-                    type="button"
-                    className="search-clear"
-                    onClick={() => setSearchTerm('')}
-                    title="Clear search"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </button>
-                )}
-              </div>
-              {searchTerm && filteredTrackers.length > 0 && (
-                <div className="search-results-badge">
-                  {filteredTrackers.length} result{filteredTrackers.length !== 1 ? 's' : ''}
-                </div>
+        {/* Search Bar */}
+        <div className="search-section">
+          <div className="search-input-container">
+            <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M21 21L16.514 16.506M19 10.5C19 15.194 15.194 19 10.5 19C5.806 19 2 15.194 2 10.5C2 5.806 5.806 2 10.5 2C15.194 2 19 5.806 19 10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="search-input"
+            />
+          </div>
+        </div>
+
+        {/* Status Tabs */}
+        <div className="status-tabs">
+          <button 
+            className={`tab-btn ${statusFilter === 'All Trackers' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('All Trackers')}
+          >
+            All Trackers ({trackers.length})
+          </button>
+          <button 
+            className={`tab-btn ${statusFilter === 'Active' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('Active')}
+          >
+            Active ({activeCount})
+          </button>
+          <button 
+            className={`tab-btn ${statusFilter === 'Offline' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('Offline')}
+          >
+            Offline ({offlineCount})
+          </button>
+        </div>
+
+        {/* Filters */}
+        <div className="filters-row">
+          <div className="filter-group">
+            <label>Device Type:</label>
+            <select 
+              value={deviceTypeFilter}
+              onChange={(e) => setDeviceTypeFilter(e.target.value)}
+              className="filter-dropdown"
+            >
+              {deviceTypes.map(type => (
+                <option key={type} value={type}>
+                  {type === 'All' ? 'All device types' : type}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="filter-group">
+            <label>Location:</label>
+            <select className="filter-dropdown">
+              <option>All locations</option>
+            </select>
+          </div>
+
+          <div className="filter-group">
+            <label>Show:</label>
+            <select className="filter-dropdown">
+              <option>{statusFilter}</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Trackers Table */}
+        <div className="table-wrapper">
+          <table className="trackers-table">
+            <thead>
+              <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    onChange={handleSelectAll}
+                    checked={selectedTrackers.length === trackers.length && trackers.length > 0}
+                  />
+                </th>
+                <th>TRACKER ID</th>
+                <th>DEVICE TYPE</th>
+                <th>BATTERY</th>
+                <th>STATUS</th>
+                <th>LAST SEEN</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan="6" className="loading-row">Loading trackers...</td></tr>
+              ) : error ? (
+                <tr><td colSpan="6" className="error-row">Error: {error}</td></tr>
+              ) : filteredTrackers.length === 0 ? (
+                <tr><td colSpan="6" className="empty-row">No trackers found</td></tr>
+              ) : (
+                filteredTrackers.map((tracker) => {
+                  const mockData = getMockTrackerData(tracker.tracker_id);
+                  const isActive = mockData.battery > 0;
+                  
+                  return (
+                    <tr key={tracker.tracker_id} className="tracker-row">
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedTrackers.includes(tracker.tracker_id)}
+                          onChange={() => handleTrackerSelect(tracker.tracker_id)}
+                        />
+                      </td>
+                      <td className="tracker-id-cell">{tracker.tracker_id}</td>
+                      <td className="device-type-cell">{tracker.device_type || 'Unknown'}</td>
+                      <td className="battery-cell">
+                        {mockData.battery !== null ? (
+                          <span className={`battery-level ${mockData.battery < 30 ? 'critical' : mockData.battery < 70 ? 'low' : 'good'}`}>
+                            {mockData.battery}%
+                          </span>
+                        ) : (
+                          <span className="battery-unknown">—</span>
+                        )}
+                      </td>
+                      <td className="status-cell">
+                        <span className={`status-badge ${isActive ? 'active' : 'offline'}`}>
+                          {isActive ? 'Active' : 'Offline'}
+                        </span>
+                      </td>
+                      <td className="last-seen-cell">{mockData.lastConnected}</td>
+                    </tr>
+                  );
+                })
               )}
-            </div>
-          </div>
-
-          <div className="filters-bar">
-            <div className="filter-group">
-              <div className="filter-item">
-                <label htmlFor="device-type-filter">Device Type</label>
-                <div className="select-wrapper">
-                  <select 
-                    id="device-type-filter"
-                    value={deviceTypeFilter} 
-                    onChange={(e) => setDeviceTypeFilter(e.target.value)}
-                    className="filter-select"
-                  >
-                    {deviceTypes.map(type => (
-                      <option key={type} value={type}>{type}</option>
-                    ))}
-                  </select>
-                  <svg className="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none">
-                    <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-              </div>
-              
-              <div className="filter-item">
-                <label htmlFor="status-filter">Status</label>
-                <div className="select-wrapper">
-                  <select 
-                    id="status-filter"
-                    className="filter-select"
-                    defaultValue="All"
-                  >
-                    <option value="All">All Status</option>
-                    <option value="Active">Active</option>
-                    <option value="Offline">Offline</option>
-                    <option value="Low Battery">Low Battery</option>
-                  </select>
-                  <svg className="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none">
-                    <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-              </div>
-
-              <div className="filter-actions">
-                <button 
-                  type="button" 
-                  className="filter-reset-btn"
-                  onClick={() => {
-                    setDeviceTypeFilter('All');
-                    setSearchTerm('');
-                  }}
-                  title="Reset all filters"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path d="M3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12Z" stroke="currentColor" strokeWidth="2"/>
-                    <path d="M9 9L15 15M15 9L9 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                  Reset
-                </button>
-                
-                <div className="filter-badge">
-                  {filteredTrackers.length} of {trackers.length} trackers
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="trackers-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>TRACKER</th>
-                  <th>BATTERY</th>
-                  <th>LAST CONNECTED</th>
-                  <th>LOCATION</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan="4">Loading...</td></tr>
-                ) : error ? (
-                  <tr><td colSpan="4">Error: {error}</td></tr>
-                ) : filteredTrackers.length === 0 ? (
-                  <tr><td colSpan="4">No trackers found</td></tr>
-                ) : (
-                  filteredTrackers.map((tracker) => {
-                    const mockData = getMockTrackerData(tracker.tracker_id);
-                    return (
-                      <tr key={tracker.tracker_id || tracker._id}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={selectedTrackers.includes(tracker.tracker_id)}
-                            onChange={() => handleTrackerSelect(tracker.tracker_id)}
-                          />
-                          <span className="tracker-link">{tracker.tracker_id}</span>
-                        </td>
-                        <td>
-                          {mockData.battery !== null ? (
-                            <span className={`battery-indicator ${mockData.battery < 70 ? 'low' : 'good'}`}>
-                              🔋 {mockData.battery} %
-                            </span>
-                          ) : (
-                            <span className="battery-indicator unknown">%</span>
-                          )}
-                        </td>
-                        <td className="last-connected">{mockData.lastConnected}</td>
-                        <td className="location">{mockData.location || '-'}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {selectedTrackers.length > 0 && (
-            <div className="bulk-actions">
-              <button 
-                onClick={handleDeleteSelected}
-                className="btn-danger"
-                disabled={deleting}
-              >
-                {deleting ? 'Deleting...' : `Delete Selected (${selectedTrackers.length})`}
-              </button>
-            </div>
-          )}
+            </tbody>
+          </table>
         </div>
 
-        <div className="right-panel">
-          <div className="map-container">
-            <div className="map-header">
-              <h3>Live Tracking</h3>
-              <div className="map-controls">
-                <button className="map-control-btn active" title="Map View">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M15,19L9,16.89V5L15,7.11M20.5,3C20.44,3 20.39,3 20.34,3L15,5.1L9,3L3.36,4.9C3.15,4.97 3,5.15 3,5.38V20.5A0.5,0.5 0 0,0 3.5,21C3.55,21 3.61,21 3.66,21L9,18.9L15,21L20.64,19.1C20.85,19 21,18.85 21,18.62V3.5A0.5,0.5 0 0,0 20.5,3Z"/>
-                  </svg>
-                </button>
-                <button className="map-control-btn" title="Satellite View">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z"/>
-                  </svg>
-                </button>
-                <button className="map-control-btn" title="Terrain View">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14,6L10.25,11L13.1,14.8L11.5,16C9.81,13.75 7,10 7,10L1,18H23L14,6Z"/>
-                  </svg>
-                </button>
+        {/* Bulk Actions - Add debug info */}
+        {console.log('Selected trackers count:', selectedTrackers.length)}
+        {selectedTrackers.length > 0 && (
+          <div className="bulk-actions-bar">
+            <span>{selectedTrackers.length} tracker{selectedTrackers.length !== 1 ? 's' : ''} selected</span>
+            <button 
+              onClick={handleDeleteSelected}
+              className="delete-selected-btn"
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete Selected'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Right Panel - Map */}
+      <div className="map-panel">
+        <div className="map-content">
+          <div className="map-placeholder">
+            <div className="map-overlay">
+              <div className="tracker-marker active">
+                <span className="marker-label">SOT-1059</span>
+                <div className="marker-dot"></div>
               </div>
-            </div>
-            <div className="map-content">
-              <div className="map-placeholder">
-                <div className="active-tracker-info">
-                  <div className="tracker-marker">
-                    <div className="marker-pulse"></div>
-                    <span>G67050</span>
-                  </div>
-                  <div className="tracker-details">
-                    <h4>Active Tracker</h4>
-                    <p>Last seen: 2 minutes ago</p>
-                    <p>Battery: 85%</p>
-                    <p>Speed: 0 km/h</p>
-                  </div>
-                </div>
-                <div className="map-grid-overlay"></div>
-              </div>
-            </div>
-            <div className="map-footer">
-              <div className="map-stats">
-                <div className="stat-item">
-                  <span className="stat-label">Active</span>
-                  <span className="stat-value">{trackers.filter(t => getMockTrackerData(t.tracker_id).battery > 0).length}</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Offline</span>
-                  <span className="stat-value">{trackers.filter(t => getMockTrackerData(t.tracker_id).battery === null).length}</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-label">Total</span>
-                  <span className="stat-value">{trackers.length}</span>
-                </div>
+              <div className="location-stats">
+                <div className="stat-circle blue">47</div>
+                <div className="stat-circle green">37</div>
+                <div className="stat-circle small">2</div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Modal for registering new tracker */}
+      {/* Registration Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={handleCancel}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Register New Tracker</h2>
-              <button 
-                className="modal-close" 
-                onClick={handleCancel}
-                type="button"
-              >
-                ×
-              </button>
+              <button className="modal-close" onClick={handleCancel} type="button">×</button>
             </div>
             
             <form onSubmit={handleSubmit} className="tracker-form">
