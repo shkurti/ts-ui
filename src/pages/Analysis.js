@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart as RechartsBarChart, Bar, Cell, PieChart, Pie } from 'recharts';
 import './Page.css';
 
 const Analysis = () => {
@@ -220,79 +220,85 @@ const Analysis = () => {
     fetchFilteredAnalytics(selectedCarrier, startDate, newEndDate);
   };
 
+  // Custom tooltip for carrier charts
+  const CarrierChartTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      
+      return (
+        <div className="custom-tooltip">
+          <p className="tooltip-label">{`Carrier: ${label || data.name}`}</p>
+          <p style={{ color: payload[0].color }}>
+            Shipments: {data.shipmentCount}
+          </p>
+          <p style={{ color: payload[0].color }}>
+            Percentage: {data.percentage.toFixed(1)}%
+          </p>
+          <p className="tooltip-count">
+            <span style={{ color: '#666' }}>
+              Total Legs: {data.totalLegs}
+            </span>
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   const BarChart = () => {
     if (!carrierPerformanceData || carrierPerformanceData.length === 0) {
       return <div className="no-data">No carrier data available</div>;
     }
-    
-    // Use the actual percentage values for proper scaling
-    const maxValue = 100; // Always scale to 100% for proper grid alignment
-    
+
+    // Sort data by shipment count for better visualization
+    const sortedData = [...carrierPerformanceData].sort((a, b) => b.shipmentCount - a.shipmentCount);
+
     return (
-      <div className="carrier-bar-chart">
-        <div className="modern-bar-container">
-          <div className="chart-title">Carrier Distribution</div>
-          
-          <div className="bar-chart-area">
-            <div className="bar-chart-grid">
-              <div className="y-axis-modern">
-                <div className="y-label-modern">100%</div>
-                <div className="y-label-modern">75%</div>
-                <div className="y-label-modern">50%</div>
-                <div className="y-label-modern">25%</div>
-                <div className="y-label-modern">0%</div>
-              </div>
-              
-              <div className="bars-area">
-                {/* Grid lines */}
-                <div className="grid-lines">
-                  <div className="grid-line" style={{top: '0%'}}></div>
-                  <div className="grid-line" style={{top: '25%'}}></div>
-                  <div className="grid-line" style={{top: '50%'}}></div>
-                  <div className="grid-line" style={{top: '75%'}}></div>
-                  <div className="grid-line" style={{top: '100%'}}></div>
-                </div>
-                
-                <div className="bars-container-modern">
-                  {carrierPerformanceData.map((carrier, index) => (
-                    <div key={index} className="bar-item-modern">
-                      <div 
-                        className="modern-bar" 
-                        style={{ 
-                          height: `${carrier.percentage}%`, 
-                          backgroundColor: carrier.color 
-                        }}
-                        title={`${carrier.name}: ${carrier.percentage.toFixed(1)}% (${carrier.shipmentCount} shipments)`}
-                      >
-                        <span className="bar-value-modern">
-                          {carrier.shipmentCount}
-                        </span>
-                      </div>
-                      <div className="bar-label-modern">{carrier.name}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Keep existing labels section unchanged */}
-        <div className="donut-labels">
-          {carrierPerformanceData.map((carrier, index) => (
-            <div key={index} className="donut-label-item">
-              <div className="label-line" style={{ borderColor: carrier.color }}>
-                <div 
-                  className="label-dot" 
-                  style={{ backgroundColor: carrier.color }}
-                ></div>
-                <div className="label-content">
-                  <span className="label-name">{carrier.name.toLowerCase()}</span>
-                  <span className="label-value">{carrier.percentage.toFixed(1)}%</span>
-                </div>
-              </div>
-            </div>
-          ))}
+      <div className="chart-container">
+        <h4 className="chart-title">Carrier Distribution</h4>
+        <ResponsiveContainer width="100%" height={300}>
+          <RechartsBarChart 
+            data={sortedData} 
+            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
+            <XAxis 
+              dataKey="name" 
+              fontSize={12}
+              stroke="#666"
+              angle={-45}
+              textAnchor="end"
+              height={60}
+              interval={0}
+            />
+            <YAxis 
+              label={{ 
+                value: 'Shipments', 
+                angle: -90, 
+                position: 'insideLeft' 
+              }}
+              fontSize={12}
+              stroke="#666"
+            />
+            <Tooltip content={<CarrierChartTooltip />} />
+            <Bar 
+              dataKey="shipmentCount" 
+              radius={[4, 4, 0, 0]}
+            >
+              {sortedData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Bar>
+          </RechartsBarChart>
+        </ResponsiveContainer>
+
+        {/* Carrier Summary */}
+        <div className="chart-summary">
+          <span>Total carriers: {carrierPerformanceData.length}</span>
+          <span>•</span>
+          <span>Total shipments: {carrierPerformanceData.reduce((sum, c) => sum + c.shipmentCount, 0)}</span>
+          <span>•</span>
+          <span>Total legs: {carrierPerformanceData.reduce((sum, c) => sum + c.totalLegs, 0)}</span>
         </div>
       </div>
     );
@@ -303,163 +309,87 @@ const Analysis = () => {
       return <div className="no-data">No carrier data available</div>;
     }
 
-    const radius = 100;
-    const strokeWidth = 30;
-    const normalizedRadius = radius - strokeWidth / 2;
-    const circumference = normalizedRadius * 2 * Math.PI;
-    const svgSize = radius * 2 + 40;
-    
-    // Calculate total shipments for center display
-    const totalShipments = carrierPerformanceData.reduce((sum, carrier) => sum + carrier.shipmentCount, 0);
-    
-    let cumulativePercentage = 0;
-    
+    // Custom label function for pie chart
+    const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, name, shipmentCount }) => {
+      const RADIAN = Math.PI / 180;
+      const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+      const x = cx + radius * Math.cos(-midAngle * RADIAN);
+      const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+      // Only show label if percentage is above 8% to avoid overlap
+      if (percent * 100 < 8) return null;
+
+      return (
+        <text 
+          x={x} 
+          y={y} 
+          fill="white" 
+          textAnchor={x > cx ? 'start' : 'end'} 
+          dominantBaseline="central"
+          fontSize="12"
+          fontWeight="700"
+        >
+          {shipmentCount}
+        </text>
+      );
+    };
+
     return (
-      <div className="carrier-donut-chart">
-        <div className="modern-donut-container">
-          <div className="chart-title">Carrier Distribution</div>
-          
-          <div className="donut-chart-wrapper">
-            <svg
-              width={svgSize}
-              height={svgSize}
-              viewBox={`0 0 ${svgSize} ${svgSize}`}
-              className="modern-donut-svg"
+      <div className="chart-container">
+        <h4 className="chart-title">Carrier Distribution</h4>
+        <ResponsiveContainer width="100%" height={300}>
+          <PieChart>
+            <Pie
+              data={carrierPerformanceData}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              label={renderCustomLabel}
+              outerRadius={100}
+              innerRadius={40}
+              fill="#8884d8"
+              dataKey="shipmentCount"
+              startAngle={90}
+              endAngle={-270}
             >
-              {/* Background circle */}
-              <circle
-                cx={svgSize / 2}
-                cy={svgSize / 2}
-                r={normalizedRadius}
-                fill="none"
-                stroke="#f1f5f9"
-                strokeWidth={strokeWidth}
-              />
-              
-              {/* Data segments */}
-              {carrierPerformanceData.map((carrier, index) => {
-                const percentage = (carrier.shipmentCount / totalShipments) * 100;
-                const strokeDasharray = `${(percentage / 100) * circumference} ${circumference}`;
-                const strokeDashoffset = -((cumulativePercentage / 100) * circumference);
-                
-                // Calculate position for label - position directly on the segment
-                const angle = (cumulativePercentage + percentage / 2) * 3.6 - 90; // Convert to degrees
-                const labelRadius = normalizedRadius; // Position on the center of the segment stroke
-                const labelX = svgSize / 2 + labelRadius * Math.cos(angle * Math.PI / 180);
-                const labelY = svgSize / 2 + labelRadius * Math.sin(angle * Math.PI / 180);
-                
-                const segment = (
-                  <g key={index}>
-                    <circle
-                      cx={svgSize / 2}
-                      cy={svgSize / 2}
-                      r={normalizedRadius}
-                      fill="none"
-                      stroke={carrier.color}
-                      strokeWidth={strokeWidth}
-                      strokeDasharray={strokeDasharray}
-                      strokeDashoffset={strokeDashoffset}
-                      style={{
-                        transform: 'rotate(-90deg)',
-                        transformOrigin: `${svgSize / 2}px ${svgSize / 2}px`,
-                        transition: 'all 0.3s ease',
-                        cursor: 'pointer'
-                      }}
-                      className="modern-donut-segment"
-                      onMouseEnter={(e) => {
-                        e.target.style.strokeWidth = strokeWidth + 4;
-                        e.target.style.filter = 'brightness(1.1)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.strokeWidth = strokeWidth;
-                        e.target.style.filter = 'brightness(1)';
-                      }}
-                    />
-                    
-                    {/* Value labels on the segments */}
-                    {carrier.shipmentCount > 0 && (
-                      <text
-                        x={labelX}
-                        y={labelY}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        className="segment-label"
-                        fill="white"
-                        fontSize={percentage < 8 ? "10" : "12"}
-                        fontWeight="700"
-                        style={{
-                          textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
-                          pointerEvents: 'none'
-                        }}
-                      >
-                        {carrier.shipmentCount}
-                      </text>
-                    )}
-                  </g>
-                );
-                
-                cumulativePercentage += percentage;
-                return segment;
-              })}
-              
-              {/* Center content */}
-              <text
-                x={svgSize / 2}
-                y={svgSize / 2 - 8}
-                textAnchor="middle"
-                className="center-value"
-                fontSize="24"
-                fontWeight="700"
-                fill="#1a1a1a"
-              >
-                {totalShipments}
-              </text>
-              <text
-                x={svgSize / 2}
-                y={svgSize / 2 + 12}
-                textAnchor="middle"
-                className="center-label"
-                fontSize="12"
-                fill="#6b7280"
-                fontWeight="500"
-              >
-                Total Shipments
-              </text>
-            </svg>
-            
-            {/* Legend */}
-            <div className="modern-legend">
-              <div className="legend-title">Carrier Type</div>
-              {carrierPerformanceData.map((carrier, index) => (
-                <div key={index} className="legend-item">
-                  <div 
-                    className="legend-color-dot" 
-                    style={{ backgroundColor: carrier.color }}
-                  ></div>
-                  <span className="legend-text">{carrier.name}</span>
-                  <span className="legend-dot">●</span>
-                </div>
+              {carrierPerformanceData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
               ))}
-            </div>
-          </div>
-        </div>
-        
-        {/* Keep existing labels section unchanged */}
-        <div className="donut-labels">
+            </Pie>
+            <Tooltip content={<CarrierChartTooltip />} />
+          </PieChart>
+        </ResponsiveContainer>
+
+        {/* Legend */}
+        <div className="performance-summary" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
           {carrierPerformanceData.map((carrier, index) => (
-            <div key={index} className="donut-label-item">
-              <div className="label-line" style={{ borderColor: carrier.color }}>
-                <div 
-                  className="label-dot" 
-                  style={{ backgroundColor: carrier.color }}
-                ></div>
-                <div className="label-content">
-                  <span className="label-name">{carrier.name.toLowerCase()}</span>
-                  <span className="label-value">{carrier.percentage.toFixed(1)}%</span>
-                </div>
-              </div>
+            <div key={index} className="performance-item" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+              <div 
+                style={{
+                  width: '12px',
+                  height: '12px',
+                  backgroundColor: carrier.color,
+                  borderRadius: '50%',
+                  flexShrink: 0
+                }}
+              />
+              <span className="performance-label" style={{ fontSize: '0.875rem', textTransform: 'none' }}>
+                {carrier.name}
+              </span>
+              <span className="performance-value" style={{ color: '#1a1a1a', fontSize: '0.875rem' }}>
+                {carrier.percentage.toFixed(1)}%
+              </span>
             </div>
           ))}
+        </div>
+
+        {/* Carrier Summary */}
+        <div className="chart-summary">
+          <span>Total carriers: {carrierPerformanceData.length}</span>
+          <span>•</span>
+          <span>Total shipments: {carrierPerformanceData.reduce((sum, c) => sum + c.shipmentCount, 0)}</span>
+          <span>•</span>
+          <span>Total legs: {carrierPerformanceData.reduce((sum, c) => sum + c.totalLegs, 0)}</span>
         </div>
       </div>
     );
