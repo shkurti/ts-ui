@@ -41,6 +41,16 @@ const Analysis = () => {
     },
     totalLegs: 0
   });
+  const [temperatureData, setTemperatureData] = useState({
+    temperatureTrendData: [],
+    temperatureStats: {
+      overallAverage: 0,
+      overallMin: 0,
+      overallMax: 0,
+      totalDays: 0,
+      totalReadings: 0
+    }
+  });
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -95,6 +105,27 @@ const Analysis = () => {
         console.error('Duration request failed:', durationRes.status, durationRes.statusText);
         const errorText = await durationRes.text();
         console.error('Duration error response:', errorText);
+      }
+
+      // Fetch temperature data separately
+      const tempParams = new URLSearchParams();
+      if (start) {
+        tempParams.append('start_date', `${start}T00:00:00Z`);
+      }
+      if (end) {
+        tempParams.append('end_date', `${end}T23:59:59Z`);
+      }
+
+      console.log('Fetching temperature data with params:', tempParams.toString());
+      const temperatureRes = await fetch(`${API_BASE}/shipment_temperature_data?${tempParams.toString()}`);
+      console.log('Temperature response status:', temperatureRes.status);
+      
+      if (temperatureRes.ok) {
+        const tempData = await temperatureRes.json();
+        console.log('Temperature data received:', tempData);
+        setTemperatureData(tempData);
+      } else {
+        console.error('Temperature request failed:', temperatureRes.status, temperatureRes.statusText);
       }
     } catch (err) {
       console.error('Error fetching filtered analytics:', err);
@@ -607,6 +638,148 @@ const Analysis = () => {
     );
   };
 
+  // Custom tooltip for temperature chart
+  const TemperatureTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      
+      return (
+        <div className="custom-tooltip">
+          <p className="tooltip-label">{`Date: ${label}`}</p>
+          {payload.map((entry, index) => (
+            <p key={index} style={{ color: entry.color }}>
+              {entry.dataKey === 'averageTemperature' && `Average: ${entry.value.toFixed(1)}°C`}
+              {entry.dataKey === 'minTemperature' && `Min: ${entry.value.toFixed(1)}°C`}
+              {entry.dataKey === 'maxTemperature' && `Max: ${entry.value.toFixed(1)}°C`}
+            </p>
+          ))}
+          <p className="tooltip-count">
+            <span style={{ color: '#666' }}>
+              Readings: {data.readingCount}<br/>
+              Trackers: {data.trackerCount}
+            </span>
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Format date for display
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  // Temperature Chart Component
+  const TemperatureChart = () => {
+    const { temperatureTrendData, temperatureStats } = temperatureData;
+    
+    if (!temperatureTrendData || temperatureTrendData.length === 0) {
+      return (
+        <div className="no-data">
+          <div>No temperature data available</div>
+          <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
+            Total readings processed: {temperatureStats?.totalReadings || 0}
+          </div>
+        </div>
+      );
+    }
+
+    // Process data for chart
+    const chartData = temperatureTrendData.map(item => ({
+      ...item,
+      date: formatDate(item.date)
+    }));
+
+    return (
+      <div className="chart-container">
+        <h4 className="chart-title">🌡️ Average Shipment Temperature Over Time</h4>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
+            <XAxis 
+              dataKey="date" 
+              fontSize={12}
+              stroke="#666"
+            />
+            <YAxis 
+              label={{ 
+                value: 'Temperature (°C)', 
+                angle: -90, 
+                position: 'insideLeft' 
+              }}
+              fontSize={12}
+              stroke="#666"
+              domain={['dataMin - 2', 'dataMax + 2']}
+            />
+            <Tooltip content={<TemperatureTooltip />} />
+            <Legend />
+            <Line 
+              type="monotone" 
+              dataKey="averageTemperature" 
+              stroke="#ff6b6b" 
+              strokeWidth={3}
+              dot={{ fill: '#ff6b6b', strokeWidth: 2, r: 4 }}
+              name="Average Temperature"
+            />
+            <Line 
+              type="monotone" 
+              dataKey="minTemperature" 
+              stroke="#74c0fc" 
+              strokeWidth={2}
+              strokeDasharray="5,5"
+              dot={{ fill: '#74c0fc', strokeWidth: 1, r: 3 }}
+              name="Min Temperature"
+            />
+            <Line 
+              type="monotone" 
+              dataKey="maxTemperature" 
+              stroke="#ff8cc8" 
+              strokeWidth={2}
+              strokeDasharray="5,5"
+              dot={{ fill: '#ff8cc8', strokeWidth: 1, r: 3 }}
+              name="Max Temperature"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+        
+        {/* Temperature Summary */}
+        <div className="performance-summary">
+          <div className="performance-item">
+            <span className="performance-label">Overall Avg:</span>
+            <span className="performance-value" style={{ color: '#ff6b6b' }}>
+              {temperatureStats.overallAverage}°C
+            </span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Min Recorded:</span>
+            <span className="performance-value" style={{ color: '#74c0fc' }}>
+              {temperatureStats.overallMin}°C
+            </span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Max Recorded:</span>
+            <span className="performance-value" style={{ color: '#ff8cc8' }}>
+              {temperatureStats.overallMax}°C
+            </span>
+          </div>
+        </div>
+
+        <div className="chart-summary">
+          <span>Total days: {temperatureStats.totalDays}</span>
+          <span>•</span>
+          <span>Total readings: {temperatureStats.totalReadings}</span>
+          <span>•</span>
+          <span>{temperatureTrendData.length} daily data points</span>
+          <span>•</span>
+          <span>Temperature range: {(temperatureStats.overallMax - temperatureStats.overallMin).toFixed(1)}°C</span>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="tive-container">
@@ -808,6 +981,11 @@ const Analysis = () => {
             {/* Add Duration Chart */}
             <div className="chart-section">
               <ShipmentDurationChart />
+            </div>
+
+            {/* Add Temperature Chart */}
+            <div className="chart-section">
+              <TemperatureChart />
             </div>
           </div>
         </div>
