@@ -51,6 +51,17 @@ const Analysis = () => {
       totalReadings: 0
     }
   });
+  const [carrierTemperatureData, setCarrierTemperatureData] = useState({
+    carrierTemperatureData: [],
+    carrierTemperatureStats: {
+      overallAverage: 0,
+      overallMin: 0,
+      overallMax: 0,
+      totalCarriers: 0,
+      totalReadings: 0,
+      totalTrackers: 0
+    }
+  });
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -126,6 +137,27 @@ const Analysis = () => {
         setTemperatureData(tempData);
       } else {
         console.error('Temperature request failed:', temperatureRes.status, temperatureRes.statusText);
+      }
+
+      // Fetch carrier temperature data separately
+      const carrierTempParams = new URLSearchParams();
+      if (start) {
+        carrierTempParams.append('start_date', `${start}T00:00:00Z`);
+      }
+      if (end) {
+        carrierTempParams.append('end_date', `${end}T23:59:59Z`);
+      }
+
+      console.log('Fetching carrier temperature data with params:', carrierTempParams.toString());
+      const carrierTemperatureRes = await fetch(`${API_BASE}/carrier_temperature_data?${carrierTempParams.toString()}`);
+      console.log('Carrier temperature response status:', carrierTemperatureRes.status);
+      
+      if (carrierTemperatureRes.ok) {
+        const carrierTempData = await carrierTemperatureRes.json();
+        console.log('Carrier temperature data received:', carrierTempData);
+        setCarrierTemperatureData(carrierTempData);
+      } else {
+        console.error('Carrier temperature request failed:', carrierTemperatureRes.status, carrierTemperatureRes.statusText);
       }
     } catch (err) {
       console.error('Error fetching filtered analytics:', err);
@@ -780,6 +812,146 @@ const Analysis = () => {
     );
   };
 
+  // Custom tooltip for carrier temperature chart
+  const CarrierTemperatureTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      
+      return (
+        <div className="custom-tooltip">
+          <p className="tooltip-label">{`Carrier: ${label}`}</p>
+          {payload.map((entry, index) => (
+            <p key={index} style={{ color: entry.color }}>
+              {entry.dataKey === 'averageTemperature' && `Average: ${entry.value.toFixed(1)}°C`}
+              {entry.dataKey === 'minTemperature' && `Min: ${entry.value.toFixed(1)}°C`}
+              {entry.dataKey === 'maxTemperature' && `Max: ${entry.value.toFixed(1)}°C`}
+            </p>
+          ))}
+          <p className="tooltip-count">
+            <span style={{ color: '#666' }}>
+              Readings: {data.readingCount}<br/>
+              Trackers: {data.trackerCount}<br/>
+              Range: {data.temperatureRange}°C
+            </span>
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Carrier Temperature Chart Component
+  const CarrierTemperatureChart = () => {
+    const { carrierTemperatureData: chartData, carrierTemperatureStats } = carrierTemperatureData;
+    
+    if (!chartData || chartData.length === 0) {
+      return (
+        <div className="no-data">
+          <div>No carrier temperature data available</div>
+          <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
+            Total readings processed: {carrierTemperatureStats?.totalReadings || 0}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            Total carriers: {carrierTemperatureStats?.totalCarriers || 0}
+          </div>
+        </div>
+      );
+    }
+
+    // Sort data by average temperature for better visualization
+    const sortedChartData = [...chartData].sort((a, b) => b.averageTemperature - a.averageTemperature);
+
+    return (
+      <div className="chart-container">
+        <h4 className="chart-title">📊 Average Leg Temperature by Carrier</h4>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={sortedChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
+            <XAxis 
+              dataKey="carrier" 
+              fontSize={11}
+              stroke="#666"
+              angle={-45}
+              textAnchor="end"
+              height={60}
+              interval={0}
+            />
+            <YAxis 
+              label={{ 
+                value: 'Temperature (°C)', 
+                angle: -90, 
+                position: 'insideLeft' 
+              }}
+              fontSize={12}
+              stroke="#666"
+              domain={['dataMin - 1', 'dataMax + 1']}
+            />
+            <Tooltip content={<CarrierTemperatureTooltip />} />
+            <Legend />
+            <Line 
+              type="monotone" 
+              dataKey="averageTemperature" 
+              stroke="#ff6b35" 
+              strokeWidth={3}
+              dot={{ fill: '#ff6b35', strokeWidth: 2, r: 5 }}
+              name="Average Temperature"
+            />
+            <Line 
+              type="monotone" 
+              dataKey="minTemperature" 
+              stroke="#4ecdc4" 
+              strokeWidth={2}
+              strokeDasharray="3,3"
+              dot={{ fill: '#4ecdc4', strokeWidth: 1, r: 3 }}
+              name="Min Temperature"
+            />
+            <Line 
+              type="monotone" 
+              dataKey="maxTemperature" 
+              stroke="#ff8a80" 
+              strokeWidth={2}
+              strokeDasharray="3,3"
+              dot={{ fill: '#ff8a80', strokeWidth: 1, r: 3 }}
+              name="Max Temperature"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+        
+        {/* Carrier Temperature Summary */}
+        <div className="performance-summary">
+          <div className="performance-item">
+            <span className="performance-label">Overall Avg:</span>
+            <span className="performance-value" style={{ color: '#ff6b35' }}>
+              {carrierTemperatureStats.overallAverage}°C
+            </span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Coldest Carrier:</span>
+            <span className="performance-value" style={{ color: '#4ecdc4' }}>
+              {carrierTemperatureStats.overallMin}°C
+            </span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Warmest Carrier:</span>
+            <span className="performance-value" style={{ color: '#ff8a80' }}>
+              {carrierTemperatureStats.overallMax}°C
+            </span>
+          </div>
+        </div>
+
+        <div className="chart-summary">
+          <span>Total carriers: {carrierTemperatureStats.totalCarriers}</span>
+          <span>•</span>
+          <span>Total readings: {carrierTemperatureStats.totalReadings}</span>
+          <span>•</span>
+          <span>Active trackers: {carrierTemperatureStats.totalTrackers}</span>
+          <span>•</span>
+          <span>Temp range: {(carrierTemperatureStats.overallMax - carrierTemperatureStats.overallMin).toFixed(1)}°C</span>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="tive-container">
@@ -986,6 +1158,11 @@ const Analysis = () => {
             {/* Add Temperature Chart */}
             <div className="chart-section">
               <TemperatureChart />
+            </div>
+
+            {/* Add Carrier Temperature Chart */}
+            <div className="chart-section">
+              <CarrierTemperatureChart />
             </div>
           </div>
         </div>
