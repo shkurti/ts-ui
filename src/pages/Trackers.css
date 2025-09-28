@@ -340,9 +340,59 @@
   vertical-align: middle;
 }
 
-.trackers-table tbody tr:hover {
-  background: #f9f9f9;
+/* === FIX: Ensure rows render & are visible (in case a global reset broke table semantics) === */
+.trackers-table table {
+  table-layout: auto;
 }
+
+.trackers-table thead {
+  display: table-header-group;
+}
+
+.trackers-table tbody {
+  display: table-row-group;
+}
+
+.trackers-table tr {
+  display: table-row;
+}
+
+.trackers-table th,
+.trackers-table td {
+  display: table-cell;
+  color: #1e293b;              /* Force readable text color */
+  vertical-align: middle;
+}
+
+.trackers-table tbody tr {
+  min-height: 44px;            /* Guarantees clickable / visible area */
+}
+
+.trackers-table tbody tr:nth-child(even) {
+  background: #fcfcfc;
+}
+
+.trackers-table tbody tr:hover {
+  background: #f1f5fa;
+}
+
+.trackers-table th {
+  border-bottom: 2px solid #e2e8f0; /* Stronger separation from first data row */
+}
+
+.trackers-table td {
+  border-bottom: 1px solid #f1f5f5;
+}
+
+/* In case something was overlaying rows */
+.trackers-table {
+  position: relative;
+  z-index: 1;
+}
+
+/* Optional quick debug (uncomment if still invisible)
+.trackers-table td { outline: 1px solid #ddd; }
+*/
 
 .tracker-link {
   color: #2196F3;
