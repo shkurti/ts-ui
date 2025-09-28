@@ -306,7 +306,7 @@ const Trackers = () => {
                         <td>
                           {mockData.battery !== null ? (
                             <span className={`battery-indicator ${mockData.battery < 70 ? 'low' : 'good'}`}>
-                              {mockData.battery}%
+                              🔋 {mockData.battery} %
                             </span>
                           ) : (
                             <span className="battery-indicator unknown">%</span>
@@ -345,13 +345,61 @@ const Trackers = () => {
         </div>
 
         <div className="right-panel">
-          <iframe
-            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3151.8354345093743!2d144.9537353153167!3d-37.8162799797517!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x6ad65d43f3f36e5d%3A0x5045675218ce6e0!2sMelbourne%20VIC%2C%20Australia!5e0!3m2!1sen!2sus!4v1609459403123!5m2!1sen!2sus"
-            className="map-iframe"
-            allowFullScreen=""
-            loading="lazy"
-            title="Tracker Locations"
-          />
+          <div className="map-container">
+            <div className="map-header">
+              <h3>Live Tracking</h3>
+              <div className="map-controls">
+                <button className="map-control-btn active" title="Map View">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M15,19L9,16.89V5L15,7.11M20.5,3C20.44,3 20.39,3 20.34,3L15,5.1L9,3L3.36,4.9C3.15,4.97 3,5.15 3,5.38V20.5A0.5,0.5 0 0,0 3.5,21C3.55,21 3.61,21 3.66,21L9,18.9L15,21L20.64,19.1C20.85,19 21,18.85 21,18.62V3.5A0.5,0.5 0 0,0 20.5,3Z"/>
+                  </svg>
+                </button>
+                <button className="map-control-btn" title="Satellite View">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z"/>
+                  </svg>
+                </button>
+                <button className="map-control-btn" title="Terrain View">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14,6L10.25,11L13.1,14.8L11.5,16C9.81,13.75 7,10 7,10L1,18H23L14,6Z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="map-content">
+              <div className="map-placeholder">
+                <div className="active-tracker-info">
+                  <div className="tracker-marker">
+                    <div className="marker-pulse"></div>
+                    <span>G67050</span>
+                  </div>
+                  <div className="tracker-details">
+                    <h4>Active Tracker</h4>
+                    <p>Last seen: 2 minutes ago</p>
+                    <p>Battery: 85%</p>
+                    <p>Speed: 0 km/h</p>
+                  </div>
+                </div>
+                <div className="map-grid-overlay"></div>
+              </div>
+            </div>
+            <div className="map-footer">
+              <div className="map-stats">
+                <div className="stat-item">
+                  <span className="stat-label">Active</span>
+                  <span className="stat-value">{trackers.filter(t => getMockTrackerData(t.tracker_id).battery > 0).length}</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-label">Offline</span>
+                  <span className="stat-value">{trackers.filter(t => getMockTrackerData(t.tracker_id).battery === null).length}</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-label">Total</span>
+                  <span className="stat-value">{trackers.length}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
