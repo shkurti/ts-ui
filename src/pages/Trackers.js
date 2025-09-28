@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import './Page.css';
+import './Trackers.css';
 
 const Trackers = () => {
   const [trackers, setTrackers] = useState([]);
@@ -15,6 +15,8 @@ const Trackers = () => {
   const [submitting, setSubmitting] = useState(false);
   const [selectedTrackers, setSelectedTrackers] = useState([]);
   const [deleting, setDeleting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [deviceTypeFilter, setDeviceTypeFilter] = useState('All');
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
   useEffect(() => {
@@ -180,18 +182,164 @@ const Trackers = () => {
     }
   };
 
+  // Mock data for battery, last connected, and location (you can replace this with real data)
+  const getMockTrackerData = (trackerId) => {
+    const mockData = {
+      'J95720': { battery: 63, lastConnected: 'Jul 07, 09:16AM (36 minutes ago)', location: 'Arbenor e Astrit Dehari, Pristina 10000, Kosovo' },
+      'J000009': { battery: 100, lastConnected: 'Apr 10, 12:25AM (3 months ago)', location: '' },
+      'J000003': { battery: 100, lastConnected: 'Apr 10, 12:25AM (3 months ago)', location: '' },
+      'J000011': { battery: 100, lastConnected: 'Apr 10, 12:25AM (3 months ago)', location: '' },
+      'J000012': { battery: 100, lastConnected: 'Apr 10, 12:25AM (3 months ago)', location: '' },
+      'J000010': { battery: 100, lastConnected: 'Apr 10, 12:25AM (3 months ago)', location: '' },
+      'J000013': { battery: 100, lastConnected: 'Apr 10, 12:25AM (3 months ago)', location: '' },
+      'J000015': { battery: 100, lastConnected: 'Apr 10, 12:25AM (3 months ago)', location: '' },
+      'J00000002': { battery: null, lastConnected: 'Apr 10, 12:25AM (3 months ago)', location: '' }
+    };
+    return mockData[trackerId] || { battery: null, lastConnected: 'Unknown', location: '' };
+  };
+
+  // Filter trackers based on search term and device type
+  const filteredTrackers = trackers.filter(tracker => {
+    const matchesSearch = tracker.tracker_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         tracker.tracker_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = deviceTypeFilter === 'All' || tracker.device_type === deviceTypeFilter;
+    return matchesSearch && matchesType;
+  });
+
+  // Get unique device types for filter
+  const deviceTypes = ['All', ...new Set(trackers.map(t => t.device_type).filter(Boolean))];
+
   return (
-    <div className="page-container">
-      <div className="page-header">
+    <div className="trackers-dashboard">
+      <div className="dashboard-header">
         <h1>Trackers</h1>
-        <p>Monitor your tracking devices</p>
-        <button 
-          onClick={() => setShowModal(true)} 
-          className="register-tracker-btn"
-          disabled={loading}
-        >
-          Register Tracker
-        </button>
+        <div className="header-actions">
+          <button 
+            onClick={() => setShowModal(true)} 
+            className="btn-primary"
+            disabled={loading}
+          >
+            Register New Tracker
+          </button>
+          <button className="btn-icon">👤</button>
+          <button className="btn-icon">🔄</button>
+          <button className="btn-icon">⚙️</button>
+        </div>
+      </div>
+
+      <div className="dashboard-content">
+        <div className="left-panel">
+          <div className="controls-bar">
+            <div className="search-container">
+              <input
+                type="text"
+                placeholder="Search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="search-input"
+              />
+              <span className="search-icon">🔍</span>
+            </div>
+            
+            <button className="btn-columns">Columns ▼</button>
+          </div>
+
+          <div className="filters-bar">
+            <div className="filter-group">
+              <label>Device Type:</label>
+              <select 
+                value={deviceTypeFilter} 
+                onChange={(e) => setDeviceTypeFilter(e.target.value)}
+                className="filter-select"
+              >
+                {deviceTypes.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="trackers-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>TRACKER</th>
+                  <th>BATTERY</th>
+                  <th>LAST CONNECTED</th>
+                  <th>LOCATION</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan="4">Loading...</td></tr>
+                ) : error ? (
+                  <tr><td colSpan="4">Error: {error}</td></tr>
+                ) : filteredTrackers.length === 0 ? (
+                  <tr><td colSpan="4">No trackers found</td></tr>
+                ) : (
+                  filteredTrackers.map((tracker) => {
+                    const mockData = getMockTrackerData(tracker.tracker_id);
+                    return (
+                      <tr key={tracker.tracker_id || tracker._id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedTrackers.includes(tracker.tracker_id)}
+                            onChange={() => handleTrackerSelect(tracker.tracker_id)}
+                          />
+                          <span className="tracker-link">{tracker.tracker_id}</span>
+                        </td>
+                        <td>
+                          {mockData.battery !== null ? (
+                            <span className={`battery-indicator ${mockData.battery < 70 ? 'low' : 'good'}`}>
+                              🔋 {mockData.battery} %
+                            </span>
+                          ) : (
+                            <span className="battery-indicator unknown">%</span>
+                          )}
+                        </td>
+                        <td className="last-connected">{mockData.lastConnected}</td>
+                        <td className="location">{mockData.location || '-'}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="pagination">
+            <span>1 - {filteredTrackers.length} of {filteredTrackers.length} items</span>
+            <div className="pagination-controls">
+              <span>1</span>
+              <span>▼</span>
+              <span>of 1 pages</span>
+            </div>
+          </div>
+
+          {selectedTrackers.length > 0 && (
+            <div className="bulk-actions">
+              <button 
+                onClick={handleDeleteSelected}
+                className="btn-danger"
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting...' : `Delete Selected (${selectedTrackers.length})`}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="right-panel">
+          <div className="map-container">
+            <div className="map-placeholder">
+              <div className="map-marker">
+                <span>G67050</span>
+              </div>
+              <p>Map view would be integrated here</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Modal for registering new tracker */}
@@ -285,61 +433,6 @@ const Trackers = () => {
           </div>
         </div>
       )}
-
-      <div className="page-content">
-        {loading && <div className="card"><p>Loading trackers...</p></div>}
-        {error && <div className="card"><p>Error: {error}</p></div>}
-
-        {!loading && !error && trackers.length === 0 && (
-          <div className="card"><p>No registered trackers found.</p></div>
-        )}
-
-        {!loading && !error && trackers.length > 0 && (
-          <div className="card">
-            <div className="tracker-header">
-              <h3>Active Trackers</h3>
-              <div className="tracker-controls">
-                <button 
-                  onClick={handleSelectAll}
-                  className="select-all-btn"
-                  disabled={deleting}
-                >
-                  {selectedTrackers.length === trackers.length ? 'Deselect All' : 'Select All'}
-                </button>
-                {selectedTrackers.length > 0 && (
-                  <button 
-                    onClick={handleDeleteSelected}
-                    className="delete-btn"
-                    disabled={deleting}
-                  >
-                    {deleting ? 'Deleting...' : `Delete Selected (${selectedTrackers.length})`}
-                  </button>
-                )}
-              </div>
-            </div>
-            <ul className="tracker-list">
-              {trackers.map((t) => (
-                <li key={t.tracker_id || t._id} className="tracker-item">
-                  <div className="tracker-checkbox">
-                    <input
-                      type="checkbox"
-                      id={`tracker-${t.tracker_id}`}
-                      checked={selectedTrackers.includes(t.tracker_id)}
-                      onChange={() => handleTrackerSelect(t.tracker_id)}
-                      disabled={deleting}
-                    />
-                  </div>
-                  <div className="tracker-info">
-                    <strong>{t.tracker_name || 'Unnamed'}</strong> — ID: {t.tracker_id || 'N/A'}
-                    <div>Type: {t.device_type || 'N/A'}</div>
-                    <div>Model: {t.model_number || 'N/A'}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
     </div>
   );
 };
