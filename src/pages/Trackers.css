@@ -81,6 +81,7 @@
   background: white;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .controls-bar {
@@ -316,6 +317,8 @@
 .trackers-table {
   flex: 1;
   overflow-y: auto;
+  padding-bottom: 120px; /* Add space to prevent content from being hidden */
+  margin-bottom: 1rem;
 }
 
 .trackers-table table {
@@ -440,6 +443,11 @@
   padding: 1rem;
   border-top: 2px solid #e0e0e0;
   background: #fff3cd;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin-top: auto;
+  flex-shrink: 0;
 }
 
 .btn-danger {
