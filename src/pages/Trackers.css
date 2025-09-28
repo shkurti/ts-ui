@@ -316,7 +316,6 @@
 .trackers-table {
   flex: 1;
   overflow-y: auto;
-  padding-bottom: 80px; /* Add space for pagination */
 }
 
 .trackers-table table {
@@ -435,28 +434,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.pagination {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  border-top: 1px solid #e0e0e0;
-  background: #fafafa;
-  font-size: 0.9rem;
-  color: #666;
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
-  margin-top: auto;
-  flex-shrink: 0;
-}
-
-.pagination-controls {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
 }
 
 .bulk-actions {

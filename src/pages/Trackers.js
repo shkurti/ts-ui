@@ -390,15 +390,6 @@ const Trackers = () => {
             </table>
           </div>
 
-          <div className="pagination">
-            <span>1 - {filteredTrackers.length} of {filteredTrackers.length} items</span>
-            <div className="pagination-controls">
-              <span>1</span>
-              <span>▼</span>
-              <span>of 1 pages</span>
-            </div>
-          </div>
-
           {selectedTrackers.length > 0 && (
             <div className="bulk-actions">
               <button 
