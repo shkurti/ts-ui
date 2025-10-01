@@ -49,6 +49,12 @@ const Shipments = () => {
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
   const [hoverMarkerData, setHoverMarkerData] = useState(null);
   
+  // Add state for temperature alert modal
+  const [showTempAlertModal, setShowTempAlertModal] = useState(false);
+  const [selectedShipmentForAlert, setSelectedShipmentForAlert] = useState(null);
+  const [tempAlertRange, setTempAlertRange] = useState({ min: -10, max: 40 });
+  const [currentAlerts, setCurrentAlerts] = useState([]);
+  
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -984,19 +990,19 @@ const Shipments = () => {
 
           if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
             setLocationData(prev => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
+
+            const t = full.Temp ?? full.temperature;
+            if (t !== undefined && t !== null) setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
+
+            const h = full.Hum ?? full.humidity;
+            if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
+
+            const b = full.Batt ?? full.battery;
+            if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
+
+            const s = full.Speed ?? full.speed;
+            if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
           }
-
-          const t = full.Temp ?? full.temperature;
-          if (t !== undefined && t !== null) setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
-
-          const h = full.Hum ?? full.humidity;
-          if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
-
-          const b = full.Batt ?? full.battery;
-          if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
-
-          const s = full.Speed ?? full.speed;
-          if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
         }
       } catch (e) {
         console.error('Error parsing WS message', e);
@@ -1008,6 +1014,183 @@ const Shipments = () => {
       ws.removeEventListener('message', handleMessage);
     };
   }, [selectedShipmentDetail]); // keep dependency as you had it
+
+  // Handle opening temperature alert modal
+  const handleTempAlertClick = (e, shipment) => {
+    e.stopPropagation(); // Prevent shipment detail view from opening
+    setSelectedShipmentForAlert(shipment);
+    
+    // Load existing alert presets
+    const existingAlerts = shipment.legs?.[0]?.alertPresets || [];
+    const tempAlerts = existingAlerts.filter(alert => alert.type === 'temperature');
+    setCurrentAlerts(tempAlerts);
+    
+    // Set default range if no existing alerts
+    if (tempAlerts.length > 0) {
+      const lastAlert = tempAlerts[tempAlerts.length - 1];
+      setTempAlertRange({
+        min: lastAlert.minValue || -10,
+        max: lastAlert.maxValue || 40
+      });
+    } else {
+      setTempAlertRange({ min: -10, max: 40 });
+    }
+    
+    setShowTempAlertModal(true);
+  };
+
+  // Handle closing temperature alert modal
+  const handleCloseTempAlert = () => {
+    setShowTempAlertModal(false);
+    setSelectedShipmentForAlert(null);
+    setCurrentAlerts([]);
+    setTempAlertRange({ min: -10, max: 40 });
+  };
+
+  // Handle temperature range change
+  const handleTempRangeChange = (type, value) => {
+    setTempAlertRange(prev => ({
+      ...prev,
+      [type]: parseInt(value)
+    }));
+  };
+
+  // Add temperature alert
+  const handleAddTempAlert = async () => {
+    if (!selectedShipmentForAlert) return;
+
+    const newAlert = {
+      type: 'temperature',
+      minValue: tempAlertRange.min,
+      maxValue: tempAlertRange.max,
+      unit: '°C',
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedAlerts = [...currentAlerts, newAlert];
+
+    try {
+      console.log('Sending alert update request:', {
+        shipmentId: selectedShipmentForAlert._id,
+        alertPresets: updatedAlerts,
+        legNumber: 1
+      });
+
+      const response = await fetch(
+        `https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta/${selectedShipmentForAlert._id}/alerts`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            alertPresets: updatedAlerts,
+            legNumber: 1
+          }),
+        }
+      );
+
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+
+      const responseText = await response.text();
+      console.log('Response body:', responseText);
+
+      if (response.ok) {
+        const result = responseText ? JSON.parse(responseText) : {};
+        console.log('Success response:', result);
+        
+        setCurrentAlerts(updatedAlerts);
+        
+        // Update the shipment in the local state
+        setShipments(prev => prev.map(ship => 
+          ship._id === selectedShipmentForAlert._id 
+            ? {
+                ...ship,
+                legs: ship.legs.map((leg, index) => 
+                  index === 0 
+                    ? { ...leg, alertPresets: updatedAlerts }
+                    : leg
+                )
+              }
+            : ship
+        ));
+        
+        alert('Temperature alert added successfully!');
+      } else {
+        console.error('Failed response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: responseText
+        });
+        throw new Error(`HTTP ${response.status}: ${response.statusText}\n${responseText}`);
+      }
+    } catch (error) {
+      console.error('Error adding temperature alert:', error);
+      alert(`Failed to add temperature alert: ${error.message}`);
+    }
+  };
+
+  // Remove temperature alert
+  const handleRemoveAlert = async (alertIndex) => {
+    const updatedAlerts = currentAlerts.filter((_, index) => index !== alertIndex);
+
+    try {
+      console.log('Sending alert removal request:', {
+        shipmentId: selectedShipmentForAlert._id,
+        alertPresets: updatedAlerts,
+        legNumber: 1
+      });
+
+      const response = await fetch(
+        `https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta/${selectedShipmentForAlert._id}/alerts`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            alertPresets: updatedAlerts,
+            legNumber: 1
+          }),
+        }
+      );
+
+      console.log('Remove response status:', response.status);
+      
+      const responseText = await response.text();
+      console.log('Remove response body:', responseText);
+
+      if (response.ok) {
+        const result = responseText ? JSON.parse(responseText) : {};
+        console.log('Remove success response:', result);
+        
+        setCurrentAlerts(updatedAlerts);
+        
+        // Update the shipment in the local state
+        setShipments(prev => prev.map(ship => 
+          ship._id === selectedShipmentForAlert._id 
+            ? {
+                ...ship,
+                legs: ship.legs.map((leg, index) => 
+                  index === 0 
+                    ? { ...leg, alertPresets: updatedAlerts }
+                    : leg
+                )
+              }
+            : ship
+        ));
+        
+        alert('Temperature alert removed successfully!');
+      } else {
+        console.error('Failed remove response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: responseText
+        });
+        throw new Error(`HTTP ${response.status}: ${response.statusText}\n${responseText}`);
+      }
+    } catch (error) {
+      console.error('Error removing temperature alert:', error);
+      alert(`Failed to remove temperature alert: ${error.message}`);
+    }
+  };
 
   return (
     <div className="shipments-container">
@@ -1381,6 +1564,14 @@ const Shipments = () => {
                                 <span className="checkmark"></span>
                               </label>
                               <span className="shipment-id">#{shipment.trackerId}</span>
+                              {/* Add temperature alert button */}
+                              <button 
+                                className="alert-btn"
+                                onClick={(e) => handleTempAlertClick(e, shipment)}
+                                title="Set Temperature Alerts"
+                              >
+                                🌡️ Alert
+                              </button>
                             </div>
                             <span className={`status ${getShipmentStatus(shipment).toLowerCase().replace(' ', '-')}`}>
                               {getShipmentStatus(shipment)}
@@ -1397,6 +1588,12 @@ const Shipments = () => {
                               <strong>ETA:</strong> {formatDate(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate)}
                             </div>
                           </div>
+                          {/* Show existing alerts */}
+                          {shipment.legs?.[0]?.alertPresets?.length > 0 && (
+                            <div className="route-info">
+                              <strong>Alerts:</strong> {shipment.legs[0].alertPresets.length} active
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))
@@ -1732,6 +1929,7 @@ const Shipments = () => {
                             value={leg.stopAddress}
                             onChange={(e) => handleLegChange(index, 'stopAddress', e.target.value)}
                             required
+                         
                           />
                         </div>
                       </>
@@ -1826,6 +2024,100 @@ const Shipments = () => {
               </button>
               <button className="btn btn-primary" onClick={handleCreateShipment}>
                 Create Shipment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Temperature Alert Modal */}
+      {showTempAlertModal && (
+        <div className="temp-alert-modal">
+          <div className="temp-alert-content">
+            <div className="temp-alert-header">
+              <h3>Temperature Alerts - Shipment #{selectedShipmentForAlert?.trackerId}</h3>
+              <button className="close-btn" onClick={handleCloseTempAlert}>
+                ×
+              </button>
+            </div>
+            
+            <div className="temp-alert-body">
+              <div className="range-slider-container">
+                <label>Set Temperature Range (°C)</label>
+                
+                <div className="dual-range-slider">
+                  <div className="range-track"></div>
+                  <div 
+                    className="range-fill" 
+                    style={{
+                      left: `${((tempAlertRange.min + 40) / 80) * 100}%`,
+                      width: `${((tempAlertRange.max - tempAlertRange.min) / 80) * 100}%`
+                    }}
+                  ></div>
+                  
+                  <input
+                    type="range"
+                    className="range-input"
+                    min="-40"
+                    max="40"
+                    value={tempAlertRange.min}
+                    onChange={(e) => handleTempRangeChange('min', e.target.value)}
+                    style={{ zIndex: 1 }}
+                  />
+                  
+                  <input
+                    type="range"
+                    className="range-input"
+                    min="-40"
+                    max="40"
+                    value={tempAlertRange.max}
+                    onChange={(e) => handleTempRangeChange('max', e.target.value)}
+                    style={{ zIndex: 2 }}
+                  />
+                </div>
+                
+                <div className="range-values">
+                  <div className="range-value">Min: {tempAlertRange.min}°C</div>
+                  <div className="range-value">Max: {tempAlertRange.max}°C</div>
+                </div>
+                
+                <div className="range-labels">
+                  <span>-40°C</span>
+                  <span>40°C</span>
+                </div>
+              </div>
+
+              {/* Current Alerts */}
+              <div className="current-alerts">
+                <h4>Current Temperature Alerts</h4>
+                {currentAlerts.length === 0 ? (
+                  <p style={{ fontSize: '0.85rem', color: '#718096', margin: 0 }}>
+                    No temperature alerts set
+                  </p>
+                ) : (
+                  currentAlerts.map((alert, index) => (
+                    <div key={index} className="alert-preset-item">
+                      <div className="alert-preset-info">
+                        {alert.minValue}°C to {alert.maxValue}°C
+                      </div>
+                      <button 
+                        className="remove-alert-btn"
+                        onClick={() => handleRemoveAlert(index)}
+                      >
+                          Remove
+                        </button>
+                      </div>
+                  ))
+                )}
+              </div>
+            </div>
+            
+            <div className="temp-alert-footer">
+              <button className="btn btn-secondary" onClick={handleCloseTempAlert}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleAddTempAlert}>
+                Add Alert
               </button>
             </div>
           </div>
