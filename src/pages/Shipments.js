@@ -53,6 +53,7 @@ const Shipments = () => {
   const [showTempAlertModal, setShowTempAlertModal] = useState(false);
   const [selectedShipmentForAlert, setSelectedShipmentForAlert] = useState(null);
   const [tempAlertRange, setTempAlertRange] = useState({ min: -10, max: 40 });
+  const [humidityAlertRange, setHumidityAlertRange] = useState({ min: 20, max: 80 });
   const [currentAlerts, setCurrentAlerts] = useState([]);
   
   // User timezone (you can make this configurable)
@@ -1023,7 +1024,8 @@ const Shipments = () => {
     // Load existing alert presets
     const existingAlerts = shipment.legs?.[0]?.alertPresets || [];
     const tempAlerts = existingAlerts.filter(alert => alert.type === 'temperature');
-    setCurrentAlerts(tempAlerts);
+    const humidityAlerts = existingAlerts.filter(alert => alert.type === 'humidity');
+    setCurrentAlerts(existingAlerts);
     
     // Set default range if no existing alerts
     if (tempAlerts.length > 0) {
@@ -1035,6 +1037,16 @@ const Shipments = () => {
     } else {
       setTempAlertRange({ min: -10, max: 40 });
     }
+
+    if (humidityAlerts.length > 0) {
+      const lastAlert = humidityAlerts[humidityAlerts.length - 1];
+      setHumidityAlertRange({
+        min: lastAlert.minValue || 20,
+        max: lastAlert.maxValue || 80
+      });
+    } else {
+      setHumidityAlertRange({ min: 20, max: 80 });
+    }
     
     setShowTempAlertModal(true);
   };
@@ -1045,11 +1057,20 @@ const Shipments = () => {
     setSelectedShipmentForAlert(null);
     setCurrentAlerts([]);
     setTempAlertRange({ min: -10, max: 40 });
+    setHumidityAlertRange({ min: 20, max: 80 });
   };
 
   // Handle temperature range change
   const handleTempRangeChange = (type, value) => {
     setTempAlertRange(prev => ({
+      ...prev,
+      [type]: parseInt(value)
+    }));
+  };
+
+  // Handle humidity range change
+  const handleHumidityRangeChange = (type, value) => {
+    setHumidityAlertRange(prev => ({
       ...prev,
       [type]: parseInt(value)
     }));
@@ -1070,7 +1091,7 @@ const Shipments = () => {
     const updatedAlerts = [...currentAlerts, newAlert];
 
     try {
-      console.log('Sending alert update request:', {
+      console.log('Sending temperature alert update request:', {
         shipmentId: selectedShipmentForAlert._id,
         alertPresets: updatedAlerts,
         legNumber: 1
@@ -1088,16 +1109,7 @@ const Shipments = () => {
         }
       );
 
-      console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
-
-      const responseText = await response.text();
-      console.log('Response body:', responseText);
-
       if (response.ok) {
-        const result = responseText ? JSON.parse(responseText) : {};
-        console.log('Success response:', result);
-        
         setCurrentAlerts(updatedAlerts);
         
         // Update the shipment in the local state
@@ -1116,16 +1128,71 @@ const Shipments = () => {
         
         alert('Temperature alert added successfully!');
       } else {
-        console.error('Failed response:', {
-          status: response.status,
-          statusText: response.statusText,
-          body: responseText
-        });
-        throw new Error(`HTTP ${response.status}: ${response.statusText}\n${responseText}`);
+        throw new Error('Failed to add temperature alert');
       }
     } catch (error) {
       console.error('Error adding temperature alert:', error);
       alert(`Failed to add temperature alert: ${error.message}`);
+    }
+  };
+
+  // Add humidity alert
+  const handleAddHumidityAlert = async () => {
+    if (!selectedShipmentForAlert) return;
+
+    const newAlert = {
+      type: 'humidity',
+      minValue: humidityAlertRange.min,
+      maxValue: humidityAlertRange.max,
+      unit: '%',
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedAlerts = [...currentAlerts, newAlert];
+
+    try {
+      console.log('Sending humidity alert update request:', {
+        shipmentId: selectedShipmentForAlert._id,
+        alertPresets: updatedAlerts,
+        legNumber: 1
+      });
+
+      const response = await fetch(
+        `https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta/${selectedShipmentForAlert._id}/alerts`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            alertPresets: updatedAlerts,
+            legNumber: 1
+          }),
+        }
+      );
+
+      if (response.ok) {
+        setCurrentAlerts(updatedAlerts);
+        
+        // Update the shipment in the local state
+        setShipments(prev => prev.map(ship => 
+          ship._id === selectedShipmentForAlert._id 
+            ? {
+                ...ship,
+                legs: ship.legs.map((leg, index) => 
+                  index === 0 
+                    ? { ...leg, alertPresets: updatedAlerts }
+                    : leg
+                )
+              }
+            : ship
+        ));
+        
+        alert('Humidity alert added successfully!');
+      } else {
+        throw new Error('Failed to add humidity alert');
+      }
+    } catch (error) {
+      console.error('Error adding humidity alert:', error);
+      alert(`Failed to add humidity alert: ${error.message}`);
     }
   };
 
@@ -1177,7 +1244,7 @@ const Shipments = () => {
             : ship
         ));
         
-        alert('Temperature alert removed successfully!');
+        alert('Alert removed successfully!');
       } else {
         console.error('Failed remove response:', {
           status: response.status,
@@ -1187,8 +1254,50 @@ const Shipments = () => {
         throw new Error(`HTTP ${response.status}: ${response.statusText}\n${responseText}`);
       }
     } catch (error) {
-      console.error('Error removing temperature alert:', error);
-      alert(`Failed to remove temperature alert: ${error.message}`);
+      console.error('Error removing alert:', error);
+      alert(`Failed to remove alert: ${error.message}`);
+    }
+  };
+
+  // Helper function to format alert presets for display
+  const formatAlertPresets = (presets) => {
+    if (!presets || presets.length === 0) return 'No alerts';
+    return presets.map(p => `${p.minValue}${p.unit} to ${p.maxValue}${p.unit}`).join(', ');
+  };
+
+  // Helper function to format alert type icon
+  const formatAlertTypeIcon = (type) => {
+    switch (type) {
+      case 'temperature':
+        return '🌡️';
+      case 'humidity':
+        return '💧';
+      default:
+        return '⚠️';
+    }
+  };
+
+  // Helper function to format alert type label
+  const formatAlertTypeLabel = (type) => {
+    switch (type) {
+      case 'temperature':
+        return 'Temperature Alert';
+      case 'humidity':
+        return 'Humidity Alert';
+      default:
+        return 'Alert';
+    }
+  };
+
+  // Helper function to get alert color
+  const getAlertColor = (type) => {
+    switch (type) {
+      case 'temperature':
+        return '#ff6b6b';
+      case 'humidity':
+        return '#4ecdc4';
+      default:
+        return '#ffcc00';
     }
   };
 
@@ -1929,7 +2038,6 @@ const Shipments = () => {
                             value={leg.stopAddress}
                             onChange={(e) => handleLegChange(index, 'stopAddress', e.target.value)}
                             required
-                         
                           />
                         </div>
                       </>
@@ -2030,83 +2138,169 @@ const Shipments = () => {
         </div>
       )}
 
-      {/* Temperature Alert Modal */}
+      {/* Environmental Alerts Modal (Temperature and Humidity) */}
       {showTempAlertModal && (
         <div className="temp-alert-modal">
           <div className="temp-alert-content">
             <div className="temp-alert-header">
-              <h3>Temperature Alerts - Shipment #{selectedShipmentForAlert?.trackerId}</h3>
+              <h3>Environmental Alerts - Shipment #{selectedShipmentForAlert?.trackerId}</h3>
               <button className="close-btn" onClick={handleCloseTempAlert}>
                 ×
               </button>
             </div>
             
             <div className="temp-alert-body">
-              <div className="range-slider-container">
-                <label>Set Temperature Range (°C)</label>
-                
-                <div className="dual-range-slider">
-                  <div className="range-track"></div>
-                  <div 
-                    className="range-fill" 
-                    style={{
-                      left: `${((tempAlertRange.min + 40) / 80) * 100}%`,
-                      width: `${((tempAlertRange.max - tempAlertRange.min) / 80) * 100}%`
-                    }}
-                  ></div>
+              {/* Temperature Alert Section */}
+              <div className="alert-section">
+                <h4 style={{ margin: '0 0 1rem 0', color: '#2d3748', fontSize: '1rem', fontWeight: '600' }}>
+                  🌡️ Temperature Alerts
+                </h4>
+                <div className="range-slider-container">
+                  <label>Set Temperature Range (°C)</label>
                   
-                  <input
-                    type="range"
-                    className="range-input"
-                    min="-40"
-                    max="40"
-                    value={tempAlertRange.min}
-                    onChange={(e) => handleTempRangeChange('min', e.target.value)}
-                    style={{ zIndex: 1 }}
-                  />
+                  <div className="dual-range-slider">
+                    <div className="range-track"></div>
+                    <div 
+                      className="range-fill" 
+                      style={{
+                        left: `${((tempAlertRange.min + 40) / 80) * 100}%`,
+                        width: `${((tempAlertRange.max - tempAlertRange.min) / 80) * 100}%`,
+                        background: '#ff6b6b'
+                      }}
+                    ></div>
+                    
+                    <input
+                      type="range"
+                      className="range-input"
+                      min="-40"
+                      max="40"
+                      value={tempAlertRange.min}
+                      onChange={(e) => handleTempRangeChange('min', e.target.value)}
+                      style={{ zIndex: 1 }}
+                    />
+                    
+                    <input
+                      type="range"
+                      className="range-input"
+                      min="-40"
+                      max="40"
+                      value={tempAlertRange.max}
+                      onChange={(e) => handleTempRangeChange('max', e.target.value)}
+                      style={{ zIndex: 2 }}
+                    />
+                  </div>
                   
-                  <input
-                    type="range"
-                    className="range-input"
-                    min="-40"
-                    max="40"
-                    value={tempAlertRange.max}
-                    onChange={(e) => handleTempRangeChange('max', e.target.value)}
-                    style={{ zIndex: 2 }}
-                  />
+                  <div className="range-values">
+                    <div className="range-value">Min: {tempAlertRange.min}°C</div>
+                    <div className="range-value">Max: {tempAlertRange.max}°C</div>
+                  </div>
+                  
+                  <div className="range-labels">
+                    <span>-40°C</span>
+                    <span>40°C</span>
+                  </div>
                 </div>
-                
-                <div className="range-values">
-                  <div className="range-value">Min: {tempAlertRange.min}°C</div>
-                  <div className="range-value">Max: {tempAlertRange.max}°C</div>
+
+                <div style={{ textAlign: 'center', margin: '1rem 0' }}>
+                  <button 
+                    className="btn btn-primary"
+                    onClick={handleAddTempAlert}
+                    style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
+                  >
+                    Add Temperature Alert
+                  </button>
                 </div>
-                
-                <div className="range-labels">
-                  <span>-40°C</span>
-                  <span>40°C</span>
+              </div>
+
+              {/* Humidity Alert Section */}
+              <div className="alert-section" style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 1rem 0', color: '#2d3748', fontSize: '1rem', fontWeight: '600' }}>
+                  💧 Humidity Alerts
+                </h4>
+                <div className="range-slider-container">
+                  <label>Set Humidity Range (%)</label>
+                  
+                  <div className="dual-range-slider">
+                    <div className="range-track"></div>
+                    <div 
+                      className="range-fill" 
+                      style={{
+                        left: `${(humidityAlertRange.min / 100) * 100}%`,
+                        width: `${((humidityAlertRange.max - humidityAlertRange.min) / 100) * 100}%`,
+                        background: '#4ecdc4'
+                      }}
+                    ></div>
+                    
+                    <input
+                      type="range"
+                      className="range-input"
+                      min="0"
+                      max="100"
+                      value={humidityAlertRange.min}
+                      onChange={(e) => handleHumidityRangeChange('min', e.target.value)}
+                      style={{ zIndex: 1 }}
+                    />
+                    
+                    <input
+                      type="range"
+                      className="range-input"
+                      min="0"
+                      max="100"
+                      value={humidityAlertRange.max}
+                      onChange={(e) => handleHumidityRangeChange('max', e.target.value)}
+                      style={{ zIndex: 2 }}
+                    />
+                  </div>
+                  
+                  <div className="range-values">
+                    <div className="range-value">Min: {humidityAlertRange.min}%</div>
+                    <div className="range-value">Max: {humidityAlertRange.max}%</div>
+                  </div>
+                  
+                  <div className="range-labels">
+                    <span>0%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center', margin: '1rem 0' }}>
+                  <button 
+                    className="btn btn-primary"
+                    onClick={handleAddHumidityAlert}
+                    style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
+                  >
+                    Add Humidity Alert
+                  </button>
                 </div>
               </div>
 
               {/* Current Alerts */}
-              <div className="current-alerts">
-                <h4>Current Temperature Alerts</h4>
+              <div className="current-alerts" style={{ marginTop: '2rem' }}>
+                <h4>Current Environmental Alerts</h4>
                 {currentAlerts.length === 0 ? (
                   <p style={{ fontSize: '0.85rem', color: '#718096', margin: 0 }}>
-                    No temperature alerts set
+                    No environmental alerts set
                   </p>
                 ) : (
                   currentAlerts.map((alert, index) => (
                     <div key={index} className="alert-preset-item">
                       <div className="alert-preset-info">
-                        {alert.minValue}°C to {alert.maxValue}°C
+                        <span style={{ 
+                          display: 'inline-block', 
+                          marginRight: '0.5rem',
+                          fontSize: '0.9rem'
+                        }}>
+                          {alert.type === 'temperature' ? '🌡️' : '💧'}
+                        </span>
+                        <strong style={{ textTransform: 'capitalize' }}>{alert.type}:</strong> {alert.minValue}{alert.unit} to {alert.maxValue}{alert.unit}
                       </div>
                       <button 
                         className="remove-alert-btn"
                         onClick={() => handleRemoveAlert(index)}
                       >
-                          Remove
-                        </button>
-                      </div>
+                        Remove
+                      </button>
+                    </div>
                   ))
                 )}
               </div>
@@ -2114,10 +2308,7 @@ const Shipments = () => {
             
             <div className="temp-alert-footer">
               <button className="btn btn-secondary" onClick={handleCloseTempAlert}>
-                Cancel
-              </button>
-              <button className="btn btn-primary" onClick={handleAddTempAlert}>
-                Add Alert
+                Close
               </button>
             </div>
           </div>

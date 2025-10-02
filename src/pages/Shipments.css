@@ -728,8 +728,8 @@
   background: white;
   border-radius: 12px;
   width: 90%;
-  max-width: 500px;
-  max-height: 80vh;
+  max-width: 600px;
+  max-height: 85vh;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
 }
@@ -941,4 +941,28 @@
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
+}
+
+.alert-section {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  border: 1px solid #e2e8f0;
+}
+
+.alert-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Humidity-specific range fill color */
+.humidity-range .range-fill {
+  background: #4ecdc4 !important;
+}
+
+/* Temperature-specific range fill color */
+.temperature-range .range-fill {
+  background: #ff6b6b !important;
 }
