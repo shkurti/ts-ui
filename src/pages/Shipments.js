@@ -1196,7 +1196,7 @@ const Shipments = () => {
     }
   };
 
-  // Remove temperature alert
+  // Remove alert (works for both temperature and humidity)
   const handleRemoveAlert = async (alertIndex) => {
     const updatedAlerts = currentAlerts.filter((_, index) => index !== alertIndex);
 
@@ -1673,13 +1673,14 @@ const Shipments = () => {
                                 <span className="checkmark"></span>
                               </label>
                               <span className="shipment-id">#{shipment.trackerId}</span>
-                              {/* Add temperature alert button */}
+                              {/* Add alert button with thermometer icon */}
                               <button 
                                 className="alert-btn"
                                 onClick={(e) => handleTempAlertClick(e, shipment)}
-                                title="Set Temperature Alerts"
+                                title="Configure Environmental Alerts"
                               >
-                                🌡️ Alert
+                                <span className="alert-btn-icon">🌡️</span>
+                                <span>Alerts</span>
                               </button>
                             </div>
                             <span className={`status ${getShipmentStatus(shipment).toLowerCase().replace(' ', '-')}`}>
@@ -1946,6 +1947,7 @@ const Shipments = () => {
               
               {/* Start marker */}
               {locationData.length > 0 && (
+
                 <Marker 
                   position={[locationData[0].latitude, locationData[0].longitude]}
                   icon={L.divIcon({
@@ -2302,7 +2304,7 @@ const Shipments = () => {
                       </button>
                     </div>
                   ))
-                )}
+      )}
               </div>
             </div>
             
