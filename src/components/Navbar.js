@@ -5,9 +5,14 @@ import './Navbar.css';
 const Navbar = () => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [configureDropdownOpen, setConfigureDropdownOpen] = useState(false);
 
   const isActive = (path) => {
     return location.pathname === path || (path === '/shipments' && location.pathname === '/');
+  };
+
+  const isConfigureActive = () => {
+    return location.pathname.startsWith('/configure');
   };
 
   const toggleMobileMenu = () => {
@@ -18,6 +23,17 @@ const Navbar = () => {
   const closeMobileMenu = () => {
     console.log('Closing menu');
     setMobileMenuOpen(false);
+    setConfigureDropdownOpen(false);
+  };
+
+  const toggleConfigureDropdown = (e) => {
+    e.preventDefault();
+    setConfigureDropdownOpen(!configureDropdownOpen);
+  };
+
+  const handleConfigureItemClick = () => {
+    setConfigureDropdownOpen(false);
+    closeMobileMenu();
   };
 
   console.log('Current mobileMenuOpen state:', mobileMenuOpen);
@@ -67,14 +83,35 @@ const Navbar = () => {
               Analysis
             </Link>
           </li>
-          <li className="navbar-item">
-            <Link 
-              to="/configure" 
-              className={`navbar-link ${isActive('/configure') ? 'active' : ''}`}
-              onClick={closeMobileMenu}
+          <li className={`navbar-item dropdown ${configureDropdownOpen ? 'dropdown-open' : ''}`}>
+            <a 
+              href="#" 
+              className={`navbar-link dropdown-toggle ${isConfigureActive() ? 'active' : ''}`}
+              onClick={toggleConfigureDropdown}
             >
               Configure
-            </Link>
+              <span className="dropdown-arrow">▼</span>
+            </a>
+            <ul className="dropdown-menu">
+              <li>
+                <Link 
+                  to="/configure" 
+                  className="dropdown-link"
+                  onClick={handleConfigureItemClick}
+                >
+                  Settings
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  to="/configure/add-alerts" 
+                  className="dropdown-link"
+                  onClick={handleConfigureItemClick}
+                >
+                  Add Alerts
+                </Link>
+              </li>
+            </ul>
           </li>
         </ul>
       </div>

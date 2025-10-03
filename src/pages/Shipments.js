@@ -1016,37 +1016,14 @@ const Shipments = () => {
     };
   }, [selectedShipmentDetail]); // keep dependency as you had it
 
-  // Handle opening temperature alert modal
+  // Handle opening temperature alert modal - now only shows existing alerts
   const handleTempAlertClick = (e, shipment) => {
     e.stopPropagation(); // Prevent shipment detail view from opening
     setSelectedShipmentForAlert(shipment);
     
-    // Load existing alert presets
+    // Load existing alert presets - only show what exists
     const existingAlerts = shipment.legs?.[0]?.alertPresets || [];
-    const tempAlerts = existingAlerts.filter(alert => alert.type === 'temperature');
-    const humidityAlerts = existingAlerts.filter(alert => alert.type === 'humidity');
     setCurrentAlerts(existingAlerts);
-    
-    // Set default range if no existing alerts
-    if (tempAlerts.length > 0) {
-      const lastAlert = tempAlerts[tempAlerts.length - 1];
-      setTempAlertRange({
-        min: lastAlert.minValue || -10,
-        max: lastAlert.maxValue || 40
-      });
-    } else {
-      setTempAlertRange({ min: -10, max: 40 });
-    }
-
-    if (humidityAlerts.length > 0) {
-      const lastAlert = humidityAlerts[humidityAlerts.length - 1];
-      setHumidityAlertRange({
-        min: lastAlert.minValue || 20,
-        max: lastAlert.maxValue || 80
-      });
-    } else {
-      setHumidityAlertRange({ min: 20, max: 80 });
-    }
     
     setShowTempAlertModal(true);
   };
@@ -1673,15 +1650,17 @@ const Shipments = () => {
                                 <span className="checkmark"></span>
                               </label>
                               <span className="shipment-id">#{shipment.trackerId}</span>
-                              {/* Add alert button with thermometer icon */}
-                              <button 
-                                className="alert-btn"
-                                onClick={(e) => handleTempAlertClick(e, shipment)}
-                                title="Configure Environmental Alerts"
-                              >
-                                <span className="alert-btn-icon">🌡️</span>
-                                <span>Alerts</span>
-                              </button>
+                              {/* Show alert button only if shipment has alerts */}
+                              {shipment.legs?.[0]?.alertPresets?.length > 0 && (
+                                <button 
+                                  className="alert-btn"
+                                  onClick={(e) => handleTempAlertClick(e, shipment)}
+                                  title="View Environmental Alerts"
+                                >
+                                  <span className="alert-btn-icon">🌡️</span>
+                                  <span>Alerts ({shipment.legs[0].alertPresets.length})</span>
+                                </button>
+                              )}
                             </div>
                             <span className={`status ${getShipmentStatus(shipment).toLowerCase().replace(' ', '-')}`}>
                               {getShipmentStatus(shipment)}
@@ -1967,7 +1946,7 @@ const Shipments = () => {
                   })}
                 >
                   <Popup>
-                    <div>
+                                       <div>
                       <strong>Start Point</strong><br />
                       Time: {formatTimestamp(locationData[0].timestamp)}<br />
                       Coordinates: {locationData[0].latitude.toFixed(6)}, {locationData[0].longitude.toFixed(6)}
@@ -2140,7 +2119,7 @@ const Shipments = () => {
         </div>
       )}
 
-      {/* Environmental Alerts Modal (Temperature and Humidity) */}
+      {/* Environmental Alerts Modal - View Only Mode */}
       {showTempAlertModal && (
         <div className="temp-alert-modal">
           <div className="temp-alert-content">
@@ -2152,159 +2131,67 @@ const Shipments = () => {
             </div>
             
             <div className="temp-alert-body">
-              {/* Temperature Alert Section */}
-              <div className="alert-section">
-                <h4 style={{ margin: '0 0 1rem 0', color: '#2d3748', fontSize: '1rem', fontWeight: '600' }}>
-                  🌡️ Temperature Alerts
-                </h4>
-                <div className="range-slider-container">
-                  <label>Set Temperature Range (°C)</label>
-                  
-                  <div className="dual-range-slider">
-                    <div className="range-track"></div>
-                    <div 
-                      className="range-fill" 
-                      style={{
-                        left: `${((tempAlertRange.min + 40) / 80) * 100}%`,
-                        width: `${((tempAlertRange.max - tempAlertRange.min) / 80) * 100}%`,
-                        background: '#ff6b6b'
-                      }}
-                    ></div>
-                    
-                    <input
-                      type="range"
-                      className="range-input"
-                      min="-40"
-                      max="40"
-                      value={tempAlertRange.min}
-                      onChange={(e) => handleTempRangeChange('min', e.target.value)}
-                      style={{ zIndex: 1 }}
-                    />
-                    
-                    <input
-                      type="range"
-                      className="range-input"
-                      min="-40"
-                      max="40"
-                      value={tempAlertRange.max}
-                      onChange={(e) => handleTempRangeChange('max', e.target.value)}
-                      style={{ zIndex: 2 }}
-                    />
-                  </div>
-                  
-                  <div className="range-values">
-                    <div className="range-value">Min: {tempAlertRange.min}°C</div>
-                    <div className="range-value">Max: {tempAlertRange.max}°C</div>
-                  </div>
-                  
-                  <div className="range-labels">
-                    <span>-40°C</span>
-                    <span>40°C</span>
-                  </div>
-                </div>
-
-                <div style={{ textAlign: 'center', margin: '1rem 0' }}>
-                  <button 
-                    className="btn btn-primary"
-                    onClick={handleAddTempAlert}
-                    style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
-                  >
-                    Add Temperature Alert
-                  </button>
-                </div>
-              </div>
-
-              {/* Humidity Alert Section */}
-              <div className="alert-section" style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
-                <h4 style={{ margin: '0 0 1rem 0', color: '#2d3748', fontSize: '1rem', fontWeight: '600' }}>
-                  💧 Humidity Alerts
-                </h4>
-                <div className="range-slider-container">
-                  <label>Set Humidity Range (%)</label>
-                  
-                  <div className="dual-range-slider">
-                    <div className="range-track"></div>
-                    <div 
-                      className="range-fill" 
-                      style={{
-                        left: `${(humidityAlertRange.min / 100) * 100}%`,
-                        width: `${((humidityAlertRange.max - humidityAlertRange.min) / 100) * 100}%`,
-                        background: '#4ecdc4'
-                      }}
-                    ></div>
-                    
-                    <input
-                      type="range"
-                      className="range-input"
-                      min="0"
-                      max="100"
-                      value={humidityAlertRange.min}
-                      onChange={(e) => handleHumidityRangeChange('min', e.target.value)}
-                      style={{ zIndex: 1 }}
-                    />
-                    
-                    <input
-                      type="range"
-                      className="range-input"
-                      min="0"
-                      max="100"
-                      value={humidityAlertRange.max}
-                      onChange={(e) => handleHumidityRangeChange('max', e.target.value)}
-                      style={{ zIndex: 2 }}
-                    />
-                  </div>
-                  
-                  <div className="range-values">
-                    <div className="range-value">Min: {humidityAlertRange.min}%</div>
-                    <div className="range-value">Max: {humidityAlertRange.max}%</div>
-                  </div>
-                  
-                  <div className="range-labels">
-                    <span>0%</span>
-                    <span>100%</span>
-                  </div>
-                </div>
-
-                <div style={{ textAlign: 'center', margin: '1rem 0' }}>
-                  <button 
-                    className="btn btn-primary"
-                    onClick={handleAddHumidityAlert}
-                    style={{ fontSize: '0.85rem', padding: '0.5rem 1rem' }}
-                  >
-                    Add Humidity Alert
-                  </button>
-                </div>
-              </div>
-
-              {/* Current Alerts */}
-              <div className="current-alerts" style={{ marginTop: '2rem' }}>
-                <h4>Current Environmental Alerts</h4>
+              {/* Current Alerts - View Only */}
+              <div className="current-alerts-view">
+                <h4>Environmental Alerts for this Shipment</h4>
                 {currentAlerts.length === 0 ? (
-                  <p style={{ fontSize: '0.85rem', color: '#718096', margin: 0 }}>
-                    No environmental alerts set
+                  <p style={{ fontSize: '0.85rem', color: '#718096', margin: 0, textAlign: 'center', padding: '2rem' }}>
+                    No environmental alerts configured for this shipment
                   </p>
                 ) : (
-                  currentAlerts.map((alert, index) => (
-                    <div key={index} className="alert-preset-item">
-                      <div className="alert-preset-info">
-                        <span style={{ 
-                          display: 'inline-block', 
-                          marginRight: '0.5rem',
-                          fontSize: '0.9rem'
-                        }}>
-                          {alert.type === 'temperature' ? '🌡️' : '💧'}
-                        </span>
-                        <strong style={{ textTransform: 'capitalize' }}>{alert.type}:</strong> {alert.minValue}{alert.unit} to {alert.maxValue}{alert.unit}
+                  <div className="alerts-list">
+                    {currentAlerts.map((alert, index) => (
+                      <div key={index} className="alert-preview-item">
+                        <div className="alert-preview-info">
+                          <span className="alert-icon">
+                            {alert.type === 'temperature' ? '🌡️' : '💧'}
+                          </span>
+                          <div className="alert-details">
+                            <strong>{alert.name || `${alert.type} Alert`}</strong>
+                            <span className="alert-range">
+                              Range: {alert.minValue}{alert.unit} to {alert.maxValue}{alert.unit}
+                            </span>
+                            {alert.createdAt && (
+                              <span className="alert-created">
+                                Created: {new Date(alert.createdAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="alert-actions">
+                          <span className="alert-type-badge">{alert.type}</span>
+                          <button 
+                            className="remove-existing-alert-btn"
+                            onClick={() => handleRemoveAlert(index)}
+                            title="Remove this alert"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
-                      <button 
-                        className="remove-alert-btn"
-                        onClick={() => handleRemoveAlert(index)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))
-      )}
+                    ))}
+                  </div>
+                )}
+                
+                {currentAlerts.length > 0 && (
+                  <div className="alert-summary">
+                    <p style={{ 
+                      fontSize: '0.9rem', 
+                      color: '#4a5568', 
+                      margin: '1rem 0 0 0',
+                      padding: '1rem',
+                      background: '#f0f9ff',
+                      borderRadius: '6px',
+                      border: '1px solid #e0f2fe'
+                    }}>
+                      <strong>Total Active Alerts:</strong> {currentAlerts.length}
+                      <br />
+                      <span style={{ fontSize: '0.8rem', color: '#718096' }}>
+                        To add new alerts, use the "Add Alerts" option in the Configure menu.
+                      </span>
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
             
