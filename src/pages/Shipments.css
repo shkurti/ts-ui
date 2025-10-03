@@ -650,6 +650,11 @@
   text-transform: uppercase;
 }
 
+.alert-type.critical {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
 .alert-type.warning {
   background: #fff3cd;
   color: #856404;
@@ -1147,4 +1152,20 @@
   background: #553c9a;
   transform: translateY(0);
   box-shadow: 0 1px 4px rgba(102, 126, 234, 0.3);
+}
+
+/* Add alert animation for new alerts */
+@keyframes alertFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.alert-item.new-alert {
+  animation: alertFadeIn 0.5s ease-out;
 }
