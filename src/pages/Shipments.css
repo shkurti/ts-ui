@@ -1154,7 +1154,7 @@
   box-shadow: 0 1px 4px rgba(102, 126, 234, 0.3);
 }
 
-/* Add alert animation for new alerts */
+/* Add alert animation for new alerts*/
 @keyframes alertFadeIn {
   from {
     opacity: 0;
