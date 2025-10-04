@@ -750,35 +750,6 @@ const Shipments = () => {
     return null;
   };
 
-  // MapTiler Geocoding Control React wrapper
-  const MapTilerGeocodingControl = ({ apiKey }) => {
-    const map = useMap();
-    useEffect(() => {
-      // Only run if window.L and window.maptiler exist (CDN loaded)
-      if (window.L && window.maptiler && window.maptiler.geocoding) {
-        const geocodingControl = window.maptiler.geocoding.control({
-          apiKey,
-          marker: true,
-          showResultsWhileTyping: true,
-          collapsed: false,
-          placeholder: 'Search address…'
-        }).addTo(map);
-
-        // Optionally, listen for geocode result events
-        geocodingControl.on('select', (e) => {
-          // e.data contains the selected result
-          // e.data.lat, e.data.lon
-          // You can update your state or do something here if needed
-        });
-
-        return () => {
-          map.removeControl(geocodingControl);
-        };
-      }
-    }, [map, apiKey]);
-    return null;
-  };
-
   // Helper to create a numbered marker icon for legs (origin, stops, destination)
   const createNumberedMarkerIcon = (number, isFirst, isLast) => {
     let bg = "#1976d2";
@@ -817,6 +788,7 @@ const Shipments = () => {
         setLegPoints([]);
         return;
       }
+      
       // Build ordered addresses: origin, stops, destination
       const addresses = [];
       const legs = selectedShipmentDetail.legs;
@@ -824,11 +796,28 @@ const Shipments = () => {
       legs.forEach(leg => {
         if (leg.stopAddress) addresses.push(leg.stopAddress);
       });
-      // Geocode all using MapTiler API
-      const results = await Promise.all(addresses.map(async (address) => {
+      
+      // Use more reliable geocoding with better error handling for production
+      const results = await Promise.all(addresses.map(async (address, index) => {
         try {
-          const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(address)}.json?key=${MAPTILER_API_KEY}`;
-          const res = await fetch(url);
+          // Add delay between requests to avoid rate limiting
+          if (index > 0) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+          
+          const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(address)}.json?key=${MAPTILER_API_KEY}&limit=1`;
+          const res = await fetch(url, {
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'LogiTrack-App/1.0'
+            }
+          });
+          
+          if (!res.ok) {
+            console.warn(`Geocoding failed for ${address}: ${res.status}`);
+            return null;
+          }
+          
           const data = await res.json();
           if (data && data.features && data.features.length > 0) {
             return {
@@ -837,11 +826,15 @@ const Shipments = () => {
               address,
             };
           }
-        } catch {}
+        } catch (error) {
+          console.error('Geocoding error for address:', address, error);
+        }
         return null;
       }));
+      
       setLegPoints(results.map((r, i) => r && { ...r, number: i + 1 }).filter(Boolean));
     };
+    
     geocodeLegs();
   }, [selectedShipmentDetail]);
 
@@ -1619,17 +1612,25 @@ const Shipments = () => {
           preferCanvas={true}
           key={selectedShipmentDetail ? `detail-${selectedShipmentDetail.trackerId}` : 'overview'}
         >
-          {/* Use MapTiler tiles for better geocoding/visual consistency */}
+          {/* Use MapTiler with enhanced error handling for production */}
           <TileLayer
             url={`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_API_KEY}`}
             tileSize={512}
             zoomOffset={-1}
             minZoom={1}
             attribution='<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a>, <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>'
-            crossOrigin={true}
             maxZoom={19}
+            // Add error handling - fallback to OpenStreetMap if MapTiler fails
+            errorTileUrl="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            // Enhanced production settings
+            crossOrigin=""
+            timeout={10000}
+            retryDelay={1000}
           />
-          <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
+          
+          {/* Remove the MapTilerGeocodingControl - this causes issues in production */}
+          {/* <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} /> */}
+          
           <MapBoundsHandler />
 
           {/* Show all leg markers */}

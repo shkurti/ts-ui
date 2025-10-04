@@ -265,16 +265,13 @@
   right: 0;
   bottom: 0;
   height: 100%;
+  z-index: 1;
 }
 
-.map-container .leaflet-control-zoom {
-  margin-left: 0;
-  margin-right: 10px;
-}
-
-.map-container .leaflet-top.leaflet-left {
-  left: auto;
-  right: 0;
+.map-container .leaflet-container {
+  height: 100% !important;
+  width: 100% !important;
+  background: #f8f9fa;
 }
 
 .modal-overlay {
