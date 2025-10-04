@@ -49,6 +49,17 @@ const Shipments = () => {
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
   const [hoverMarkerData, setHoverMarkerData] = useState(null);
   
+  // Add state for temperature alert modal
+  const [showTempAlertModal, setShowTempAlertModal] = useState(false);
+  const [selectedShipmentForAlert, setSelectedShipmentForAlert] = useState(null);
+  const [tempAlertRange, setTempAlertRange] = useState({ min: -10, max: 40 });
+  const [humidityAlertRange, setHumidityAlertRange] = useState({ min: 20, max: 80 });
+  const [currentAlerts, setCurrentAlerts] = useState([]);
+  
+  // Add state for alerts
+  const [shipmentAlerts, setShipmentAlerts] = useState([]);
+  const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
+  
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -299,12 +310,13 @@ const Shipments = () => {
     setSelectedShipmentDetail(shipment);
     setActiveTab('sensors');
     
-    // Clear previous sensor data
+    // Clear previous data
     setTemperatureData([]);
     setHumidityData([]);
     setBatteryData([]);
     setSpeedData([]);
     setLocationData([]);
+    setShipmentAlerts([]);
 
     const trackerId = shipment.trackerId;
     const legs = shipment.legs || [];
@@ -417,17 +429,28 @@ const Shipments = () => {
     } finally {
       setIsLoadingSensorData(false);
     }
+
+    // Load alerts for this shipment
+    try {
+      const alertsResponse = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alerts/${shipment._id}`);
+      if (alertsResponse.ok) {
+        const alertsData = await alertsResponse.json();
+        setShipmentAlerts(alertsData);
+      }
+    } catch (error) {
+      console.error('Error fetching alerts:', error);
+    }
   };
 
   const handleBackToList = () => {
     setSelectedShipmentDetail(null);
-    // Clear sensor data when going back
+    // Clear all data when going back
     setTemperatureData([]);
     setHumidityData([]);
     setBatteryData([]);
     setSpeedData([]);
     setLocationData([]);
-    // Clear hover marker
+    setShipmentAlerts([]);
     setHoverMarkerPosition(null);
     setHoverMarkerData(null);
   };
@@ -891,6 +914,18 @@ const Shipments = () => {
     const handleMessage = (event) => {
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        
+        // Handle alert messages
+        if (msg.type === 'alert' && msg.data && selectedShipmentDetail) {
+          const alertData = msg.data;
+          
+          // Only add alert if it's for the currently selected shipment
+          if (alertData.shipmentId === selectedShipmentDetail._id) {
+            setShipmentAlerts(prev => [alertData, ...prev]);
+          }
+          return;
+        }
+
         // Debug: log all incoming messages once
         console.log('WebSocket message received:', msg);
 
@@ -984,19 +1019,19 @@ const Shipments = () => {
 
           if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
             setLocationData(prev => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
+
+            const t = full.Temp ?? full.temperature;
+            if (t !== undefined && t !== null) setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
+
+            const h = full.Hum ?? full.humidity;
+            if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
+
+            const b = full.Batt ?? full.battery;
+            if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
+
+            const s = full.Speed ?? full.speed;
+            if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
           }
-
-          const t = full.Temp ?? full.temperature;
-          if (t !== undefined && t !== null) setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
-
-          const h = full.Hum ?? full.humidity;
-          if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
-
-          const b = full.Batt ?? full.battery;
-          if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
-
-          const s = full.Speed ?? full.speed;
-          if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
         }
       } catch (e) {
         console.error('Error parsing WS message', e);
@@ -1008,6 +1043,121 @@ const Shipments = () => {
       ws.removeEventListener('message', handleMessage);
     };
   }, [selectedShipmentDetail]); // keep dependency as you had it
+
+  // Helper function to format alert severity
+  const getAlertSeverityClass = (severity) => {
+    switch (severity) {
+      case 'critical':
+        return 'critical';
+      case 'warning':
+        return 'warning';
+      default:
+        return 'info';
+    }
+  };
+
+  // Helper function to format alert time
+  const formatAlertTime = (timestamp) => {
+    try {
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+      if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    } catch {
+      return 'Unknown time';
+    }
+  };
+
+  // Handle opening temperature alert modal - now only shows existing alerts
+  const handleTempAlertClick = (e, shipment) => {
+    e.stopPropagation(); // Prevent shipment detail view from opening
+    setSelectedShipmentForAlert(shipment);
+    
+    // Load existing alert presets - only show what exists
+    const existingAlerts = shipment.legs?.[0]?.alertPresets || [];
+    setCurrentAlerts(existingAlerts);
+    
+    setShowTempAlertModal(true);
+  };
+
+  // Handle closing temperature alert modal
+  const handleCloseTempAlert = () => {
+    setShowTempAlertModal(false);
+    setSelectedShipmentForAlert(null);
+    setCurrentAlerts([]);
+    setTempAlertRange({ min: -10, max: 40 });
+    setHumidityAlertRange({ min: 20, max: 80 });
+  };
+
+  // Remove alert (works for both temperature and humidity)
+  const handleRemoveAlert = async (alertIndex) => {
+    const updatedAlerts = currentAlerts.filter((_, index) => index !== alertIndex);
+
+    try {
+      console.log('Sending alert removal request:', {
+        shipmentId: selectedShipmentForAlert._id,
+        alertPresets: updatedAlerts,
+        legNumber: 1
+      });
+
+      const response = await fetch(
+        `https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta/${selectedShipmentForAlert._id}/alerts`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            alertPresets: updatedAlerts,
+            legNumber: 1
+          }),
+        }
+      );
+
+      console.log('Remove response status:', response.status);
+      
+      const responseText = await response.text();
+      console.log('Remove response body:', responseText);
+
+      if (response.ok) {
+        const result = responseText ? JSON.parse(responseText) : {};
+        console.log('Remove success response:', result);
+        
+        setCurrentAlerts(updatedAlerts);
+        
+        // Update the shipment in the local state
+        setShipments(prev => prev.map(ship => 
+          ship._id === selectedShipmentForAlert._id 
+            ? {
+                ...ship,
+                legs: ship.legs.map((leg, index) => 
+                  index === 0 
+                    ? { ...leg, alertPresets: updatedAlerts }
+                    : leg
+                )
+              }
+            : ship
+        ));
+        
+        alert('Alert removed successfully!');
+      } else {
+        console.error('Failed remove response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: responseText
+        });
+        throw new Error(`HTTP ${response.status}: ${response.statusText}\n${responseText}`);
+      }
+    } catch (error) {
+      console.error('Error removing alert:', error);
+      alert(`Failed to remove alert: ${error.message}`);
+    }
+  };
 
   return (
     <div className="shipments-container">
@@ -1273,20 +1423,52 @@ const Shipments = () => {
 
                     {activeTab === 'alerts' && (
                       <div className="alerts-content">
-                        <div className="alert-item">
-                          <div className="alert-header">
-                            <span className="alert-type warning">Temperature Alert</span>
-                            <span className="alert-time">2 hours ago</span>
+                        {isLoadingAlerts ? (
+                          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                            <div style={{
+                              width: '32px',
+                              height: '32px',
+                              border: '3px solid #ddd',
+                              borderTop: '3px solid #007bff',
+                              borderRadius: '50%',
+                              animation: 'spin 1s linear infinite',
+                              margin: '0 auto 15px'
+                            }}></div>
+                            Loading alerts...
                           </div>
-                          <p>Temperature exceeded threshold: 28°C</p>
-                        </div>
-                        <div className="alert-item">
-                          <div className="alert-header">
-                            <span className="alert-type info">Location Update</span>
-                            <span className="alert-time">4 hours ago</span>
+                        ) : shipmentAlerts.length === 0 ? (
+                          <div style={{ 
+                            textAlign: 'center', 
+                            padding: '40px', 
+                            color: '#666',
+                            background: '#f8f9fa',
+                            borderRadius: '8px',
+                            border: '2px dashed #dee2e6'
+                          }}>
+                            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✅</div>
+                            <h4 style={{ margin: '0 0 0.5rem 0', color: '#28a745' }}>No Alerts</h4>
+                            <p style={{ margin: 0, fontSize: '0.9rem' }}>
+                              All sensor readings are within acceptable ranges
+                            </p>
                           </div>
-                          <p>Shipment arrived at distribution center</p>
-                        </div>
+                        ) : (
+                          shipmentAlerts.map((alert, index) => (
+                            <div key={alert._id || index} className="alert-item">
+                              <div className="alert-header">
+                                <span className={`alert-type ${getAlertSeverityClass(alert.severity)}`}>
+                                  {alert.alertType} Alert
+                                </span>
+                                <span className="alert-time">{formatAlertTime(alert.timestamp)}</span>
+                              </div>
+                              <p>{alert.message}</p>
+                              {alert.location && alert.location.latitude && (
+                                <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
+                                  <strong>Location:</strong> {alert.location.latitude.toFixed(4)}, {alert.location.longitude.toFixed(4)}
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        )}
                       </div>
                     )}
 
@@ -1381,6 +1563,17 @@ const Shipments = () => {
                                 <span className="checkmark"></span>
                               </label>
                               <span className="shipment-id">#{shipment.trackerId}</span>
+                              {/* Show alert button only if shipment has alerts */}
+                              {shipment.legs?.[0]?.alertPresets?.length > 0 && (
+                                <button 
+                                  className="alert-btn"
+                                  onClick={(e) => handleTempAlertClick(e, shipment)}
+                                  title="View Environmental Alerts"
+                                >
+                                  <span className="alert-btn-icon">🌡️</span>
+                                  <span>Alerts ({shipment.legs[0].alertPresets.length})</span>
+                                </button>
+                              )}
                             </div>
                             <span className={`status ${getShipmentStatus(shipment).toLowerCase().replace(' ', '-')}`}>
                               {getShipmentStatus(shipment)}
@@ -1397,6 +1590,12 @@ const Shipments = () => {
                               <strong>ETA:</strong> {formatDate(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate)}
                             </div>
                           </div>
+                          {/* Show existing alerts */}
+                          {shipment.legs?.[0]?.alertPresets?.length > 0 && (
+                            <div className="route-info">
+                              <strong>Alerts:</strong> {shipment.legs[0].alertPresets.length} active
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))
@@ -1551,7 +1750,7 @@ const Shipments = () => {
                   })}
                 >
                   <Popup>
-                    <div>
+                                       <div>
                       <strong>Origin</strong><br />
                       {legPoints[0].address}
                     </div>
@@ -1604,6 +1803,7 @@ const Shipments = () => {
                   opacity: 0.8,
                   dashArray: '10, 5'
                 }}
+              
               />
               
               {/* Hover marker that follows chart interactions */}
@@ -1640,6 +1840,7 @@ const Shipments = () => {
               
               {/* Start marker */}
               {locationData.length > 0 && (
+
                 <Marker 
                   position={[locationData[0].latitude, locationData[0].longitude]}
                   icon={L.divIcon({
@@ -1659,7 +1860,7 @@ const Shipments = () => {
                   })}
                 >
                   <Popup>
-                    <div>
+                                       <div>
                       <strong>Start Point</strong><br />
                       Time: {formatTimestamp(locationData[0].timestamp)}<br />
                       Coordinates: {locationData[0].latitude.toFixed(6)}, {locationData[0].longitude.toFixed(6)}
@@ -1826,6 +2027,91 @@ const Shipments = () => {
               </button>
               <button className="btn btn-primary" onClick={handleCreateShipment}>
                 Create Shipment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Environmental Alerts Modal - View Only Mode */}
+      {showTempAlertModal && (
+        <div className="temp-alert-modal">
+          <div className="temp-alert-content">
+            <div className="temp-alert-header">
+              <h3>Environmental Alerts - Shipment #{selectedShipmentForAlert?.trackerId}</h3>
+              <button className="close-btn" onClick={handleCloseTempAlert}>
+                ×
+              </button>
+            </div>
+            
+            <div className="temp-alert-body">
+              {/* Current Alerts - View Only */}
+              <div className="current-alerts-view">
+                <h4>Environmental Alerts for this Shipment</h4>
+                {currentAlerts.length === 0 ? (
+                  <p style={{ fontSize: '0.85rem', color: '#718096', margin: 0, textAlign: 'center', padding: '2rem' }}>
+                    No environmental alerts configured for this shipment
+                  </p>
+                ) : (
+                  <div className="alerts-list">
+                    {currentAlerts.map((alert, index) => (
+                      <div key={index} className="alert-preview-item">
+                        <div className="alert-preview-info">
+                          <span className="alert-icon">
+                            {alert.type === 'temperature' ? '🌡️' : '💧'}
+                          </span>
+                          <div className="alert-details">
+                            <strong>{alert.name || `${alert.type} Alert`}</strong>
+                            <span className="alert-range">
+                              Range: {alert.minValue}{alert.unit} to {alert.maxValue}{alert.unit}
+                            </span>
+                            {alert.createdAt && (
+                              <span className="alert-created">
+                                Created: {new Date(alert.createdAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="alert-actions">
+                          <span className="alert-type-badge">{alert.type}</span>
+                          <button 
+                            className="remove-existing-alert-btn"
+                            onClick={() => handleRemoveAlert(index)}
+                            title="Remove this alert"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {currentAlerts.length > 0 && (
+                  <div className="alert-summary">
+                    <p style={{ 
+                      fontSize: '0.9rem', 
+                      color: '#4a5568', 
+                      margin: '1rem 0 0 0',
+                      padding: '1rem',
+                      background: '#f0f9ff',
+                      borderRadius: '6px',
+                      border: '1px solid #e0f2fe'
+                    }}>
+                      <strong>Total Active Alerts:</strong> {currentAlerts.length}
+                      <br />
+                      <span style={{ fontSize: '0.8rem', color: '#718096' }}>
+                        To add new alerts, use the "Add Alerts" option in the Configure menu.
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="temp-alert-footer">
+              <button className="btn btn-secondary" onClick={handleCloseTempAlert}>
+                Close
               </button>
             </div>
           </div>
