@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import './Page.css';
+import './AddAlerts.css';
 
 const AddAlerts = () => {
   const [alertType, setAlertType] = useState('temperature');
@@ -190,28 +190,31 @@ const AddAlerts = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Add Alert Presets</h1>
-        <p>Create environmental alert configurations for existing shipments</p>
+        <h1>Alert Management</h1>
+        <p>Manage environmental alert configurations for your shipments</p>
       </div>
       
       <div className="page-content">
-        <div className="card">
-          <h3>Create New Alert for Shipment</h3>
-          
-          {isLoading ? (
-            <div className="loading-container">
-              <div className="loading-spinner"></div>
-              <p>Loading shipments...</p>
+        <div className="alerts-layout">
+          {/* Left Panel - Existing Alerts */}
+          <div className="alerts-list-panel">
+            <div className="alerts-list-header">
+              <h3>
+                📋 Existing Alerts
+                {selectedShipment && getSelectedShipmentAlerts().length > 0 && (
+                  <span className="alerts-count">({getSelectedShipmentAlerts().length})</span>
+                )}
+              </h3>
+              <p>View and manage configured alerts</p>
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="alert-form">
-              <div className="form-group">
-                <label htmlFor="selectedShipment">Select Shipment *</label>
+            
+            <div className="alerts-list-content">
+              <div className="shipment-selector">
+                <label htmlFor="alertsShipmentSelect">Select Shipment to View Alerts</label>
                 <select
-                  id="selectedShipment"
+                  id="alertsShipmentSelect"
                   value={selectedShipment}
                   onChange={(e) => setSelectedShipment(e.target.value)}
-                  required
                 >
                   <option value="">Choose a shipment...</option>
                   {shipments.map(shipment => (
@@ -222,120 +225,19 @@ const AddAlerts = () => {
                 </select>
               </div>
 
-              <div className="form-group">
-                <label htmlFor="alertName">Alert Name *</label>
-                <input
-                  type="text"
-                  id="alertName"
-                  value={alertName}
-                  onChange={(e) => setAlertName(e.target.value)}
-                  placeholder="Enter descriptive alert name"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Alert Type</label>
-                <div className="alert-type-buttons">
-                  <button
-                    type="button"
-                    className={`alert-type-btn ${alertType === 'temperature' ? 'active' : ''}`}
-                    onClick={() => handleAlertTypeChange('temperature')}
-                  >
-                    🌡️ Temperature
-                  </button>
-                  <button
-                    type="button"
-                    className={`alert-type-btn ${alertType === 'humidity' ? 'active' : ''}`}
-                    onClick={() => handleAlertTypeChange('humidity')}
-                  >
-                    💧 Humidity
-                  </button>
+              {!selectedShipment ? (
+                <div className="no-shipment-selected">
+                  <div className="no-shipment-icon">🚢</div>
+                  <p>Select a shipment above to view its alerts</p>
                 </div>
-              </div>
-
-              <div className="range-section">
-                <h4>
-                  {alertType === 'temperature' ? 'Temperature Range (°C)' : 'Humidity Range (%)'}
-                </h4>
-                
-                <div className="dual-range-slider-container">
-                  <div className="dual-range-slider">
-                    <div className="range-track"></div>
-                    <div 
-                      className="range-fill" 
-                      style={{
-                        left: `${alertType === 'temperature' 
-                          ? ((minValue + 40) / 80) * 100 
-                          : (minValue / 100) * 100}%`,
-                        width: `${alertType === 'temperature'
-                          ? ((maxValue - minValue) / 80) * 100
-                          : ((maxValue - minValue) / 100) * 100}%`,
-                        background: alertType === 'temperature' ? '#ff6b6b' : '#4ecdc4'
-                      }}
-                    ></div>
-                    
-                    <input
-                      type="range"
-                      className="range-input range-min"
-                      min={alertType === 'temperature' ? -40 : 0}
-                      max={alertType === 'temperature' ? 40 : 100}
-                      value={minValue}
-                      onChange={(e) => setMinValue(parseInt(e.target.value))}
-                      style={{ zIndex: 1 }}
-                    />
-                    
-                    <input
-                      type="range"
-                      className="range-input range-max"
-                      min={alertType === 'temperature' ? -40 : 0}
-                      max={alertType === 'temperature' ? 40 : 100}
-                      value={maxValue}
-                      onChange={(e) => setMaxValue(parseInt(e.target.value))}
-                      style={{ zIndex: 2 }}
-                    />
-                  </div>
-                  
-                  <div className="range-values">
-                    <div className="range-value">
-                      Min: {minValue}{alertType === 'temperature' ? '°C' : '%'}
-                    </div>
-                    <div className="range-value">
-                      Max: {maxValue}{alertType === 'temperature' ? '°C' : '%'}
-                    </div>
-                  </div>
-                  
-                  <div className="range-labels">
-                    <span>{alertType === 'temperature' ? '-40°C' : '0%'}</span>
-                    <span>{alertType === 'temperature' ? '40°C' : '100%'}</span>
+              ) : getSelectedShipmentAlerts().length === 0 ? (
+                <div className="no-alerts">
+                  <div className="no-alerts-icon">✅</div>
+                  <div>
+                    <strong>No alerts configured</strong>
+                    <p>This shipment has no environmental alerts set up yet.</p>
                   </div>
                 </div>
-                
-                <div className="range-preview">
-                  <p>
-                    Alert will trigger when {alertType} is below {minValue}
-                    {alertType === 'temperature' ? '°C' : '%'} or above {maxValue}
-                    {alertType === 'temperature' ? '°C' : '%'}
-                  </p>
-                </div>
-              </div>
-
-              <button 
-                type="submit" 
-                className="submit-btn"
-                disabled={isSaving}
-              >
-                {isSaving ? 'Creating Alert...' : 'Create Alert'}
-              </button>
-            </form>
-          )}
-
-          {/* Show existing alerts for selected shipment */}
-          {selectedShipment && (
-            <div className="existing-alerts-section">
-              <h4>Existing Alerts for Selected Shipment</h4>
-              {getSelectedShipmentAlerts().length === 0 ? (
-                <p className="no-alerts">No alerts configured for this shipment</p>
               ) : (
                 <div className="alerts-list">
                   {getSelectedShipmentAlerts().map((alert, index) => (
@@ -347,8 +249,13 @@ const AddAlerts = () => {
                         <div className="alert-details">
                           <strong>{alert.name || `${alert.type} Alert`}</strong>
                           <span className="alert-range">
-                            {alert.minValue}{alert.unit} to {alert.maxValue}{alert.unit}
+                            Range: {alert.minValue}{alert.unit} to {alert.maxValue}{alert.unit}
                           </span>
+                          {alert.createdAt && (
+                            <span className="alert-created">
+                              Created: {new Date(alert.createdAt).toLocaleDateString()}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="alert-actions">
@@ -366,7 +273,149 @@ const AddAlerts = () => {
                 </div>
               )}
             </div>
-          )}
+          </div>
+
+          {/* Right Panel - Create New Alert */}
+          <div className="card">
+            <div className="card-header">
+              <h3>➕ Create New Alert</h3>
+              <p>Add environmental monitoring alerts</p>
+            </div>
+            
+            <div className="card-body">
+              {isLoading ? (
+                <div className="loading-container">
+                  <div className="loading-spinner"></div>
+                  <p>Loading shipments...</p>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="alert-form">
+                  <div className="form-group">
+                    <label htmlFor="selectedShipment">Select Shipment *</label>
+                    <select
+                      id="selectedShipment"
+                      value={selectedShipment}
+                      onChange={(e) => setSelectedShipment(e.target.value)}
+                      required
+                    >
+                      <option value="">Choose a shipment...</option>
+                      {shipments.map(shipment => (
+                        <option key={shipment._id} value={shipment._id}>
+                          {getShipmentDisplayName(shipment)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="alertName">Alert Name *</label>
+                    <input
+                      type="text"
+                      id="alertName"
+                      value={alertName}
+                      onChange={(e) => setAlertName(e.target.value)}
+                      placeholder="Enter descriptive alert name"
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Alert Type</label>
+                    <div className="alert-type-buttons">
+                      <button
+                        type="button"
+                        className={`alert-type-btn ${alertType === 'temperature' ? 'active' : ''}`}
+                        onClick={() => handleAlertTypeChange('temperature')}
+                      >
+                        🌡️ Temperature
+                      </button>
+                      <button
+                        type="button"
+                        className={`alert-type-btn ${alertType === 'humidity' ? 'active' : ''}`}
+                        onClick={() => handleAlertTypeChange('humidity')}
+                      >
+                        💧 Humidity
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="range-section">
+                    <h4>
+                      {alertType === 'temperature' ? 'Temperature Range (°C)' : 'Humidity Range (%)'}
+                    </h4>
+                    
+                    <div className="dual-range-slider-container">
+                      <div className="dual-range-slider">
+                        <div className="range-track"></div>
+                        <div 
+                          className="range-fill" 
+                          style={{
+                            left: `${alertType === 'temperature' 
+                              ? ((minValue + 40) / 80) * 100 
+                              : (minValue / 100) * 100}%`,
+                            width: `${alertType === 'temperature'
+                              ? ((maxValue - minValue) / 80) * 100
+                              : ((maxValue - minValue) / 100) * 100}%`,
+                            background: alertType === 'temperature' ? '#ff6b6b' : '#4ecdc4'
+                          }}
+                        ></div>
+                        
+                        <input
+                          type="range"
+                          className="range-input range-min"
+                          min={alertType === 'temperature' ? -40 : 0}
+                          max={alertType === 'temperature' ? 40 : 100}
+                          value={minValue}
+                          onChange={(e) => setMinValue(parseInt(e.target.value))}
+                          style={{ zIndex: 1 }}
+                        />
+                        
+                        <input
+                          type="range"
+                          className="range-input range-max"
+                          min={alertType === 'temperature' ? -40 : 0}
+                          max={alertType === 'temperature' ? 40 : 100}
+                          value={maxValue}
+                          onChange={(e) => setMaxValue(parseInt(e.target.value))}
+                          style={{ zIndex: 2 }}
+                        />
+                      </div>
+                      
+                      <div className="range-values">
+                        <div className="range-value">
+                          Min: {minValue}{alertType === 'temperature' ? '°C' : '%'}
+                        </div>
+                        <div className="range-value">
+                          Max: {maxValue}{alertType === 'temperature' ? '°C' : '%'}
+                        </div>
+                      </div>
+                      
+                      <div className="range-labels">
+                        <span>{alertType === 'temperature' ? '-40°C' : '0%'}</span>
+                        <span>{alertType === 'temperature' ? '40°C' : '100%'}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="range-preview">
+                      <p>
+                        Alert will trigger when {alertType} is below {minValue}
+                        {alertType === 'temperature' ? '°C' : '%'} or above {maxValue}
+                        {alertType === 'temperature' ? '°C' : '%'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    className="submit-btn"
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Creating Alert...' : 'Create Alert'}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
