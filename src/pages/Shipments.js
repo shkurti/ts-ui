@@ -1228,6 +1228,11 @@ const Shipments = () => {
                       onClick={() => setActiveTab('alerts')}
                     >
                       Alerts
+                      {shipmentAlerts.length > 0 && (
+                        <span className="alert-count-badge">
+                          {shipmentAlerts.length}
+                        </span>
+                      )}
                     </button>
                     <button 
                       className={`tab-btn ${activeTab === 'reports' ? 'active' : ''}`}
