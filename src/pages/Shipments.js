@@ -854,6 +854,7 @@ const Shipments = () => {
   useEffect(() => {
     let reconnectTimeout = null;
     let isUnmounted = false;
+    let pingInterval = null;
 
     function connectWebSocket() {
       // Only close if OPEN or CLOSING (never if CONNECTING)
@@ -863,23 +864,53 @@ const Shipments = () => {
       ) {
         wsRef.current.close();
       }
-      // Always use the full backend URL
+      
+      // Clear any existing ping interval
+      if (pingInterval) {
+        clearInterval(pingInterval);
+      }
+      
       const websocket = new window.WebSocket('wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
       
       wsRef.current = websocket;
 
       websocket.onopen = () => {
         setWsConnected(true);
-        console.log('WebSocket connected');
+        console.log('WebSocket connected successfully');
+        
+        // Send initial ping to register connection
+        try {
+          websocket.send('ping');
+          console.log('Sent initial ping to server');
+        } catch (e) {
+          console.error('Error sending initial ping:', e);
+        }
+        
+        // Set up keepalive ping every 30 seconds
+        pingInterval = setInterval(() => {
+          if (websocket.readyState === 1) {
+            try {
+              websocket.send('ping');
+              console.log('Keepalive ping sent');
+            } catch (e) {
+              console.error('Error sending keepalive ping:', e);
+            }
+          }
+        }, 30000);
       };
-
-      // DO NOT set websocket.onmessage here — we add a single, managed listener below
-      // websocket.onmessage = (event) => { ... }  <-- removed to avoid duplicate handlers
 
       websocket.onclose = () => {
         setWsConnected(false);
         console.log('WebSocket disconnected');
+        
+        // Clear ping interval
+        if (pingInterval) {
+          clearInterval(pingInterval);
+          pingInterval = null;
+        }
+        
         if (!isUnmounted) {
+          console.log('Attempting to reconnect in 3 seconds...');
           reconnectTimeout = setTimeout(connectWebSocket, 3000);
         }
       };
@@ -895,6 +926,8 @@ const Shipments = () => {
     return () => {
       isUnmounted = true;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (pingInterval) clearInterval(pingInterval);
+      
       // Only close if OPEN or CLOSING (never if CONNECTING)
       if (
         wsRef.current &&
@@ -913,9 +946,11 @@ const Shipments = () => {
     const handleMessage = (event) => {
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        // Debug: log all incoming messages once
         console.log('WebSocket message received:', msg);
 
-        // Determine a stable message id to dedupe
+        // Determine a stable message id to dedupe:
+        // try raw oplog _data, then fullDocument._id.$oid, then wallTime.$date, then fallback to JSON stringify
         const msgId =
           msg._id?._data ||
           msg.fullDocument?._id?.$oid ||
@@ -923,140 +958,100 @@ const Shipments = () => {
           JSON.stringify(msg).slice(0, 200);
 
         if (processedMessagesRef.current.has(msgId)) {
+          // already processed
           return;
         }
         processedMessagesRef.current.add(msgId);
 
+        // Normalize possible shapes: fullDocument may contain an array field "data" with multiple records,
+        // or fullDocument may be the record itself.
         const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
         if (!full) return;
 
-        // Only process if we have a selected shipment detail
-        if (!selectedShipmentDetail) {
-          console.log('No shipment selected, skipping data update');
-          return;
-        }
-
-        // Check if this data is for the current shipment's tracker
-        const messageTrackerId = full.trackerID || full.trackerId || full.tracker_id;
-        const currentTrackerId = selectedShipmentDetail.trackerId;
-
-        if (!messageTrackerId || messageTrackerId !== currentTrackerId) {
-          console.log(`Data not for current tracker. Message: ${messageTrackerId}, Current: ${currentTrackerId}`);
-          return;
-        }
-
-        console.log('Processing real-time data for current shipment:', messageTrackerId);
-
         // If full.data is an array of readings, append them
         if (Array.isArray(full.data) && full.data.length > 0) {
-          console.log(`Processing ${full.data.length} data points from array`);
-          
-          const newLocationPoints = full.data
-            .map((r) => {
-              const lat = r.Lat ?? r.latitude ?? r.lat;
-              const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
-              const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-              if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
-              return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
-            })
-            .filter(Boolean);
+          setLocationData((prev) => {
+            const newPoints = full.data
+              .map((r) => {
+                const lat = r.Lat ?? r.latitude ?? r.lat;
+                const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
+                const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
+                return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
+              })
+              .filter(Boolean);
+            return [...prev, ...newPoints];
+          });
 
-          if (newLocationPoints.length > 0) {
-            console.log('Adding location points:', newLocationPoints.length);
-            setLocationData((prev) => [...prev, ...newLocationPoints]);
-          }
+          // Also update sensor arrays (temperature/humidity/etc.) if present
+          setTemperatureData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const t = r.Temp ?? r.temperature;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (t === undefined || t === null) return null;
+                return { timestamp: ts, temperature: parseFloat(t) };
+              })
+              .filter(Boolean)
+          ]);
 
-          const newTempData = full.data
-            .map(r => {
-              const t = r.Temp ?? r.temperature;
-              const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-              if (t === undefined || t === null) return null;
-              return { timestamp: ts, temperature: parseFloat(t) };
-            })
-            .filter(Boolean);
+          setHumidityData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const h = r.Hum ?? r.humidity;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (h === undefined || h === null) return null;
+                return { timestamp: ts, humidity: parseFloat(h) };
+              })
+              .filter(Boolean)
+          ]);
 
-          if (newTempData.length > 0) {
-            console.log('Adding temperature data:', newTempData.length);
-            setTemperatureData((prev) => [...prev, ...newTempData]);
-          }
+          setBatteryData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const b = r.Batt ?? r.battery;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (b === undefined || b === null) return null;
+                return { timestamp: ts, battery: parseFloat(b) };
+              })
+              .filter(Boolean)
+          ]);
 
-          const newHumData = full.data
-            .map(r => {
-              const h = r.Hum ?? r.humidity;
-              const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-              if (h === undefined || h === null) return null;
-              return { timestamp: ts, humidity: parseFloat(h) };
-            })
-            .filter(Boolean);
-
-          if (newHumData.length > 0) {
-            console.log('Adding humidity data:', newHumData.length);
-            setHumidityData((prev) => [...prev, ...newHumData]);
-          }
-
-          const newBattData = full.data
-            .map(r => {
-              const b = r.Batt ?? r.battery;
-              const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-              if (b === undefined || b === null) return null;
-              return { timestamp: ts, battery: parseFloat(b) };
-            })
-            .filter(Boolean);
-
-          if (newBattData.length > 0) {
-            console.log('Adding battery data:', newBattData.length);
-            setBatteryData((prev) => [...prev, ...newBattData]);
-          }
-
-          const newSpeedData = full.data
-            .map(r => {
-              const s = r.Speed ?? r.speed;
-              const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-              if (s === undefined || s === null) return null;
-              return { timestamp: ts, speed: parseFloat(s) };
-            })
-            .filter(Boolean);
-
-          if (newSpeedData.length > 0) {
-            console.log('Adding speed data:', newSpeedData.length);
-            setSpeedData((prev) => [...prev, ...newSpeedData]);
-          }
+          setSpeedData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const s = r.Speed ?? r.speed;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (s === undefined || s === null) return null;
+                return { timestamp: ts, speed: parseFloat(s) };
+              })
+              .filter(Boolean)
+          );
         } else {
           // If full is a single record with Lat/Lng, handle that
-          console.log('Processing single data point');
-          
           const lat = full.Lat ?? full.latitude ?? full.lat;
           const lng = full.Lng ?? full.longitude ?? full.lng ?? full.lon;
           const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? new Date().toISOString();
 
           if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
-            console.log('Adding single location point');
             setLocationData(prev => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
           }
 
           const t = full.Temp ?? full.temperature;
-          if (t !== undefined && t !== null) {
-            console.log('Adding single temperature point:', t);
-            setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
-          }
+          if (t !== undefined && t !== null) setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
 
           const h = full.Hum ?? full.humidity;
-          if (h !== undefined && h !== null) {
-            console.log('Adding single humidity point:', h);
-            setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
-          }
+          if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
 
           const b = full.Batt ?? full.battery;
-          if (b !== undefined && b !== null) {
-            console.log('Adding single battery point:', b);
-            setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
-          }
+          if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
 
           const s = full.Speed ?? full.speed;
-          if (s !== undefined && s !== null) {
-            console.log('Adding single speed point:', s);
-            setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
-          }
+          if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
         }
       } catch (e) {
         console.error('Error parsing WS message', e);
@@ -1067,7 +1062,7 @@ const Shipments = () => {
     return () => {
       ws.removeEventListener('message', handleMessage);
     };
-  }, [selectedShipmentDetail]);
+  }, [selectedShipmentDetail]); // keep dependency as you had it
 
   // Function to handle alerts button click
   const handleAlertsClick = (e, shipment) => {
