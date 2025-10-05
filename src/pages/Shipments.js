@@ -1030,7 +1030,7 @@ const Shipments = () => {
                 return { timestamp: ts, speed: parseFloat(s) };
               })
               .filter(Boolean)
-          );
+          ]);
         } else {
           // If full is a single record with Lat/Lng, handle that
           const lat = full.Lat ?? full.latitude ?? full.lat;
