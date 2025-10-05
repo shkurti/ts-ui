@@ -1159,6 +1159,48 @@ const Shipments = () => {
     }
   };
 
+  // Add state for tracking shipments with alerts
+  const [shipmentsWithAlerts, setShipmentsWithAlerts] = useState(new Set());
+
+  // Function to check if shipment has received alerts
+  const checkShipmentAlerts = async (shipmentId) => {
+    try {
+      const alertsResponse = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alerts/${shipmentId}`);
+      if (alertsResponse.ok) {
+        const alertsData = await alertsResponse.json();
+        return alertsData.length > 0;
+      }
+    } catch (error) {
+      console.error('Error checking shipment alerts:', error);
+    }
+    return false;
+  };
+
+  // Check alerts for all shipments when shipments are loaded
+  useEffect(() => {
+    const checkAllShipmentsAlerts = async () => {
+      if (shipments.length > 0) {
+        const alertPromises = shipments.map(async (shipment) => {
+          const hasAlerts = await checkShipmentAlerts(shipment._id);
+          return { shipmentId: shipment._id, hasAlerts };
+        });
+        
+        const results = await Promise.all(alertPromises);
+        const shipmentsWithAlertsSet = new Set();
+        
+        results.forEach(({ shipmentId, hasAlerts }) => {
+          if (hasAlerts) {
+            shipmentsWithAlertsSet.add(shipmentId);
+          }
+        });
+        
+        setShipmentsWithAlerts(shipmentsWithAlertsSet);
+      }
+    };
+
+    checkAllShipmentsAlerts();
+  }, [shipments]);
+
   return (
     <div className="shipments-container">
       {/* WebSocket status indicator */}
@@ -1568,7 +1610,15 @@ const Shipments = () => {
                                 <span className="checkmark"></span>
                               </label>
                               <span className="shipment-id">#{shipment.trackerId}</span>
-                              {/* Show alert button only if shipment has alerts */}
+                              {/* Show triangle alert for shipments with received alerts */}
+                              {shipmentsWithAlerts.has(shipment._id) && (
+                                <div className="triangle-alert" title="This shipment has alerts">
+                                  <div className="triangle-alert-tooltip">
+                                    Active alerts detected
+                                  </div>
+                                </div>
+                              )}
+                              {/* Show alert button only if shipment has alert presets configured */}
                               {shipment.legs?.[0]?.alertPresets?.length > 0 && (
                                 <button 
                                   className="alert-btn"
@@ -1595,12 +1645,7 @@ const Shipments = () => {
                               <strong>ETA:</strong> {formatDate(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate)}
                             </div>
                           </div>
-                          {/* Show existing alerts */}
-                          {shipment.legs?.[0]?.alertPresets?.length > 0 && (
-                            <div className="route-info">
-                              <strong>Alerts:</strong> {shipment.legs[0].alertPresets.length} active
-                            </div>
-                          )}
+                          {/* Remove both alert presets and received alerts count display */}
                         </div>
                       </div>
                     ))
