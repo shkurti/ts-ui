@@ -530,7 +530,6 @@
   color: #666;
   transition: all 0.2s;
   border-bottom: 3px solid transparent;
-  position: relative;
 }
 
 .tab-btn:hover {
@@ -542,26 +541,6 @@
   color: #007bff;
   border-bottom-color: #007bff;
   background: white;
-}
-
-.alert-count-badge {
-  position: absolute;
-  top: 2px;
-  right: 7px;
-  background: #dc3545;
-  color: white;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  font-size: 11px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  border: 2px solid white;
-  min-width: 18px;
-  line-height: 2;
 }
 
 .tab-content {
@@ -994,6 +973,201 @@
 .alert-btn-icon {
   font-size: 0.75rem;
   filter: none;
+}
+
+/* Humidity-specific range fill color */
+.humidity-range .range-fill {
+  background: #4ecdc4 !important;
+}
+
+/* Temperature-specific range fill color */
+.temperature-range .range-fill {
+  background: #ff6b6b !important;
+}
+
+/* Current Alerts View Mode */
+.current-alerts-view {
+  margin: 0;
+  padding: 1.5rem;
+  background: #ffffff;
+  border-radius: 8px;
+}
+
+.current-alerts-view h4 {
+  margin: 0 0 1.5rem 0;
+  color: #2d3748;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.alert-preview-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1.25rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.alert-preview-item:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.alert-preview-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  flex: 1;
+}
+
+.alert-icon {
+  font-size: 1.75rem;
+  width: 2.5rem;
+  text-align: center;
+  margin-top: 0.25rem;
+}
+
+.alert-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  flex: 1;
+}
+
+.alert-details strong {
+  color: #2d3748;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.alert-range {
+  color: #4a5568;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.alert-created {
+  color: #718096;
+  font-size: 0.75rem;
+}
+
+.alert-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.alert-type-badge {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 0.375rem 0.75rem;
+  border-radius: 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.remove-existing-alert-btn {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.remove-existing-alert-btn:hover {
+  background: #fecaca;
+  border-color: #f87171;
+  color: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
+}
+
+.remove-existing-alert-btn:active {
+  background: #fca5a5;
+  transform: translateY(0);
+}
+
+.alert-summary {
+  margin-top: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 1.5rem;
+}
+
+.temp-alert-footer {
+  padding: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  background: #f8fafc;
+}
+
+.temp-alert-footer .btn {
+  min-width: 120px;
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+}
+
+.temp-alert-footer .btn-secondary {
+  background: #667eea;
+  color: white;
+  border: 1px solid #667eea;
+}
+
+.temp-alert-footer .btn-secondary:hover {
+  background: #5a67d8;
+  border-color: #5a67d8;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.temp-alert-footer .btn-secondary:active {
+  background: #553c9a;
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(102, 126, 234, 0.3);
+}
+
+/* Add alert animation for new alerts */
+@keyframes alertFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.alert-item.new-alert {
+  animation: alertFadeIn 0.5s ease-out;
 }
 
 .triangle-alert {
