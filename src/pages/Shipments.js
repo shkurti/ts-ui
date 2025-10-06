@@ -870,6 +870,7 @@ const Shipments = () => {
         clearInterval(pingInterval);
       }
       
+      console.log('Attempting to connect to WebSocket...');
       const websocket = new window.WebSocket('wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
       
       wsRef.current = websocket;
@@ -877,6 +878,7 @@ const Shipments = () => {
       websocket.onopen = () => {
         setWsConnected(true);
         console.log('WebSocket connected successfully');
+        console.log('WebSocket readyState:', websocket.readyState);
         
         // Send initial ping to register connection
         try {
@@ -899,9 +901,150 @@ const Shipments = () => {
         }, 30000);
       };
 
-      websocket.onclose = () => {
+      websocket.onmessage = (event) => {
+        console.log('Raw WebSocket message received:', event);
+        console.log('Message data:', event.data);
+        console.log('Message data type:', typeof event.data);
+        
+        try {
+          const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+          console.log('Parsed WebSocket message:', msg);
+
+          // Skip ping/pong messages
+          if (event.data === 'pong' || event.data === 'ping') {
+            console.log('Received ping/pong message, skipping processing');
+            return;
+          }
+
+          // Determine a stable message id to dedupe:
+          const msgId =
+            msg._id?._data ||
+            msg.fullDocument?._id?.$oid ||
+            (msg.wallTime && (msg.wallTime.$date || JSON.stringify(msg.wallTime))) ||
+            JSON.stringify(msg).slice(0, 200);
+
+          console.log('Message ID for deduplication:', msgId);
+
+          if (processedMessagesRef.current.has(msgId)) {
+            console.log('Message already processed, skipping');
+            return;
+          }
+          processedMessagesRef.current.add(msgId);
+
+          // Normalize possible shapes
+          const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
+          console.log('Extracted fullDocument:', full);
+          
+          if (!full) {
+            console.log('No fullDocument found in message, skipping');
+            return;
+          }
+
+          // Process the message data
+          console.log('Processing message data...');
+          
+          // If full.data is an array of readings, append them
+          if (Array.isArray(full.data) && full.data.length > 0) {
+            console.log(`Processing ${full.data.length} data points from array`);
+            
+            setLocationData((prev) => {
+              const newPoints = full.data
+                .map((r) => {
+                  const lat = r.Lat ?? r.latitude ?? r.lat;
+                  const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
+                  const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                  if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
+                  return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
+                })
+                .filter(Boolean);
+              console.log(`Adding ${newPoints.length} new location points`);
+              return [...prev, ...newPoints];
+            });
+
+            // Also update sensor arrays
+            setTemperatureData((prev) => [
+              ...prev,
+              ...full.data
+                .map(r => {
+                  const t = r.Temp ?? r.temperature;
+                  const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                  if (t === undefined || t === null) return null;
+                  return { timestamp: ts, temperature: parseFloat(t) };
+                })
+                .filter(Boolean)
+            ]);
+
+            setHumidityData((prev) => [
+              ...prev,
+              ...full.data
+                .map(r => {
+                  const h = r.Hum ?? r.humidity;
+                  const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                  if (h === undefined || h === null) return null;
+                  return { timestamp: ts, humidity: parseFloat(h) };
+                })
+                .filter(Boolean)
+            ]);
+
+            setBatteryData((prev) => [
+              ...prev,
+              ...full.data
+                .map(r => {
+                  const b = r.Batt ?? r.battery;
+                  const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                  if (b === undefined || b === null) return null;
+                  return { timestamp: ts, battery: parseFloat(b) };
+                })
+                .filter(Boolean)
+            ]);
+
+            setSpeedData((prev) => [
+              ...prev,
+              ...full.data
+                .map(r => {
+                  const s = r.Speed ?? r.speed;
+                  const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                  if (s === undefined || s === null) return null;
+                  return { timestamp: ts, speed: parseFloat(s) };
+                })
+                .filter(Boolean)
+            ]);
+          } else {
+            console.log('Processing single data point');
+            // If full is a single record with Lat/Lng, handle that
+            const lat = full.Lat ?? full.latitude ?? full.lat;
+            const lng = full.Lng ?? full.longitude ?? full.lng ?? full.lon;
+            const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? new Date().toISOString();
+
+            if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
+              console.log('Adding single location point');
+              setLocationData(prev => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
+            }
+
+            const t = full.Temp ?? full.temperature;
+            if (t !== undefined && t !== null) {
+              console.log('Adding temperature data');
+              setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
+            }
+
+            const h = full.Hum ?? full.humidity;
+            if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
+
+            const b = full.Batt ?? full.battery;
+            if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
+
+            const s = full.Speed ?? full.speed;
+            if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
+          }
+        } catch (e) {
+          console.error('Error parsing WebSocket message:', e);
+          console.error('Raw message data:', event.data);
+        }
+      };
+
+      websocket.onclose = (event) => {
         setWsConnected(false);
-        console.log('WebSocket disconnected');
+        console.log('WebSocket disconnected. Code:', event.code, 'Reason:', event.reason);
         
         // Clear ping interval
         if (pingInterval) {
@@ -944,125 +1087,14 @@ const Shipments = () => {
     if (!ws) return;
 
     const handleMessage = (event) => {
-      try {
-        const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        // Debug: log all incoming messages once
-        console.log('WebSocket message received:', msg);
-
-        // Determine a stable message id to dedupe:
-        // try raw oplog _data, then fullDocument._id.$oid, then wallTime.$date, then fallback to JSON stringify
-        const msgId =
-          msg._id?._data ||
-          msg.fullDocument?._id?.$oid ||
-          (msg.wallTime && (msg.wallTime.$date || JSON.stringify(msg.wallTime))) ||
-          JSON.stringify(msg).slice(0, 200);
-
-        if (processedMessagesRef.current.has(msgId)) {
-          // already processed
-          return;
-        }
-        processedMessagesRef.current.add(msgId);
-
-        // Normalize possible shapes: fullDocument may contain an array field "data" with multiple records,
-        // or fullDocument may be the record itself.
-        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
-        if (!full) return;
-
-        // If full.data is an array of readings, append them
-        if (Array.isArray(full.data) && full.data.length > 0) {
-          setLocationData((prev) => {
-            const newPoints = full.data
-              .map((r) => {
-                const lat = r.Lat ?? r.latitude ?? r.lat;
-                const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
-                const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-                if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
-                return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
-              })
-              .filter(Boolean);
-            return [...prev, ...newPoints];
-          });
-
-          // Also update sensor arrays (temperature/humidity/etc.) if present
-          setTemperatureData((prev) => [
-            ...prev,
-            ...full.data
-              .map(r => {
-                const t = r.Temp ?? r.temperature;
-                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-                if (t === undefined || t === null) return null;
-                return { timestamp: ts, temperature: parseFloat(t) };
-              })
-              .filter(Boolean)
-          ]);
-
-          setHumidityData((prev) => [
-            ...prev,
-            ...full.data
-              .map(r => {
-                const h = r.Hum ?? r.humidity;
-                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-                if (h === undefined || h === null) return null;
-                return { timestamp: ts, humidity: parseFloat(h) };
-              })
-              .filter(Boolean)
-          ]);
-
-          setBatteryData((prev) => [
-            ...prev,
-            ...full.data
-              .map(r => {
-                const b = r.Batt ?? r.battery;
-                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-                if (b === undefined || b === null) return null;
-                return { timestamp: ts, battery: parseFloat(b) };
-              })
-              .filter(Boolean)
-          ]);
-
-          setSpeedData((prev) => [
-            ...prev,
-            ...full.data
-              .map(r => {
-                const s = r.Speed ?? r.speed;
-                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-                if (s === undefined || s === null) return null;
-                return { timestamp: ts, speed: parseFloat(s) };
-              })
-              .filter(Boolean)
-          ]);
-        } else {
-          // If full is a single record with Lat/Lng, handle that
-          const lat = full.Lat ?? full.latitude ?? full.lat;
-          const lng = full.Lng ?? full.longitude ?? full.lng ?? full.lon;
-          const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? new Date().toISOString();
-
-          if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
-            setLocationData(prev => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
-          }
-
-          const t = full.Temp ?? full.temperature;
-          if (t !== undefined && t !== null) setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
-
-          const h = full.Hum ?? full.humidity;
-          if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
-
-          const b = full.Batt ?? full.battery;
-          if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
-
-          const s = full.Speed ?? full.speed;
-          if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
-        }
-      } catch (e) {
-        console.error('Error parsing WS message', e);
-      }
+      // ... previous message handling code ...
     };
 
     ws.addEventListener('message', handleMessage);
     return () => {
       ws.removeEventListener('message', handleMessage);
     };
-  }, [selectedShipmentDetail]); // keep dependency as you had it
+  }, [selectedShipmentDetail]);
 
   // Function to handle alerts button click
   const handleAlertsClick = (e, shipment) => {
