@@ -49,11 +49,6 @@ const Shipments = () => {
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
   const [hoverMarkerData, setHoverMarkerData] = useState(null);
   
-  // Add state for alerts
-  const [alertPresets, setAlertPresets] = useState({});
-  const [showAlertsModal, setShowAlertsModal] = useState(false);
-  const [selectedShipmentAlerts, setSelectedShipmentAlerts] = useState(null);
-  
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -71,23 +66,6 @@ const Shipments = () => {
           const data = await response.json();
           console.log('Fetched shipments:', data); // Debug log
           setShipments(data);
-          
-          // Extract alert presets for each shipment
-          const presetsMap = {};
-          data.forEach(shipment => {
-            const allPresets = [];
-            if (shipment.legs && Array.isArray(shipment.legs)) {
-              shipment.legs.forEach(leg => {
-                if (leg.alertPresets && Array.isArray(leg.alertPresets)) {
-                  allPresets.push(...leg.alertPresets);
-                }
-              });
-            }
-            if (allPresets.length > 0) {
-              presetsMap[shipment._id] = allPresets;
-            }
-          });
-          setAlertPresets(presetsMap);
         } else {
           console.error('Failed to fetch shipments');
         }
@@ -1031,23 +1009,6 @@ const Shipments = () => {
     };
   }, [selectedShipmentDetail]); // keep dependency as you had it
 
-  // Function to handle alerts button click
-  const handleAlertsClick = (e, shipment) => {
-    e.stopPropagation(); // Prevent shipment detail view from opening
-    const presets = alertPresets[shipment._id] || [];
-    setSelectedShipmentAlerts({
-      shipment: shipment,
-      presets: presets
-    });
-    setShowAlertsModal(true);
-  };
-
-  // Function to close alerts modal
-  const handleCloseAlertsModal = () => {
-    setShowAlertsModal(false);
-    setSelectedShipmentAlerts(null);
-  };
-
   return (
     <div className="shipments-container">
       {/* WebSocket status indicator */}
@@ -1420,17 +1381,6 @@ const Shipments = () => {
                                 <span className="checkmark"></span>
                               </label>
                               <span className="shipment-id">#{shipment.trackerId}</span>
-                              {alertPresets[shipment._id] && alertPresets[shipment._id].length > 0 && (
-                                <button 
-                                  className="alert-btn"
-                                  onClick={(e) => handleAlertsClick(e, shipment)}
-                                  title="View configured alerts"
-                                >
-                                  <span className="alert-btn-icon">🔔</span>
-                                  <span>Alerts</span>
-                                  <span className="alert-count">{alertPresets[shipment._id].length}</span>
-                                </button>
-                              )}
                             </div>
                             <span className={`status ${getShipmentStatus(shipment).toLowerCase().replace(' ', '-')}`}>
                               {getShipmentStatus(shipment)}
@@ -1876,69 +1826,6 @@ const Shipments = () => {
               </button>
               <button className="btn btn-primary" onClick={handleCreateShipment}>
                 Create Shipment
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Alerts Modal */}
-      {showAlertsModal && selectedShipmentAlerts && (
-        <div className="modal-overlay" onClick={handleCloseAlertsModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
-            <div className="modal-header">
-              <h3>Configured Alerts - Shipment #{selectedShipmentAlerts.shipment.trackerId}</h3>
-              <button className="close-btn" onClick={handleCloseAlertsModal}>×</button>
-            </div>
-            <div className="modal-body">
-              {selectedShipmentAlerts.presets.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-                  No alerts configured for this shipment
-                </div>
-              ) : (
-                <div className="alerts-list">
-                  {selectedShipmentAlerts.presets.map((preset, index) => (
-                    <div key={index} className="alert-preview-item">
-                      <div className="alert-preview-info">
-                        <div className="alert-icon">
-                          {preset.type === 'temperature' ? '🌡️' : 
-                           preset.type === 'humidity' ? '💧' : 
-                           preset.type === 'battery' ? '🔋' : 
-                           preset.type === 'speed' ? '⚡' : '📊'}
-                        </div>
-                        <div className="alert-details">
-                          <strong>{preset.type ? preset.type.charAt(0).toUpperCase() + preset.type.slice(1) : 'Unknown'} Alert</strong>
-                          <div className="alert-range">
-                            Range: {preset.minValue}{preset.unit} - {preset.maxValue}{preset.unit}
-                          </div>
-                          {preset.createdAt && (
-                            <div className="alert-created">
-                              Created: {new Date(preset.createdAt).toLocaleString()}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="alert-actions">
-                        <span className="alert-type-badge">{preset.type || 'alert'}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="alert-summary" style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
-                <p style={{ margin: 0, fontSize: '0.875rem', color: '#4a5568' }}>
-                  <strong>Total Alerts:</strong> {selectedShipmentAlerts.presets.length}
-                </p>
-                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem', color: '#718096' }}>
-                  From: {selectedShipmentAlerts.shipment.legs?.[0]?.shipFromAddress || 'N/A'}
-                  <br />
-                  To: {selectedShipmentAlerts.shipment.legs?.[selectedShipmentAlerts.shipment.legs.length - 1]?.stopAddress || 'N/A'}
-                </p>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={handleCloseAlertsModal}>
-                Close
               </button>
             </div>
           </div>
