@@ -1832,7 +1832,7 @@ const Shipments = () => {
         </div>
       )}
 
-      {/* Global tooltip for chart interactions */}
+      {/* Global tooltip for  chart interactions */}
       <div 
         id="chart-tooltip" 
         style={{
