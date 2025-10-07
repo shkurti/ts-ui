@@ -633,10 +633,12 @@ const Shipments = () => {
 
       websocket.onopen = () => {
         setWsConnected(true);
+        console.log('✅ WebSocket CONNECTED successfully at:', new Date().toISOString());
       };
 
       websocket.onclose = () => {
         setWsConnected(false);
+        console.log('❌ WebSocket DISCONNECTED at:', new Date().toISOString());
         if (!isUnmounted) {
           reconnectTimeout = setTimeout(connectWebSocket, 3000);
         }
@@ -644,7 +646,7 @@ const Shipments = () => {
 
       websocket.onerror = (err) => {
         setWsConnected(false);
-        console.error('WebSocket error:', err);
+        console.error('❌ WebSocket ERROR:', err);
       };
     }
 
