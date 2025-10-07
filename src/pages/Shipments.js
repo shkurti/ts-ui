@@ -12,30 +12,15 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
-const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
-const API_BASE_URL = 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
-const WS_URL = 'wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws';
-
 const Shipments = () => {
-  // UI State
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
   const [selectedShipments, setSelectedShipments] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [showNewShipmentForm, setShowNewShipmentForm] = useState(false);
-  const [activeTab, setActiveTab] = useState('sensors');
-  
-  // Data State
+  const [isLoading, setIsLoading] = useState(false);
   const [shipments, setShipments] = useState([]);
   const [trackers, setTrackers] = useState([]);
-  const [selectedShipmentDetail, setSelectedShipmentDetail] = useState(null);
-  const [legPoints, setLegPoints] = useState([]);
-  
-  // Loading States
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingSensorData, setIsLoadingSensorData] = useState(false);
-  
-  // Form State
   const [selectedTracker, setSelectedTracker] = useState('');
   const [formData, setFormData] = useState({
     legs: [{
@@ -48,35 +33,41 @@ const Shipments = () => {
       departureDate: ''
     }]
   });
+  // Add state for shipment detail view
+  const [selectedShipmentDetail, setSelectedShipmentDetail] = useState(null);
+  const [activeTab, setActiveTab] = useState('sensors');
   
-  // Sensor Data State
+  // Add state for sensor data
   const [temperatureData, setTemperatureData] = useState([]);
   const [humidityData, setHumidityData] = useState([]);
   const [batteryData, setBatteryData] = useState([]);
   const [speedData, setSpeedData] = useState([]);
   const [locationData, setLocationData] = useState([]);
+  const [isLoadingSensorData, setIsLoadingSensorData] = useState(false);
   
-  // Map Interaction State
+  // Add state for hover marker on polyline
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
   const [hoverMarkerData, setHoverMarkerData] = useState(null);
   
-  // WebSocket State
-  const [wsConnected, setWsConnected] = useState(false);
-  const wsRef = useRef(null);
-  const processedMessagesRef = useRef(new Set());
-  
+  // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // Add ref for map instance
   const mapRef = useRef();
 
-  // Fetch shipments and trackers on mount
+  // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
     const fetchShipments = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/shipment_meta`);
+        const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta');
+        //const response = await fetch('http://localhost:8000/shipment_meta');
         if (response.ok) {
           const data = await response.json();
+          console.log('Fetched shipments:', data); // Debug log
           setShipments(data);
+        } else {
+          console.error('Failed to fetch shipments');
         }
       } catch (error) {
         console.error('Error fetching shipments:', error);
@@ -87,10 +78,13 @@ const Shipments = () => {
 
     const fetchTrackers = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/registered_trackers`);
+        const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/registered_trackers');
+        //const response = await fetch('http://localhost:8000/registered_trackers');
         if (response.ok) {
           const data = await response.json();
           setTrackers(data);
+        } else {
+          console.error('Failed to fetch trackers');
         }
       } catch (error) {
         console.error('Error fetching trackers:', error);
@@ -131,21 +125,27 @@ const Shipments = () => {
   };
 
   const handleDeleteSelected = async () => {
-    if (selectedShipments.length === 0) return;
-    
-    try {
-      const deletePromises = selectedShipments.map(shipmentId =>
-        fetch(`${API_BASE_URL}/shipment_meta/${shipmentId}`, { method: 'DELETE' })
-      );
+    if (selectedShipments.length > 0) {
+      try {
+        const deletePromises = selectedShipments.map(shipmentId =>
+          fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta/${shipmentId}`, {
+          //fetch(`http://localhost:8000/shipment_meta/${shipmentId}`, {
 
-      await Promise.all(deletePromises);
-      setShipments(shipments.filter(s => !selectedShipments.includes(s._id)));
-      setSelectedShipments([]);
-      setSelectAll(false);
-      alert('Selected shipments deleted successfully');
-    } catch (error) {
-      console.error('Error deleting shipments:', error);
-      alert('Error occurred while deleting shipments');
+            method: 'DELETE'
+          })
+        );
+
+        await Promise.all(deletePromises);
+        
+        // Remove deleted shipments from state
+        setShipments(shipments.filter(s => !selectedShipments.includes(s._id)));
+        setSelectedShipments([]);
+        setSelectAll(false);
+        alert('Selected shipments deleted successfully');
+      } catch (error) {
+        console.error('Error deleting shipments:', error);
+        alert('Error occurred while deleting shipments');
+      }
     }
   };
 
@@ -198,10 +198,15 @@ const Shipments = () => {
       return;
     }
 
+    // Validate form data
     const isValid = formData.legs.every((leg, index) => {
       const requiredFields = ['shipDate', 'transportMode', 'carrier', 'arrivalDate', 'departureDate'];
-      if (index === 0) requiredFields.push('shipFrom', 'stopAddress');
-      else requiredFields.push('shipTo');
+      
+      if (index === 0) {
+        requiredFields.push('shipFrom');
+      }
+      
+      requiredFields.push(index === 0 ? 'stopAddress' : 'shipTo');
       
       return requiredFields.every(field => leg[field] && leg[field].trim() !== '');
     });
@@ -227,22 +232,40 @@ const Shipments = () => {
         }))
       };
 
-      const response = await fetch(`${API_BASE_URL}/shipment_meta`, {
+      const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta', {
+      //const response = await fetch('http://localhost:8000/shipment_meta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(shipmentData),
       });
 
       if (response.ok) {
-        const fetchResponse = await fetch(`${API_BASE_URL}/shipment_meta`);
-        if (fetchResponse.ok) {
-          const updatedShipments = await fetchResponse.json();
-          setShipments(updatedShipments);
+        const result = await response.json();
+        console.log('Shipment created successfully:', result);
+        
+        // Refetch all shipments from the database to get the correct data structure
+        try {
+          const fetchResponse = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta');
+          //const fetchResponse = await fetch('http://localhost:8000/shipment_meta');
+          if (fetchResponse.ok) {
+            const updatedShipments = await fetchResponse.json();
+            setShipments(updatedShipments);
+          } else {
+            console.error('Failed to refetch shipments');
+            // Fallback: just add the result to avoid empty list
+            setShipments(prev => [...prev, result]);
+          }
+        } catch (fetchError) {
+          console.error('Error refetching shipments:', fetchError);
+          // Fallback: just add the result to avoid empty list
+          setShipments(prev => [...prev, result]);
         }
         
         alert('Shipment created successfully!');
         handleCancelForm();
       } else {
+        const error = await response.json();
+        console.error('Error creating shipment:', error);
         alert('Failed to create shipment.');
       }
     } catch (error) {
@@ -251,6 +274,7 @@ const Shipments = () => {
     }
   };
 
+  // Helper function to format date for display
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     try {
@@ -259,8 +283,9 @@ const Shipments = () => {
       return 'Invalid Date';
     }
   };
-
+  // Helper function to get shipment status
   const getShipmentStatus = (shipment) => {
+    // Simple logic to determine status based on dates
     const now = new Date();
     const shipDate = new Date(shipment.legs?.[0]?.shipDate);
     const arrivalDate = new Date(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate);
@@ -269,12 +294,12 @@ const Shipments = () => {
     if (now >= shipDate && now < arrivalDate) return 'In Transit';
     return 'Delivered';
   };
-
+  // Handle shipment detail view
   const handleShipmentClick = async (shipment) => {
     setSelectedShipmentDetail(shipment);
     setActiveTab('sensors');
     
-    // Clear previous data
+    // Clear previous sensor data
     setTemperatureData([]);
     setHumidityData([]);
     setBatteryData([]);
@@ -288,7 +313,9 @@ const Shipments = () => {
     const shipDate = firstLeg.shipDate;
     const arrivalDate = lastLeg.arrivalDate;
 
-    if (!trackerId || !shipDate || !arrivalDate) return;
+    if (!trackerId || !shipDate || !arrivalDate) {
+      return;
+    }
 
     setIsLoadingSensorData(true);
     try {
@@ -298,39 +325,92 @@ const Shipments = () => {
         end: arrivalDate,
         timezone: userTimezone
       });
+      console.log('Sensor data fetch params:', params.toString());
 
-      const response = await fetch(`${API_BASE_URL}/shipment_route_data?${params}`);
+      
+      //const response = await fetch(`http://localhost:8000/shipment_route_data?${params}`);
+      const response = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_route_data?${params}`);
 
       if (response.ok) {
         const data = await response.json();
+        console.log('Sensor data fetch params:', params.toString());
         
-        // Process sensor data
-        const processSensorData = (records, valueKey) => 
-          records.map((record) => ({
+        // Process sensor data - timestamps are now in local time
+        setTemperatureData(
+          data.map((record) => ({
             timestamp: record.timestamp || 'N/A',
-            [valueKey]: record[valueKey] !== undefined
-              ? parseFloat(record[valueKey])
-              : record[valueKey.charAt(0).toUpperCase() + valueKey.slice(1)] !== undefined
-                ? parseFloat(record[valueKey.charAt(0).toUpperCase() + valueKey.slice(1)])
+            temperature: record.temperature !== undefined
+              ? parseFloat(record.temperature)
+              : record.Temp !== undefined
+                ? parseFloat(record.Temp)
                 : null,
-          })).filter(item => item[valueKey] !== null);
+          })).filter(item => item.temperature !== null)
+        );
+        
+        setHumidityData(
+          data.map((record) => ({
+            timestamp: record.timestamp || 'N/A',
+            humidity: record.humidity !== undefined
+              ? parseFloat(record.humidity)
+              : record.Hum !== undefined
+                ? parseFloat(record.Hum)
+                : null,
+          })).filter(item => item.humidity !== null)
+        );
+        
+        setBatteryData(
+          data.map((record) => ({
+            timestamp: record.timestamp || 'N/A',
+            battery: record.battery !== undefined
+              ? parseFloat(record.battery)
+              : record.Batt !== undefined
+                ? parseFloat(record.Batt)
+                : null,
+          })).filter(item => item.battery !== null)
+        );
+        
+        setSpeedData(
+          data.map((record) => ({
+            timestamp: record.timestamp || 'N/A',
+            speed: record.speed !== undefined
+              ? parseFloat(record.speed)
+              : record.Speed !== undefined
+                ? parseFloat(record.Speed)
+                : null,
+          })).filter(item => item.speed !== null)
+        );
 
-        setTemperatureData(processSensorData(data, 'temperature'));
-        setHumidityData(processSensorData(data, 'humidity'));
-        setBatteryData(processSensorData(data, 'battery'));
-        setSpeedData(processSensorData(data, 'speed'));
-
-        // Process location data
+        // Process location data for polyline
         setLocationData(
           data.map((record) => ({
             timestamp: record.timestamp || 'N/A',
-            latitude: parseFloat(record.latitude ?? record.Lat ?? record.lat),
-            longitude: parseFloat(record.longitude ?? record.Lng ?? record.lng ?? record.lon),
+            latitude: record.latitude !== undefined
+              ? parseFloat(record.latitude)
+              : record.Lat !== undefined
+                ? parseFloat(record.Lat)
+                : record.lat !== undefined
+                  ? parseFloat(record.lat)
+                  : null,
+            longitude: record.longitude !== undefined
+              ? parseFloat(record.longitude)
+              : record.Lng !== undefined
+                ? parseFloat(record.Lng)
+                : record.lng !== undefined
+                  ? parseFloat(record.lng)
+                  : record.lon !== undefined
+                    ? parseFloat(record.lon)
+                    : null,
           })).filter(item => 
-            !isNaN(item.latitude) && !isNaN(item.longitude) &&
-            Math.abs(item.latitude) <= 90 && Math.abs(item.longitude) <= 180
+            item.latitude !== null && 
+            item.longitude !== null && 
+            !isNaN(item.latitude) && 
+            !isNaN(item.longitude) &&
+            Math.abs(item.latitude) <= 90 && 
+            Math.abs(item.longitude) <= 180
           )
         );
+      } else {
+        console.error('Failed to fetch sensor data');
       }
     } catch (error) {
       console.error('Error fetching sensor data:', error);
@@ -341,16 +421,17 @@ const Shipments = () => {
 
   const handleBackToList = () => {
     setSelectedShipmentDetail(null);
+    // Clear sensor data when going back
     setTemperatureData([]);
     setHumidityData([]);
     setBatteryData([]);
     setSpeedData([]);
     setLocationData([]);
+    // Clear hover marker
     setHoverMarkerPosition(null);
     setHoverMarkerData(null);
   };
-
-  // SVG chart helper functions
+  // Helper function to generate SVG path from data points
   const generateSVGPath = (data, valueKey, maxHeight = 60, maxWidth = 300) => {
     if (!data || data.length === 0) return '';
     
@@ -361,28 +442,33 @@ const Shipments = () => {
     const maxValue = Math.max(...values);
     const range = maxValue - minValue || 1;
     
-    return values.map((value, index) => {
+    const points = values.map((value, index) => {
       const x = (index / (values.length - 1)) * maxWidth;
       const y = maxHeight - ((value - minValue) / range) * (maxHeight - 10) - 5;
       return `${x},${y}`;
     }).join(' ');
+    
+    return points;
   };
-
+  // Helper function to get current value
   const getCurrentValue = (data, valueKey) => {
     if (!data || data.length === 0) return 'N/A';
     const values = data.map(item => item[valueKey]).filter(val => val !== null && !isNaN(val));
     return values.length > 0 ? values[values.length - 1] : 'N/A';
   };
 
+  // Helper function to format timestamp for tooltip
   const formatTimestamp = (timestamp) => {
     if (!timestamp || timestamp === 'N/A') return 'N/A';
     try {
-      return new Date(timestamp).toLocaleString();
+      const date = new Date(timestamp);
+      return date.toLocaleString();
     } catch {
       return timestamp;
     }
   };
 
+  // Helper function to find the closest data point to mouse position
   const findClosestDataPoint = (data, valueKey, mouseX, maxWidth = 300) => {
     if (!data || data.length === 0) return null;
     
@@ -399,13 +485,13 @@ const Shipments = () => {
       index: clampedIndex,
       x: clampedIndex * stepSize
     };
-  };
-
+  };  // Helper function to find location data point by timestamp
   const findLocationByTimestamp = (timestamp) => {
     if (!locationData || locationData.length === 0 || !timestamp || timestamp === 'N/A') {
       return null;
     }
 
+    // Find the closest location data point by timestamp
     const targetTime = new Date(timestamp).getTime();
     let closestPoint = null;
     let minTimeDiff = Infinity;
@@ -423,20 +509,15 @@ const Shipments = () => {
     return closestPoint;
   };
 
-  const handleChartInteraction = (e, data, valueKey, sensorName, unit) => {
-    e.preventDefault();
-    
+  // Helper function to handle chart hover
+  const handleChartHover = (e, data, valueKey, sensorName, unit) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const clientX = (e.type === 'touchstart' || e.type === 'touchmove')
-      ? e.touches?.[0]?.clientX
-      : e.clientX;
+    const mouseX = ((e.clientX - rect.left) / rect.width) * 300; // Scale to viewBox width
     
-    if (!clientX) return;
-    
-    const mouseX = ((clientX - rect.left) / rect.width) * 300;
     const closestPoint = findClosestDataPoint(data, valueKey, mouseX);
     
     if (closestPoint) {
+      // Find corresponding location on polyline
       const locationPoint = findLocationByTimestamp(closestPoint.timestamp);
       
       if (locationPoint) {
@@ -450,9 +531,11 @@ const Shipments = () => {
         });
       }
 
+      // Create unique ID for each chart's vertical line
       const chartId = sensorName.toLowerCase().replace(' ', '-');
       const verticalLineId = `chart-vertical-line-${chartId}`;
       
+      // Show vertical line
       let verticalLine = document.getElementById(verticalLineId);
       if (!verticalLine) {
         verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -470,6 +553,100 @@ const Shipments = () => {
       verticalLine.setAttribute('y2', '60');
       verticalLine.style.display = 'block';
       
+      // Show tooltip
+      const tooltip = document.getElementById('chart-tooltip');
+      if (tooltip) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = e.pageX + 15 + 'px';
+        tooltip.style.top = e.pageY - 60 + 'px';
+        tooltip.innerHTML = `
+          <strong>${sensorName}:</strong> ${closestPoint.value.toFixed(1)}${unit}<br/>
+          <strong>Time:</strong> ${formatTimestamp(closestPoint.timestamp)}<br/>
+          <strong>Location:</strong> ${locationPoint ? `${locationPoint.latitude.toFixed(4)}, ${locationPoint.longitude.toFixed(4)}` : 'N/A'}
+        `;
+      }
+    }
+  };
+
+  // Helper function to handle chart leave
+  const handleChartLeave = (sensorName) => {
+    // Hide hover marker
+    setHoverMarkerPosition(null);
+    setHoverMarkerData(null);
+    
+    const chartId = sensorName.toLowerCase().replace(' ', '-');
+    const verticalLineId = `chart-vertical-line-${chartId}`;
+    const verticalLine = document.getElementById(verticalLineId);
+    if (verticalLine) {
+      verticalLine.style.display = 'none';
+    }
+    
+    const tooltip = document.getElementById('chart-tooltip');
+    if (tooltip) {
+      tooltip.style.display = 'none';
+    }
+  };
+
+  // Helper function to handle chart hover and touch events
+  const handleChartInteraction = (e, data, valueKey, sensorName, unit) => {
+    e.preventDefault(); // Prevent default touch behaviors
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    let clientX;
+    
+    // Handle both mouse and touch events
+    if (e.type === 'touchstart' || e.type === 'touchmove') {
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+      } else {
+        return;
+      }
+    } else {
+      clientX = e.clientX;
+    }
+    
+    const mouseX = ((clientX - rect.left) / rect.width) * 300; // Scale to viewBox width
+    
+    const closestPoint = findClosestDataPoint(data, valueKey, mouseX);
+    
+    if (closestPoint) {
+      // Find corresponding location on polyline
+      const locationPoint = findLocationByTimestamp(closestPoint.timestamp);
+      
+      if (locationPoint) {
+        setHoverMarkerPosition([locationPoint.latitude, locationPoint.longitude]);
+        setHoverMarkerData({
+          timestamp: closestPoint.timestamp,
+          sensorName: sensorName,
+          sensorValue: closestPoint.value,
+          unit: unit,
+          location: locationPoint
+        });
+      }
+
+      // Create unique ID for each chart's vertical line
+      const chartId = sensorName.toLowerCase().replace(' ', '-');
+      const verticalLineId = `chart-vertical-line-${chartId}`;
+      
+      // Show vertical line
+      let verticalLine = document.getElementById(verticalLineId);
+      if (!verticalLine) {
+        verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        verticalLine.id = verticalLineId;
+        verticalLine.setAttribute('stroke', '#666');
+        verticalLine.setAttribute('stroke-width', '1');
+        verticalLine.setAttribute('stroke-dasharray', '3,3');
+        verticalLine.setAttribute('opacity', '0.7');
+        e.currentTarget.appendChild(verticalLine);
+      }
+      
+      verticalLine.setAttribute('x1', closestPoint.x);
+      verticalLine.setAttribute('y1', '0');
+      verticalLine.setAttribute('x2', closestPoint.x);
+      verticalLine.setAttribute('y2', '60');
+      verticalLine.style.display = 'block';
+      
+      // Show tooltip for desktop (don't show on mobile as it can interfere with touch)
       if (e.type !== 'touchstart' && e.type !== 'touchmove') {
         const tooltip = document.getElementById('chart-tooltip');
         if (tooltip) {
@@ -486,11 +663,16 @@ const Shipments = () => {
     }
   };
 
+  // Helper function to handle chart leave and touch end
   const handleChartLeaveOrEnd = (sensorName, e) => {
-    if (e && (e.type === 'touchmove' || e.type === 'touchstart')) return;
+    // Only hide on mouse leave or touch end, not on touch move
+    if (e && (e.type === 'touchmove' || e.type === 'touchstart')) {
+      return;
+    }
     
+    // Hide hover marker after a delay on mobile to allow for better UX
     const isMobile = window.innerWidth <= 768;
-    const delay = isMobile ? 2000 : 0;
+    const delay = isMobile ? 2000 : 0; // 2 second delay on mobile
     
     setTimeout(() => {
       setHoverMarkerPosition(null);
@@ -499,16 +681,22 @@ const Shipments = () => {
       const chartId = sensorName.toLowerCase().replace(' ', '-');
       const verticalLineId = `chart-vertical-line-${chartId}`;
       const verticalLine = document.getElementById(verticalLineId);
-      if (verticalLine) verticalLine.style.display = 'none';
+      if (verticalLine) {
+        verticalLine.style.display = 'none';
+      }
       
       const tooltip = document.getElementById('chart-tooltip');
-      if (tooltip) tooltip.style.display = 'none';
+      if (tooltip) {
+        tooltip.style.display = 'none';
+      }
     }, delay);
   };
 
+  // Create polyline coordinates from location data
   const getPolylineCoordinates = () => {
     if (!locationData || locationData.length === 0) return [];
     
+    // Sort by timestamp to ensure correct order
     const sortedData = [...locationData].sort((a, b) => 
       new Date(a.timestamp) - new Date(b.timestamp)
     );
@@ -516,7 +704,7 @@ const Shipments = () => {
     return sortedData.map(point => [point.latitude, point.longitude]);
   };
 
-  // Map components
+  // Component to handle map bounds fitting
   const MapBoundsHandler = () => {
     const map = useMap();
     
@@ -524,21 +712,26 @@ const Shipments = () => {
       if (selectedShipmentDetail && locationData.length > 0) {
         const coordinates = getPolylineCoordinates();
         if (coordinates.length > 0) {
+          // Create bounds from coordinates
           const bounds = L.latLngBounds(coordinates);
+          
+          // Fit map to bounds with padding
           map.fitBounds(bounds, {
-            padding: [20, 20],
-            maxZoom: 15
+            padding: [20, 20], // Add padding around the route
+            maxZoom: 15 // Prevent zooming in too much for short routes
           });
         }
       }
-    }, [map]);
+    }, [map]); // Remove selectedShipmentDetail and locationData from dependencies
 
     return null;
   };
 
+  // MapTiler Geocoding Control React wrapper
   const MapTilerGeocodingControl = ({ apiKey }) => {
     const map = useMap();
     useEffect(() => {
+      // Only run if window.L and window.maptiler exist (CDN loaded)
       if (window.L && window.maptiler && window.maptiler.geocoding) {
         const geocodingControl = window.maptiler.geocoding.control({
           apiKey,
@@ -548,6 +741,13 @@ const Shipments = () => {
           placeholder: 'Search address…'
         }).addTo(map);
 
+        // Optionally, listen for geocode result events
+        geocodingControl.on('select', (e) => {
+          // e.data contains the selected result
+          // e.data.lat, e.data.lon
+          // You can update your state or do something here if needed
+        });
+
         return () => {
           map.removeControl(geocodingControl);
         };
@@ -556,6 +756,7 @@ const Shipments = () => {
     return null;
   };
 
+  // Helper to create a numbered marker icon for legs (origin, stops, destination)
   const createNumberedMarkerIcon = (number, isFirst, isLast) => {
     let bg = "#1976d2";
     if (isFirst) bg = "#28a745";
@@ -583,21 +784,24 @@ const Shipments = () => {
     });
   };
 
-  // Geocode legs for map markers
+  // Geocode all legs for selectedShipmentDetail (fix: use MapTiler API for better reliability)
+  const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
+  const [legPoints, setLegPoints] = useState([]);
+
   useEffect(() => {
     const geocodeLegs = async () => {
       if (!selectedShipmentDetail || !selectedShipmentDetail.legs || selectedShipmentDetail.legs.length === 0) {
         setLegPoints([]);
         return;
       }
-
+      // Build ordered addresses: origin, stops, destination
       const addresses = [];
       const legs = selectedShipmentDetail.legs;
       if (legs[0]?.shipFromAddress) addresses.push(legs[0].shipFromAddress);
       legs.forEach(leg => {
         if (leg.stopAddress) addresses.push(leg.stopAddress);
       });
-
+      // Geocode all using MapTiler API
       const results = await Promise.all(addresses.map(async (address) => {
         try {
           const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(address)}.json?key=${MAPTILER_API_KEY}`;
@@ -618,27 +822,41 @@ const Shipments = () => {
     geocodeLegs();
   }, [selectedShipmentDetail]);
 
-  // WebSocket connection
+  // Add WebSocket connection status state
+  const [wsConnected, setWsConnected] = useState(false);
+  const wsRef = useRef(null);
+
+  // Persisted set of processed message IDs to avoid duplicates
+  const processedMessagesRef = useRef(new Set());
+
   useEffect(() => {
     let reconnectTimeout = null;
     let isUnmounted = false;
 
     function connectWebSocket() {
-      if (wsRef.current && (wsRef.current.readyState === 1 || wsRef.current.readyState === 2)) {
+      // Only close if OPEN or CLOSING (never if CONNECTING)
+      if (
+        wsRef.current &&
+        (wsRef.current.readyState === 1 || wsRef.current.readyState === 2)
+      ) {
         wsRef.current.close();
       }
-
-      const websocket = new window.WebSocket(WS_URL);
+      // Always use the full backend URL
+      const websocket = new window.WebSocket('wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
+      
       wsRef.current = websocket;
 
       websocket.onopen = () => {
         setWsConnected(true);
-        console.log('✅ WebSocket CONNECTED successfully at:', new Date().toISOString());
+        console.log('WebSocket connected');
       };
+
+      // DO NOT set websocket.onmessage here — we add a single, managed listener below
+      // websocket.onmessage = (event) => { ... }  <-- removed to avoid duplicate handlers
 
       websocket.onclose = () => {
         setWsConnected(false);
-        console.log('❌ WebSocket DISCONNECTED at:', new Date().toISOString());
+        console.log('WebSocket disconnected');
         if (!isUnmounted) {
           reconnectTimeout = setTimeout(connectWebSocket, 3000);
         }
@@ -646,7 +864,7 @@ const Shipments = () => {
 
       websocket.onerror = (err) => {
         setWsConnected(false);
-        console.error('❌ WebSocket ERROR:', err);
+        console.error('WebSocket error:', err);
       };
     }
 
@@ -655,153 +873,133 @@ const Shipments = () => {
     return () => {
       isUnmounted = true;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (wsRef.current && (wsRef.current.readyState === 1 || wsRef.current.readyState === 2)) {
+      // Only close if OPEN or CLOSING (never if CONNECTING)
+      if (
+        wsRef.current &&
+        (wsRef.current.readyState === 1 || wsRef.current.readyState === 2)
+      ) {
         wsRef.current.close();
       }
     };
   }, []);
 
-  // Handle WebSocket messages
+  // Handle incoming WebSocket messages (single centralized listener)
   useEffect(() => {
     const ws = wsRef.current;
     if (!ws) return;
 
     const handleMessage = (event) => {
-      console.log('🔔 WebSocket message received!', new Date().toISOString());
-      
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        
-        console.log('📦 Parsed message:', {
-          hasFullDocument: !!msg.fullDocument,
-          operationType: msg.operationType,
-          ns: msg.ns
-        });
+        // Debug: log all incoming messages once
+        console.log('WebSocket message received:', msg);
 
-        const msgId = msg._id?._data ||
+        // Determine a stable message id to dedupe:
+        // try raw oplog _data, then fullDocument._id.$oid, then wallTime.$date, then fallback to JSON stringify
+        const msgId =
+          msg._id?._data ||
           msg.fullDocument?._id?.$oid ||
           (msg.wallTime && (msg.wallTime.$date || JSON.stringify(msg.wallTime))) ||
           JSON.stringify(msg).slice(0, 200);
 
         if (processedMessagesRef.current.has(msgId)) {
-          console.log('⏭️ Skipping - already processed:', msgId);
+          // already processed
           return;
         }
         processedMessagesRef.current.add(msgId);
 
+        // Normalize possible shapes: fullDocument may contain an array field "data" with multiple records,
+        // or fullDocument may be the record itself.
         const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
-        if (!full) {
-          console.log('❌ No fullDocument found');
-          return;
-        }
+        if (!full) return;
 
-        // Only process if we have a selected shipment
-        if (!selectedShipmentDetail) {
-          console.log('⚠️ No shipment selected');
-          return;
-        }
-
-        // Extract tracker ID from the top level of the document
-        const incomingTrackerId = full.trackerID;
-        
-        // If no tracker ID found, skip this message
-        if (!incomingTrackerId && incomingTrackerId !== 0) {
-          console.log('❌ No tracker ID in message');
-          return;
-        }
-        
-        // Convert both to strings for comparison (handle both string and number)
-        const selectedTrackerId = String(selectedShipmentDetail.trackerId).trim();
-        const messageTrackerId = String(incomingTrackerId).trim();
-        
-        console.log('🔍 WS Tracker comparison:', {
-          selected: selectedTrackerId,
-          incoming: messageTrackerId,
-          match: messageTrackerId === selectedTrackerId,
-          dataLength: full.data?.length || 0
-        });
-        
-        // Only process if tracker IDs match
-        if (messageTrackerId !== selectedTrackerId) {
-          console.log('⏭️ Skipping - tracker ID mismatch');
-          return;
-        }
-
-        console.log('✅ Processing real-time data for tracker:', messageTrackerId);
-
-        // Process data - handle both array and single record formats
-        const processRecords = (records) => {
-          // Update location data
-          const newPoints = records.map((r) => {
-            const lat = r.Lat ?? r.latitude ?? r.lat;
-            const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
-            const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-            if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
-            return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
-          }).filter(Boolean);
-
-          if (newPoints.length > 0) {
-            console.log('Adding location points:', newPoints.length);
-            setLocationData(prev => [...prev, ...newPoints]);
-          }
-
-          // Update temperature data
-          const tempData = records.map(r => {
-            const t = r.Temp ?? r.temperature;
-            const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-            if (t === undefined || t === null) return null;
-            return { timestamp: ts, temperature: parseFloat(t) };
-          }).filter(Boolean);
-          if (tempData.length > 0) {
-            console.log('Adding temperature data:', tempData.length);
-            setTemperatureData(prev => [...prev, ...tempData]);
-          }
-
-          // Update humidity data
-          const humData = records.map(r => {
-            const h = r.Hum ?? r.humidity;
-            const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-            if (h === undefined || h === null) return null;
-            return { timestamp: ts, humidity: parseFloat(h) };
-          }).filter(Boolean);
-          if (humData.length > 0) {
-            console.log('Adding humidity data:', humData.length);
-            setHumidityData(prev => [...prev, ...humData]);
-          }
-
-          // Update battery data
-          const battData = records.map(r => {
-            const b = r.Batt ?? r.battery;
-            const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-            if (b === undefined || b === null) return null;
-            return { timestamp: ts, battery: parseFloat(b) };
-          }).filter(Boolean);
-          if (battData.length > 0) {
-            console.log('Adding battery data:', battData.length);
-            setBatteryData(prev => [...prev, ...battData]);
-          }
-
-          // Update speed data
-          const spdData = records.map(r => {
-            const s = r.Speed ?? r.speed;
-            const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-            if (s === undefined || s === null) return null;
-            return { timestamp: ts, speed: parseFloat(s) };
-          }).filter(Boolean);
-          if (spdData.length > 0) {
-            console.log('Adding speed data:', spdData.length);
-            setSpeedData(prev => [...prev, ...spdData]);
-          }
-        };
-
-        // Handle both array and single record
+        // If full.data is an array of readings, append them
         if (Array.isArray(full.data) && full.data.length > 0) {
-          processRecords(full.data);
+          setLocationData((prev) => {
+            const newPoints = full.data
+              .map((r) => {
+                const lat = r.Lat ?? r.latitude ?? r.lat;
+                const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
+                const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
+                return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
+              })
+              .filter(Boolean);
+            return [...prev, ...newPoints];
+          });
+
+          // Also update sensor arrays (temperature/humidity/etc.) if present
+          setTemperatureData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const t = r.Temp ?? r.temperature;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (t === undefined || t === null) return null;
+                return { timestamp: ts, temperature: parseFloat(t) };
+              })
+              .filter(Boolean)
+          ]);
+
+          setHumidityData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const h = r.Hum ?? r.humidity;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (h === undefined || h === null) return null;
+                return { timestamp: ts, humidity: parseFloat(h) };
+              })
+              .filter(Boolean)
+          ]);
+
+          setBatteryData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const b = r.Batt ?? r.battery;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (b === undefined || b === null) return null;
+                return { timestamp: ts, battery: parseFloat(b) };
+              })
+              .filter(Boolean)
+          ]);
+
+          setSpeedData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const s = r.Speed ?? r.speed;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (s === undefined || s === null) return null;
+                return { timestamp: ts, speed: parseFloat(s) };
+              })
+              .filter(Boolean)
+          ]);
         } else {
-          processRecords([full]);
+          // If full is a single record with Lat/Lng, handle that
+          const lat = full.Lat ?? full.latitude ?? full.lat;
+          const lng = full.Lng ?? full.longitude ?? full.lng ?? full.lon;
+          const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? new Date().toISOString();
+
+          if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
+            setLocationData(prev => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
+          }
+
+          const t = full.Temp ?? full.temperature;
+          if (t !== undefined && t !== null) setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
+
+          const h = full.Hum ?? full.humidity;
+          if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
+
+          const b = full.Batt ?? full.battery;
+          if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
+
+          const s = full.Speed ?? full.speed;
+          if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
         }
       } catch (e) {
-        console.error('❌ Error parsing WS message', e);
+        console.error('Error parsing WS message', e);
       }
     };
 
@@ -809,51 +1007,7 @@ const Shipments = () => {
     return () => {
       ws.removeEventListener('message', handleMessage);
     };
-  }, [selectedShipmentDetail]);
-
-  // Render chart with interaction handlers
-  const renderSensorChart = (data, valueKey, sensorName, unit, color) => (
-    <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
-      <div className="shipment-details">
-        <div className="shipment-header">
-          <div className="shipment-header-left">
-            <span className="shipment-id">{sensorName}</span>
-          </div>
-          <span className="current-value">
-            {typeof getCurrentValue(data, valueKey) === 'number' 
-              ? getCurrentValue(data, valueKey).toFixed(1) + unit
-              : getCurrentValue(data, valueKey)}
-          </span>
-        </div>
-        <div className={`inline-chart ${valueKey}-chart`} style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
-          <svg 
-            width="100%" 
-            height="60" 
-            viewBox="0 0 300 60"
-            style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-            onMouseMove={(e) => handleChartInteraction(e, data, valueKey, sensorName, unit)}
-            onMouseLeave={(e) => handleChartLeaveOrEnd(sensorName, e)}
-            onTouchStart={(e) => handleChartInteraction(e, data, valueKey, sensorName, unit)}
-            onTouchMove={(e) => handleChartInteraction(e, data, valueKey, sensorName, unit)}
-            onTouchEnd={(e) => handleChartLeaveOrEnd(sensorName, e)}
-          >
-            {data.length > 0 ? (
-              <polyline
-                fill="none"
-                stroke={color}
-                strokeWidth="2"
-                points={generateSVGPath(data, valueKey)}
-              />
-            ) : (
-              <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                No {valueKey} data available
-              </text>
-            )}
-          </svg>
-        </div>
-      </div>
-    </div>
-  );
+  }, [selectedShipmentDetail]); // keep dependency as you had it
 
   return (
     <div className="shipments-container">
@@ -931,9 +1085,7 @@ const Shipments = () => {
                     >
                       Reports
                     </button>
-                  </div>
-
-                  <div className="tab-content">
+                  </div>                  <div className="tab-content">
                     {activeTab === 'sensors' && (
                       <div className="sensors-content">
                         {isLoadingSensorData ? (
@@ -951,10 +1103,169 @@ const Shipments = () => {
                           </div>
                         ) : (
                           <div className="sensor-charts" style={{ width: '100%', padding: '0', margin: '0' }}>
-                            {renderSensorChart(temperatureData, 'temperature', 'Temperature', '°C', '#ff6b6b')}
-                            {renderSensorChart(humidityData, 'humidity', 'Humidity', '%', '#4ecdc4')}
-                            {renderSensorChart(batteryData, 'battery', 'Battery', '%', '#95e1d3')}
-                            {renderSensorChart(speedData, 'speed', 'Speed', ' km/h', '#ffeaa7')}
+                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
+                              <div className="shipment-details">
+                                <div className="shipment-header">
+                                  <div className="shipment-header-left">
+                                    <span className="shipment-id">Temperature</span>
+                                  </div>
+                                  <span className="current-value">
+                                    {typeof getCurrentValue(temperatureData, 'temperature') === 'number' 
+                                      ? getCurrentValue(temperatureData, 'temperature').toFixed(1) + '°C'
+                                      : getCurrentValue(temperatureData, 'temperature')}
+                                  </span>
+                                </div>
+                                <div className="inline-chart temperature-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
+                                  <svg 
+                                    width="100%" 
+                                    height="60" 
+                                    viewBox="0 0 300 60"
+                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                    onMouseMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Temperature', e)}
+                                    onTouchStart={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                    onTouchMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Temperature', e)}
+                                  >
+                                    {temperatureData.length > 0 ? (
+                                      <polyline
+                                        fill="none"
+                                        stroke="#ff6b6b"
+                                        strokeWidth="2"
+                                        points={generateSVGPath(temperatureData, 'temperature')}
+                                      />
+                                    ) : (
+                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                        No temperature data available
+                                      </text>
+                                    )}
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
+                              <div className="shipment-details">
+                                <div className="shipment-header">
+                                  <div className="shipment-header-left">
+                                    <span className="shipment-id">Humidity</span>
+                                  </div>
+                                  <span className="current-value">
+                                    {typeof getCurrentValue(humidityData, 'humidity') === 'number' 
+                                      ? getCurrentValue(humidityData, 'humidity').toFixed(1) + '%'
+                                      : getCurrentValue(humidityData, 'humidity')}
+                                  </span>
+                                </div>
+                                <div className="inline-chart humidity-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
+                                  <svg 
+                                    width="100%" 
+                                    height="60" 
+                                    viewBox="0 0 300 60"
+                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                    onMouseMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Humidity', e)}
+                                    onTouchStart={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                    onTouchMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Humidity', e)}
+                                  >
+                                    {humidityData.length > 0 ? (
+                                      <polyline
+                                        fill="none"
+                                        stroke="#4ecdc4"
+                                        strokeWidth="2"
+                                        points={generateSVGPath(humidityData, 'humidity')}
+                                      />
+                                    ) : (
+                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                        No humidity data available
+                                      </text>
+                                    )}
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
+                              <div className="shipment-details">
+                                <div className="shipment-header">
+                                  <div className="shipment-header-left">
+                                    <span className="shipment-id">Battery</span>
+                                  </div>
+                                  <span className="current-value">
+                                    {typeof getCurrentValue(batteryData, 'battery') === 'number' 
+                                      ? getCurrentValue(batteryData, 'battery').toFixed(1) + '%'
+                                      : getCurrentValue(batteryData, 'battery')}
+                                  </span>
+                                </div>
+                                <div className="inline-chart battery-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
+                                  <svg 
+                                    width="100%" 
+                                    height="60" 
+                                    viewBox="0 0 300 60"
+                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                    onMouseMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Battery', e)}
+                                    onTouchStart={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                    onTouchMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Battery', e)}
+                                  >
+                                    {batteryData.length > 0 ? (
+                                      <polyline
+                                        fill="none"
+                                        stroke="#95e1d3"
+                                        strokeWidth="2"
+                                        points={generateSVGPath(batteryData, 'battery')}
+                                      />
+                                    ) : (
+                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                        No battery data available
+                                      </text>
+                                    )}
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
+                              <div className="shipment-details">
+                                <div className="shipment-header">
+                                  <div className="shipment-header-left">
+                                    <span className="shipment-id">Speed</span>
+                                  </div>
+                                  <span className="current-value">
+                                    {typeof getCurrentValue(speedData, 'speed') === 'number' 
+                                      ? getCurrentValue(speedData, 'speed').toFixed(1) + ' km/h'
+                                      : getCurrentValue(speedData, 'speed')}
+                                  </span>
+                                </div>
+                                <div className="inline-chart speed-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
+                                  <svg 
+                                    width="100%" 
+                                    height="60" 
+                                    viewBox="0 0 300 60"
+                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                    onMouseMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Speed', e)}
+                                    onTouchStart={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                    onTouchMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Speed', e)}
+                                  >
+                                    {speedData.length > 0 ? (
+                                      <polyline
+                                        fill="none"
+                                        stroke="#ffeaa7"
+                                        strokeWidth="2"
+                                        points={generateSVGPath(speedData, 'speed')}
+                                      />
+                                    ) : (
+                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                        No speed data available
+                                      </text>
+                                    )}
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1100,7 +1411,7 @@ const Shipments = () => {
       <div className="map-container">
         <MapContainer
           ref={mapRef}
-          center={[20, 0]}
+          center={[20, 0]} // Default world view
           zoom={2}
           minZoom={1}
           maxZoom={18}
@@ -1109,6 +1420,7 @@ const Shipments = () => {
           preferCanvas={true}
           key={selectedShipmentDetail ? `detail-${selectedShipmentDetail.trackerId}` : 'overview'}
         >
+          {/* Use MapTiler tiles for better geocoding/visual consistency */}
           <TileLayer
             url={`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_API_KEY}`}
             tileSize={512}
@@ -1121,7 +1433,7 @@ const Shipments = () => {
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
           <MapBoundsHandler />
 
-          {/* Leg markers */}
+          {/* Show all leg markers */}
           {selectedShipmentDetail && legPoints.length > 0 && legPoints.map((point, idx) => (
             <Marker
               key={`leg-marker-${idx}`}
@@ -1140,7 +1452,7 @@ const Shipments = () => {
             </Marker>
           ))}
 
-          {/* Planned route (dashed) when no GPS data */}
+          {/* Show dashed planned route ONLY if no GPS data */}
           {selectedShipmentDetail && legPoints.length > 1 && locationData.length === 0 && (
             <Polyline
               positions={legPoints.map(p => [p.lat, p.lng])}
@@ -1153,7 +1465,7 @@ const Shipments = () => {
             />
           )}
 
-          {/* Actual GPS path */}
+          {/* Draw actual GPS path as solid line */}
           {selectedShipmentDetail && locationData.length > 1 && (
             <Polyline
               positions={locationData.map(p => [p.latitude, p.longitude])}
@@ -1165,10 +1477,11 @@ const Shipments = () => {
             />
           )}
 
-          {/* Current GPS position and connection to next destination */}
+          {/* Red marker at current GPS, connected to next destination marker by dashed line */}
           {selectedShipmentDetail && locationData.length > 0 && legPoints.length > 1 && (() => {
             const lastGps = locationData[locationData.length - 1];
             const gpsPos = [lastGps.latitude, lastGps.longitude];
+            // Find the next destination marker (first marker after closest)
             let minDist = Infinity, closestIdx = 0;
             for (let i = 0; i < legPoints.length; i++) {
               const d = Math.hypot(legPoints[i].lat - gpsPos[0], legPoints[i].lng - gpsPos[1]);
@@ -1177,10 +1490,13 @@ const Shipments = () => {
                 closestIdx = i;
               }
             }
+            // Next destination is the next marker after closest, or last marker if at the end
             const nextIdx = Math.min(closestIdx + 1, legPoints.length - 1);
+            // Only show dashed line if not already at the last marker
             const showDashedToNext = nextIdx !== 0 && (gpsPos[0] !== legPoints[nextIdx].lat || gpsPos[1] !== legPoints[nextIdx].lng);
             return (
               <>
+                {/* Dashed line from current GPS to next destination marker */}
                 {showDashedToNext && (
                   <Polyline
                     positions={[gpsPos, [legPoints[nextIdx].lat, legPoints[nextIdx].lng]]}
@@ -1192,6 +1508,7 @@ const Shipments = () => {
                     }}
                   />
                 )}
+                {/* Red dot at current GPS */}
                 <Marker
                   position={gpsPos}
                   icon={L.divIcon({
@@ -1216,6 +1533,7 @@ const Shipments = () => {
                     </div>
                   </Popup>
                 </Marker>
+                {/* Green dot at start (origin) */}
                 <Marker
                   position={[legPoints[0].lat, legPoints[0].lng]}
                   icon={L.divIcon({
@@ -1243,41 +1561,148 @@ const Shipments = () => {
             );
           })()}
 
-          {/* Hover marker from chart interactions */}
-          {hoverMarkerPosition && (
-            <Marker 
-              position={hoverMarkerPosition}
-              icon={L.divIcon({
-                className: 'route-marker hover-marker',
-                html: `
-                  <div style="
-                    width: 16px;
-                    height: 16px;
-                    background: #ff6b35;
-                    border: 3px solid white;
-                    border-radius: 50%;
-                    box-shadow: 0 0 0 2px #ff6b35, 0 2px 8px rgba(0,0,0,0.3);
-                    animation: pulse 1.5s infinite;
-                  "></div>
-                `,
-                iconSize: [16, 16],
-                iconAnchor: [8, 8]
-              })}
-            >
-              <Popup>
-                <div>
-                  <strong>Sensor Reading</strong><br />
-                  <strong>{hoverMarkerData?.sensorName}:</strong> {hoverMarkerData?.sensorValue?.toFixed(1)}{hoverMarkerData?.unit}<br />
-                  <strong>Time:</strong> {formatTimestamp(hoverMarkerData?.timestamp)}<br />
-                  <strong>Coordinates:</strong> {hoverMarkerData?.location?.latitude?.toFixed(6)}, {hoverMarkerData?.location?.longitude?.toFixed(6)}
-                </div>
-              </Popup>
-            </Marker>
+          {/* Remove this: Show all leg markers and polyline for selected shipment (always, even if no sensor data) */}
+          {/* {selectedShipmentDetail && legPoints.length > 0 && (
+            <>
+              <Polyline
+                positions={legPoints.map(p => [p.lat, p.lng])}
+                pathOptions={{
+                  color: '#1976d2',
+                  weight: 3,
+                  opacity: 0.7,
+                  dashArray: '8, 8'
+                }}
+              />
+              {legPoints.map((point, idx) => (
+                <Marker
+                  key={`leg-marker-${idx}`}
+                  position={[point.lat, point.lng]}
+                  icon={createNumberedMarkerIcon(point.number, idx === 0, idx === legPoints.length - 1)}
+                >
+                  <Popup>
+                    <div>
+                      <strong>
+                        {idx === 0 ? 'Origin' : (idx === legPoints.length - 1 ? 'Destination' : `Stop ${idx}`)}
+                      </strong>
+                      <br />
+                      {point.address}
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+            </>
+          )} */}
+
+          {/* Show polyline for selected shipment */}
+          {selectedShipmentDetail && locationData.length > 0 && (
+            <>
+              <Polyline
+                positions={getPolylineCoordinates()}
+                pathOptions={{
+                  color: '#667eea',
+                  weight: 4,
+                  opacity: 0.8,
+                  dashArray: '10, 5'
+                }}
+              />
+              
+              {/* Hover marker that follows chart interactions */}
+              {hoverMarkerPosition && (
+                <Marker 
+                  position={hoverMarkerPosition}
+                  icon={L.divIcon({
+                    className: 'route-marker hover-marker',
+                    html: `
+                      <div style="
+                        width: 16px;
+                        height: 16px;
+                        background: #ff6b35;
+                        border: 3px solid white;
+                        border-radius: 50%;
+                        box-shadow: 0 0 0 2px #ff6b35, 0 2px 8px rgba(0,0,0,0.3);
+                        animation: pulse 1.5s infinite;
+                      "></div>
+                    `,
+                    iconSize: [16, 16],
+                    iconAnchor: [8, 8]
+                  })}
+                >
+                  <Popup>
+                    <div>
+                      <strong>Sensor Reading</strong><br />
+                      <strong>{hoverMarkerData?.sensorName}:</strong> {hoverMarkerData?.sensorValue?.toFixed(1)}{hoverMarkerData?.unit}<br />
+                      <strong>Time:</strong> {formatTimestamp(hoverMarkerData?.timestamp)}<br />
+                      <strong>Coordinates:</strong> {hoverMarkerData?.location?.latitude?.toFixed(6)}, {hoverMarkerData?.location?.longitude?.toFixed(6)}
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+              
+              {/* Start marker */}
+              {locationData.length > 0 && (
+                <Marker 
+                  position={[locationData[0].latitude, locationData[0].longitude]}
+                  icon={L.divIcon({
+                    className: 'route-marker start-marker',
+                    html: `
+                      <div style="
+                        width: 20px;
+                        height: 20px;
+                        background: #28a745;
+                        border: 3px solid white;
+                        border-radius: 50%;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                      "></div>
+                    `,
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                  })}
+                >
+                  <Popup>
+                    <div>
+                      <strong>Start Point</strong><br />
+                      Time: {formatTimestamp(locationData[0].timestamp)}<br />
+                      Coordinates: {locationData[0].latitude.toFixed(6)}, {locationData[0].longitude.toFixed(6)}
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+              
+              {/* End marker */}
+              {locationData.length > 1 && (
+                <Marker 
+                  position={[locationData[locationData.length - 1].latitude, locationData[locationData.length - 1].longitude]}
+                  icon={L.divIcon({
+                    className: 'route-marker end-marker',
+                    html: `
+                      <div style="
+                        width: 20px;
+                        height: 20px;
+                        background: #dc3545;
+                        border: 3px solid white;
+                        border-radius: 50%;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                      "></div>
+                    `,
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                  })}
+                >
+                  <Popup>
+                    <div>
+                      <strong>End Point</strong><br />
+                      Time: {formatTimestamp(locationData[locationData.length - 1].timestamp)}<br />
+                      Coordinates: {locationData[locationData.length - 1].latitude.toFixed(6)}, {locationData[locationData.length - 1].longitude.toFixed(6)}
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+            </>
           )}
         </MapContainer>
       </div>
 
-      {/* New Shipment Modal */}
+      {/* Modal for new shipment form */}
       {showNewShipmentForm && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -1407,7 +1832,7 @@ const Shipments = () => {
         </div>
       )}
 
-      {/* Chart tooltip */}
+      {/* Global tooltip for chart interactions */}
       <div 
         id="chart-tooltip" 
         style={{
