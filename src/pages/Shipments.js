@@ -54,6 +54,7 @@ const Shipments = () => {
 
   // Add ref for map instance
   const mapRef = useRef();
+  const currentTrackerIdRef = useRef(null);
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
@@ -886,34 +887,29 @@ const Shipments = () => {
   // Handle incoming WebSocket messages (single centralized listener)
   useEffect(() => {
     const ws = wsRef.current;
-    if (!ws) return;
+    if (!ws || ws.readyState !== 1) return;
 
     const handleMessage = (event) => {
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        // Debug: log all incoming messages once
-        console.log('WebSocket message received:', msg);
+        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
+        if (!full) return;
 
-        // Determine a stable message id to dedupe:
-        // try raw oplog _data, then fullDocument._id.$oid, then wallTime.$date, then fallback to JSON stringify
+        const activeTrackerId = currentTrackerIdRef.current;
+        if (!activeTrackerId) return;
+
+        const msgTrackerId = full.trackerID ?? full.trackerId;
+        if (String(msgTrackerId) !== String(activeTrackerId)) return;
+
         const msgId =
           msg._id?._data ||
           msg.fullDocument?._id?.$oid ||
           (msg.wallTime && (msg.wallTime.$date || JSON.stringify(msg.wallTime))) ||
           JSON.stringify(msg).slice(0, 200);
 
-        if (processedMessagesRef.current.has(msgId)) {
-          // already processed
-          return;
-        }
+        if (processedMessagesRef.current.has(msgId)) return;
         processedMessagesRef.current.add(msgId);
 
-        // Normalize possible shapes: fullDocument may contain an array field "data" with multiple records,
-        // or fullDocument may be the record itself.
-        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
-        if (!full) return;
-
-        // If full.data is an array of readings, append them
         if (Array.isArray(full.data) && full.data.length > 0) {
           setLocationData((prev) => {
             const newPoints = full.data
@@ -1004,10 +1000,8 @@ const Shipments = () => {
     };
 
     ws.addEventListener('message', handleMessage);
-    return () => {
-      ws.removeEventListener('message', handleMessage);
-    };
-  }, [selectedShipmentDetail]); // keep dependency as you had it
+    return () => ws.removeEventListener('message', handleMessage);
+  }, [wsConnected]);
 
   return (
     <div className="shipments-container">
