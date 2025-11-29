@@ -883,33 +883,19 @@ const Shipments = () => {
     };
   }, []);
 
-  // Reset dedupe set when switching shipments so new live updates are not ignored
-  useEffect(() => {
-    processedMessagesRef.current = new Set();
-  }, [selectedShipmentDetail]);
-
-  // Handle incoming WebSocket messages (attach when WS connects; filter by selected tracker)
+  // Handle incoming WebSocket messages (single centralized listener)
   useEffect(() => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== 1) return;
+    if (!ws) return;
 
     const handleMessage = (event) => {
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        // Debug: log all incoming messages once
         console.log('WebSocket message received:', msg);
 
-        // Normalize possible shapes: fullDocument may contain an array field "data" with multiple records,
-        // or fullDocument may be the record itself.
-        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
-        if (!full) return;
-
-        // Only process messages for currently selected shipment (if any)
-        const msgTrackerId = full.trackerID ?? full.trackerId;
-        if (selectedShipmentDetail && String(msgTrackerId) !== String(selectedShipmentDetail.trackerId)) {
-          return;
-        }
-
-        // Dedup id
+        // Determine a stable message id to dedupe:
+        // try raw oplog _data, then fullDocument._id.$oid, then wallTime.$date, then fallback to JSON stringify
         const msgId =
           msg._id?._data ||
           msg.fullDocument?._id?.$oid ||
@@ -917,9 +903,15 @@ const Shipments = () => {
           JSON.stringify(msg).slice(0, 200);
 
         if (processedMessagesRef.current.has(msgId)) {
+          // already processed
           return;
         }
         processedMessagesRef.current.add(msgId);
+
+        // Normalize possible shapes: fullDocument may contain an array field "data" with multiple records,
+        // or fullDocument may be the record itself.
+        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
+        if (!full) return;
 
         // If full.data is an array of readings, append them
         if (Array.isArray(full.data) && full.data.length > 0) {
@@ -936,6 +928,7 @@ const Shipments = () => {
             return [...prev, ...newPoints];
           });
 
+          // Also update sensor arrays (temperature/humidity/etc.) if present
           setTemperatureData((prev) => [
             ...prev,
             ...full.data
@@ -1014,7 +1007,7 @@ const Shipments = () => {
     return () => {
       ws.removeEventListener('message', handleMessage);
     };
-  }, [wsConnected, selectedShipmentDetail]);
+  }, [selectedShipmentDetail]); // keep dependency as you had it
 
   return (
     <div className="shipments-container">
