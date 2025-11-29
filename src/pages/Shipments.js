@@ -975,7 +975,7 @@ const Shipments = () => {
                 return { timestamp: ts, speed: parseFloat(s) };
               })
               .filter(Boolean)
-            ];
+          ]);
         } else {
           // If full is a single record with Lat/Lng, handle that
           const lat = full.Lat ?? full.latitude ?? full.lat;
@@ -1004,8 +1004,10 @@ const Shipments = () => {
     };
 
     ws.addEventListener('message', handleMessage);
-    return () => ws.removeEventListener('message', handleMessage);
-  }, [wsConnected, selectedShipmentDetail]);
+    return () => {
+      ws.removeEventListener('message', handleMessage);
+    };
+  }, [selectedShipmentDetail]); // keep dependency as you had it
 
   return (
     <div className="shipments-container">
