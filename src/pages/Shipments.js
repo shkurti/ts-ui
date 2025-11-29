@@ -886,6 +886,12 @@ const Shipments = () => {
 
   // Handle incoming WebSocket messages (single centralized listener)
   useEffect(() => {
+    currentTrackerIdRef.current = selectedShipmentDetail?.trackerId ?? null;
+    processedMessagesRef.current = new Set();
+  }, [selectedShipmentDetail?.trackerId]);
+
+  useEffect(() => {
+    if (!selectedShipmentDetail) return;
     const ws = wsRef.current;
     if (!ws || ws.readyState !== 1) return;
 
@@ -931,49 +937,49 @@ const Shipments = () => {
           setTemperatureData((prev) => [
             ...prev,
             ...full.data
-              .map(r => {
+              .map((r) => {
                 const t = r.Temp ?? r.temperature;
                 const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
                 if (t === undefined || t === null) return null;
                 return { timestamp: ts, temperature: parseFloat(t) };
               })
-              .filter(Boolean)
+              .filter(Boolean),
           ]);
 
           setHumidityData((prev) => [
             ...prev,
             ...full.data
-              .map(r => {
+              .map((r) => {
                 const h = r.Hum ?? r.humidity;
                 const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
                 if (h === undefined || h === null) return null;
                 return { timestamp: ts, humidity: parseFloat(h) };
               })
-              .filter(Boolean)
+              .filter(Boolean),
           ]);
 
           setBatteryData((prev) => [
             ...prev,
             ...full.data
-              .map(r => {
+              .map((r) => {
                 const b = r.Batt ?? r.battery;
                 const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
                 if (b === undefined || b === null) return null;
                 return { timestamp: ts, battery: parseFloat(b) };
               })
-              .filter(Boolean)
+              .filter(Boolean),
           ]);
 
           setSpeedData((prev) => [
             ...prev,
             ...full.data
-              .map(r => {
+              .map((r) => {
                 const s = r.Speed ?? r.speed;
                 const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
                 if (s === undefined || s === null) return null;
                 return { timestamp: ts, speed: parseFloat(s) };
               })
-              .filter(Boolean)
+              .filter(Boolean),
           ]);
         } else {
           const lat = full.Lat ?? full.latitude ?? full.lat;
@@ -981,20 +987,20 @@ const Shipments = () => {
           const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? fallbackTimestamp;
 
           if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
-            setLocationData(prev => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
+            setLocationData((prev) => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
           }
 
           const t = full.Temp ?? full.temperature;
-          if (t !== undefined && t !== null) setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
+          if (t !== undefined && t !== null) setTemperatureData((prev) => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
 
           const h = full.Hum ?? full.humidity;
-          if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
+          if (h !== undefined && h !== null) setHumidityData((prev) => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
 
           const b = full.Batt ?? full.battery;
-          if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
+          if (b !== undefined && b !== null) setBatteryData((prev) => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
 
           const s = full.Speed ?? full.speed;
-          if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
+          if (s !== undefined && s !== null) setSpeedData((prev) => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
         }
       } catch (e) {
         console.error('Error parsing WS message', e);
@@ -1005,7 +1011,7 @@ const Shipments = () => {
     return () => {
       ws.removeEventListener('message', handleMessage);
     };
-  }, [selectedShipmentDetail]);
+  }, [selectedShipmentDetail?.trackerId, wsConnected]);
 
   return (
     <div className="shipments-container">
