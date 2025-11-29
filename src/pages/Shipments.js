@@ -890,6 +890,8 @@ const Shipments = () => {
     processedMessagesRef.current = new Set();
   }, [selectedShipmentDetail?.trackerId]);
 
+  // removed legacy WebSocket listener to avoid duplicate unfiltered handlers
+
   useEffect(() => {
     if (!selectedShipmentDetail) return;
     const ws = wsRef.current;
