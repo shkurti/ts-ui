@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -54,7 +54,6 @@ const Shipments = () => {
 
   // Add ref for map instance
   const mapRef = useRef();
-  const currentTrackerIdRef = useRef(null);
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
@@ -831,163 +830,184 @@ const Shipments = () => {
   const processedMessagesRef = useRef(new Set());
 
   useEffect(() => {
-    currentTrackerIdRef.current = selectedShipmentDetail?.trackerId ?? null;
-    processedMessagesRef.current = new Set();
-  }, [selectedShipmentDetail?.trackerId]);
-
-  const handleWebSocketMessage = useCallback((event) => {
-    try {
-      const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-      const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
-      if (!full) return;
-
-      const activeTrackerId = currentTrackerIdRef.current;
-      if (!activeTrackerId) return;
-
-      const msgTrackerId = full.trackerID ?? full.trackerId;
-      if (String(msgTrackerId) !== String(activeTrackerId)) return;
-
-      const msgId =
-        msg._id?._data ||
-        msg.fullDocument?._id?.$oid ||
-        (msg.wallTime && (msg.wallTime.$date || JSON.stringify(msg.wallTime))) ||
-        JSON.stringify(msg).slice(0, 200);
-
-      if (processedMessagesRef.current.has(msgId)) return;
-      processedMessagesRef.current.add(msgId);
-
-      if (Array.isArray(full.data) && full.data.length > 0) {
-        setLocationData((prev) => {
-          const newPoints = full.data
-            .map((r) => {
-              const lat = r.Lat ?? r.latitude ?? r.lat;
-              const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
-              const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-              if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
-              return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
-            })
-            .filter(Boolean);
-          return [...prev, ...newPoints];
-        });
-
-        // Also update sensor arrays (temperature/humidity/etc.) if present
-        setTemperatureData((prev) => [
-          ...prev,
-          ...full.data
-            .map(r => {
-              const t = r.Temp ?? r.temperature;
-              const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-              if (t === undefined || t === null) return null;
-              return { timestamp: ts, temperature: parseFloat(t) };
-            })
-            .filter(Boolean)
-        ]);
-
-        setHumidityData((prev) => [
-          ...prev,
-          ...full.data
-            .map(r => {
-              const h = r.Hum ?? r.humidity;
-              const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-              if (h === undefined || h === null) return null;
-              return { timestamp: ts, humidity: parseFloat(h) };
-            })
-            .filter(Boolean)
-        ]);
-
-        setBatteryData((prev) => [
-          ...prev,
-          ...full.data
-            .map(r => {
-              const b = r.Batt ?? r.battery;
-              const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-              if (b === undefined || b === null) return null;
-              return { timestamp: ts, battery: parseFloat(b) };
-            })
-            .filter(Boolean)
-        ]);
-
-        setSpeedData((prev) => [
-          ...prev,
-          ...full.data
-            .map(r => {
-              const s = r.Speed ?? r.speed;
-              const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
-              if (s === undefined || s === null) return null;
-              return { timestamp: ts, speed: parseFloat(s) };
-            })
-            .filter(Boolean)
-        ]);
-      } else {
-        // If full is a single record with Lat/Lng, handle that
-        const lat = full.Lat ?? full.latitude ?? full.lat;
-        const lng = full.Lng ?? full.longitude ?? full.lng ?? full.lon;
-        const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? new Date().toISOString();
-
-        if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
-          setLocationData(prev => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
-        }
-
-        const t = full.Temp ?? full.temperature;
-        if (t !== undefined && t !== null) setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
-
-        const h = full.Hum ?? full.humidity;
-        if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
-
-        const b = full.Batt ?? full.battery;
-        if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
-
-        const s = full.Speed ?? full.speed;
-        if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
-      }
-    } catch (e) {
-      console.error('Error parsing WS message', e);
-    }
-  }, []);
-
-  useEffect(() => {
     let reconnectTimeout = null;
+    let isUnmounted = false;
 
-    const connectWebSocket = () => {
-      try {
-        const websocket = new window.WebSocket('wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
-        wsRef.current = websocket;
-
-        websocket.onopen = () => {
-          console.log('WebSocket connected');
-          setWsConnected(true);
-        };
-
-        websocket.onmessage = handleWebSocketMessage;
-
-        websocket.onclose = () => {
-          console.log('WebSocket disconnected');
-          setWsConnected(false);
-          wsRef.current = null;
-          reconnectTimeout = setTimeout(connectWebSocket, 3000);
-        };
-
-        websocket.onerror = (err) => {
-          console.error('WebSocket error:', err);
-          setWsConnected(false);
-          websocket.close();
-        };
-      } catch (error) {
-        console.error('Failed to connect WebSocket:', error);
-        reconnectTimeout = setTimeout(connectWebSocket, 3000);
+    function connectWebSocket() {
+      // Only close if OPEN or CLOSING (never if CONNECTING)
+      if (
+        wsRef.current &&
+        (wsRef.current.readyState === 1 || wsRef.current.readyState === 2)
+      ) {
+        wsRef.current.close();
       }
-    };
+      // Always use the full backend URL
+      const websocket = new window.WebSocket('wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
+      
+      wsRef.current = websocket;
+
+      websocket.onopen = () => {
+        setWsConnected(true);
+        console.log('WebSocket connected');
+      };
+
+      // DO NOT set websocket.onmessage here — we add a single, managed listener below
+      // websocket.onmessage = (event) => { ... }  <-- removed to avoid duplicate handlers
+
+      websocket.onclose = () => {
+        setWsConnected(false);
+        console.log('WebSocket disconnected');
+        if (!isUnmounted) {
+          reconnectTimeout = setTimeout(connectWebSocket, 3000);
+        }
+      };
+
+      websocket.onerror = (err) => {
+        setWsConnected(false);
+        console.error('WebSocket error:', err);
+      };
+    }
 
     connectWebSocket();
 
     return () => {
+      isUnmounted = true;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (wsRef.current) {
-        wsRef.current.onmessage = null;
+      // Only close if OPEN or CLOSING (never if CONNECTING)
+      if (
+        wsRef.current &&
+        (wsRef.current.readyState === 1 || wsRef.current.readyState === 2)
+      ) {
         wsRef.current.close();
       }
     };
-  }, [handleWebSocketMessage]);
+  }, []);
+
+  // Handle incoming WebSocket messages (single centralized listener)
+  useEffect(() => {
+    const ws = wsRef.current;
+    if (!ws) return;
+
+    const handleMessage = (event) => {
+      try {
+        const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        // Debug: log all incoming messages once
+        console.log('WebSocket message received:', msg);
+
+        // Determine a stable message id to dedupe:
+        // try raw oplog _data, then fullDocument._id.$oid, then wallTime.$date, then fallback to JSON stringify
+        const msgId =
+          msg._id?._data ||
+          msg.fullDocument?._id?.$oid ||
+          (msg.wallTime && (msg.wallTime.$date || JSON.stringify(msg.wallTime))) ||
+          JSON.stringify(msg).slice(0, 200);
+
+        if (processedMessagesRef.current.has(msgId)) {
+          // already processed
+          return;
+        }
+        processedMessagesRef.current.add(msgId);
+
+        // Normalize possible shapes: fullDocument may contain an array field "data" with multiple records,
+        // or fullDocument may be the record itself.
+        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
+        if (!full) return;
+
+        // If full.data is an array of readings, append them
+        if (Array.isArray(full.data) && full.data.length > 0) {
+          setLocationData((prev) => {
+            const newPoints = full.data
+              .map((r) => {
+                const lat = r.Lat ?? r.latitude ?? r.lat;
+                const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
+                const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
+                return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
+              })
+              .filter(Boolean);
+            return [...prev, ...newPoints];
+          });
+
+          // Also update sensor arrays (temperature/humidity/etc.) if present
+          setTemperatureData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const t = r.Temp ?? r.temperature;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (t === undefined || t === null) return null;
+                return { timestamp: ts, temperature: parseFloat(t) };
+              })
+              .filter(Boolean)
+          ]);
+
+          setHumidityData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const h = r.Hum ?? r.humidity;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (h === undefined || h === null) return null;
+                return { timestamp: ts, humidity: parseFloat(h) };
+              })
+              .filter(Boolean)
+          ]);
+
+          setBatteryData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const b = r.Batt ?? r.battery;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (b === undefined || b === null) return null;
+                return { timestamp: ts, battery: parseFloat(b) };
+              })
+              .filter(Boolean)
+          ]);
+
+          setSpeedData((prev) => [
+            ...prev,
+            ...full.data
+              .map(r => {
+                const s = r.Speed ?? r.speed;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                if (s === undefined || s === null) return null;
+                return { timestamp: ts, speed: parseFloat(s) };
+              })
+              .filter(Boolean)
+          ]);
+        } else {
+          // If full is a single record with Lat/Lng, handle that
+          const lat = full.Lat ?? full.latitude ?? full.lat;
+          const lng = full.Lng ?? full.longitude ?? full.lng ?? full.lon;
+          const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? new Date().toISOString();
+
+          if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
+            setLocationData(prev => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
+          }
+
+          const t = full.Temp ?? full.temperature;
+          if (t !== undefined && t !== null) setTemperatureData(prev => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
+
+          const h = full.Hum ?? full.humidity;
+          if (h !== undefined && h !== null) setHumidityData(prev => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
+
+          const b = full.Batt ?? full.battery;
+          if (b !== undefined && b !== null) setBatteryData(prev => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
+
+          const s = full.Speed ?? full.speed;
+          if (s !== undefined && s !== null) setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
+        }
+      } catch (e) {
+        console.error('Error parsing WS message', e);
+      }
+    };
+
+    ws.addEventListener('message', handleMessage);
+    return () => {
+      ws.removeEventListener('message', handleMessage);
+    };
+  }, [selectedShipmentDetail]); // keep dependency as you had it
 
   return (
     <div className="shipments-container">
