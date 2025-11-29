@@ -54,6 +54,7 @@ const Shipments = () => {
 
   // Add ref for map instance
   const mapRef = useRef();
+  const currentTrackerIdRef = useRef(null);
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
@@ -886,55 +887,53 @@ const Shipments = () => {
   // Handle incoming WebSocket messages (single centralized listener)
   useEffect(() => {
     const ws = wsRef.current;
-    if (!ws) return;
+    if (!ws || ws.readyState !== 1) return;
 
     const handleMessage = (event) => {
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        // Debug: log all incoming messages once
-        console.log('WebSocket message received:', msg);
+        if (!msg || msg.type === 'alert') return;
 
-        // Determine a stable message id to dedupe:
-        // try raw oplog _data, then fullDocument._id.$oid, then wallTime.$date, then fallback to JSON stringify
+        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
+        if (!full) return;
+
+        const activeTrackerId = currentTrackerIdRef.current;
+        if (!activeTrackerId) return;
+
+        const msgTrackerId = full.trackerID ?? full.trackerId;
+        if (String(msgTrackerId) !== String(activeTrackerId)) return;
+
         const msgId =
           msg._id?._data ||
           msg.fullDocument?._id?.$oid ||
           (msg.wallTime && (msg.wallTime.$date || JSON.stringify(msg.wallTime))) ||
           JSON.stringify(msg).slice(0, 200);
 
-        if (processedMessagesRef.current.has(msgId)) {
-          // already processed
-          return;
-        }
+        if (processedMessagesRef.current.has(msgId)) return;
         processedMessagesRef.current.add(msgId);
 
-        // Normalize possible shapes: fullDocument may contain an array field "data" with multiple records,
-        // or fullDocument may be the record itself.
-        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
-        if (!full) return;
+        const fallbackTimestamp = new Date().toISOString();
 
-        // If full.data is an array of readings, append them
         if (Array.isArray(full.data) && full.data.length > 0) {
           setLocationData((prev) => {
             const newPoints = full.data
               .map((r) => {
                 const lat = r.Lat ?? r.latitude ?? r.lat;
                 const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
-                const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
                 if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
                 return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
               })
               .filter(Boolean);
-            return [...prev, ...newPoints];
+            return newPoints.length ? [...prev, ...newPoints] : prev;
           });
 
-          // Also update sensor arrays (temperature/humidity/etc.) if present
           setTemperatureData((prev) => [
             ...prev,
             ...full.data
               .map(r => {
                 const t = r.Temp ?? r.temperature;
-                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
                 if (t === undefined || t === null) return null;
                 return { timestamp: ts, temperature: parseFloat(t) };
               })
@@ -946,7 +945,7 @@ const Shipments = () => {
             ...full.data
               .map(r => {
                 const h = r.Hum ?? r.humidity;
-                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
                 if (h === undefined || h === null) return null;
                 return { timestamp: ts, humidity: parseFloat(h) };
               })
@@ -958,7 +957,7 @@ const Shipments = () => {
             ...full.data
               .map(r => {
                 const b = r.Batt ?? r.battery;
-                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
                 if (b === undefined || b === null) return null;
                 return { timestamp: ts, battery: parseFloat(b) };
               })
@@ -970,17 +969,16 @@ const Shipments = () => {
             ...full.data
               .map(r => {
                 const s = r.Speed ?? r.speed;
-                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? new Date().toISOString();
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
                 if (s === undefined || s === null) return null;
                 return { timestamp: ts, speed: parseFloat(s) };
               })
               .filter(Boolean)
           ]);
         } else {
-          // If full is a single record with Lat/Lng, handle that
           const lat = full.Lat ?? full.latitude ?? full.lat;
           const lng = full.Lng ?? full.longitude ?? full.lng ?? full.lon;
-          const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? new Date().toISOString();
+          const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? fallbackTimestamp;
 
           if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
             setLocationData(prev => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
@@ -1007,7 +1005,7 @@ const Shipments = () => {
     return () => {
       ws.removeEventListener('message', handleMessage);
     };
-  }, [selectedShipmentDetail]); // keep dependency as you had it
+  }, [selectedShipmentDetail]);
 
   return (
     <div className="shipments-container">
