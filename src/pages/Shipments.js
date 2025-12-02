@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -60,6 +60,50 @@ const Shipments = () => {
   const currentTrackerIdRef = useRef(null);
   const receivedAlertIdsRef = useRef(new Set());
   const alertEventIdsRef = useRef(new Set());
+
+  const combinedAlertMarkers = useMemo(() => {
+    const markers = new Map();
+
+    alertEvents.forEach((event) => {
+      const lat = event.location?.latitude;
+      const lng = event.location?.longitude;
+      if (lat == null || lng == null) return;
+      const id = event.eventId || `${event.alertId}-${event.timestampRaw || event.timestamp}`;
+      markers.set(id, {
+        id,
+        lat,
+        lng,
+        alertName: event.alertName,
+        severity: event.severity,
+        timestamp: event.timestamp,
+        sensorValue: event.sensorValue,
+        unit: event.unit || '',
+        source: 'event'
+      });
+    });
+
+    alertsData.forEach((alert) => {
+      const lat = alert.location?.latitude;
+      const lng = alert.location?.longitude;
+      if (lat == null || lng == null) return;
+      const id = `summary-${alert.alertKey || alert.alertId}`;
+      if (markers.has(id)) return;
+      markers.set(id, {
+        id,
+        lat,
+        lng,
+        alertName: alert.alertName,
+        severity: alert.severity,
+        timestamp: alert.lastTriggeredAt,
+        sensorValue: alert.sensorValue,
+        unit: alert.unit || '',
+        occurrenceCount: alert.occurrenceCount,
+        source: 'summary'
+      });
+    });
+
+    return Array.from(markers.values());
+  }, [alertEvents, alertsData]);
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
@@ -865,7 +909,7 @@ const Shipments = () => {
     useEffect(() => {
       if (!selectedShipmentDetail) return;
       const routeCoordinates = getPolylineCoordinates();
-      const eventCoordinates = alertEvents.map((evt) => [evt.location.latitude, evt.location.longitude]);
+      const eventCoordinates = combinedAlertMarkers.map((marker) => [marker.lat, marker.lng]);
       const coordinates = [...routeCoordinates, ...eventCoordinates];
       if (coordinates.length > 0) {
         const bounds = L.latLngBounds(coordinates);
@@ -874,7 +918,7 @@ const Shipments = () => {
           maxZoom: 15
         });
       }
-    }, [map, selectedShipmentDetail?._id, locationData, alertEvents]);
+    }, [map, selectedShipmentDetail?._id, locationData, combinedAlertMarkers]);
 
     return null;
   };
@@ -1820,6 +1864,7 @@ const Shipments = () => {
                     "></div>`,
                     iconSize: [18, 18],
                     iconAnchor: [9, 9]
+                 
                   })}
                 >
                   <Popup>
@@ -1994,6 +2039,28 @@ const Shipments = () => {
                   </Popup>
                 </Marker>
               )}
+
+          {/* Show alert event and summary markers */}
+          {selectedShipmentDetail && combinedAlertMarkers.length > 0 && combinedAlertMarkers.map((marker) => (
+            <Marker
+              key={`alert-marker-${marker.id}`}
+              position={[marker.lat, marker.lng]}
+              icon={createAlertMarkerIcon(marker.severity)}
+              zIndexOffset={1200}
+            >
+              <Popup>
+                <div>
+                  <strong>{marker.alertName}</strong><br />
+                  Time: {marker.timestamp}<br />
+                  Sensor: {marker.sensorValue}{marker.unit}<br />
+                  Coords: {marker.lat.toFixed(6)}, {marker.lng.toFixed(6)}<br />
+                  {marker.source === 'summary' && marker.occurrenceCount ? (
+                    <span>Occurrences: {marker.occurrenceCount}</span>
+                  ) : null}
+                </div>
+              </Popup>
+            </Marker>
+          ))}
             </>
           )}
         </MapContainer>
