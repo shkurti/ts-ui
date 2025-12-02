@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -60,6 +60,16 @@ const Shipments = () => {
   const currentTrackerIdRef = useRef(null);
   const receivedAlertIdsRef = useRef(new Set());
   const alertEventIdsRef = useRef(new Set());
+
+  const normalizeLocation = (raw) => {
+    if (!raw) return null;
+    const lat = parseFloat(raw.latitude ?? raw.Lat ?? raw.lat);
+    const lng = parseFloat(raw.longitude ?? raw.Lng ?? raw.lng ?? raw.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { latitude: lat, longitude: lng };
+    }
+    return null;
+  };
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
@@ -885,16 +895,13 @@ const Shipments = () => {
     useEffect(() => {
       if (!selectedShipmentDetail) return;
       const routeCoordinates = getPolylineCoordinates();
-      const eventCoordinates = alertEvents.map((evt) => [evt.location.latitude, evt.location.longitude]);
-      const coordinates = [...routeCoordinates, ...eventCoordinates];
+      const alertCoordinates = combinedAlertMarkers.map((m) => [m.lat, m.lng]);
+      const coordinates = [...routeCoordinates, ...alertCoordinates];
       if (coordinates.length > 0) {
         const bounds = L.latLngBounds(coordinates);
-        map.fitBounds(bounds, {
-          padding: [20, 20],
-          maxZoom: 15
-        });
+        map.fitBounds(bounds, { padding: [20, 20], maxZoom: 15 });
       }
-    }, [map, selectedShipmentDetail?._id, locationData, alertEvents]);
+    }, [map, selectedShipmentDetail?._id, locationData, combinedAlertMarkers]);
 
     return null;
   };
@@ -1137,8 +1144,7 @@ const Shipments = () => {
                 existing.lastTriggeredAtRaw = normalizedAlert.lastTriggeredAtRaw;
                 existing.lastTriggeredAt = normalizedAlert.lastTriggeredAt;
                 existing.sensorValue = normalizedAlert.sensorValue;
-                existing.location = normalizedAlert.location;
-                existing.message = normalizedAlert.message;
+                existing.location = normalizeLocation(normalizedAlert.location) || existing.location;
               }
               map.set(normalizedAlert.alertKey, existing);
             } else {
@@ -1157,8 +1163,8 @@ const Shipments = () => {
           if (
             eventLat != null &&
             eventLng != null &&
-            !isNaN(parseFloat(eventLat)) &&
-            !isNaN(parseFloat(eventLng)) &&
+            Number.isFinite(parseFloat(eventLat)) &&
+            Number.isFinite(parseFloat(eventLng)) &&
             !alertEventIdsRef.current.has(eventId)
           ) {
             alertEventIdsRef.current.add(eventId);
@@ -1297,6 +1303,46 @@ const Shipments = () => {
       ws.removeEventListener('message', handleMessage);
     };
   }, [selectedShipmentDetail?.trackerId, wsConnected]);
+
+  const combinedAlertMarkers = useMemo(() => {
+    const markers = new Map();
+    alertEvents.forEach((event) => {
+      if (!event.location) return;
+      const id = event.eventId || `${event.alertId}-${event.timestampRaw || event.timestamp}`;
+      markers.set(id, {
+        id,
+        lat: event.location.latitude,
+        lng: event.location.longitude,
+        alertName: event.alertName,
+        severity: event.severity,
+        timestamp: event.timestamp,
+        sensorValue: event.sensorValue,
+        unit: event.unit || '',
+        source: 'event'
+      });
+    });
+
+    alertsData.forEach((alert) => {
+      const loc = normalizeLocation(alert.location);
+      if (!loc) return;
+      const id = `summary-${alert.alertKey || alert.alertId}`;
+      if (markers.has(id)) return;
+      markers.set(id, {
+        id,
+        lat: loc.latitude,
+        lng: loc.longitude,
+        alertName: alert.alertName,
+        severity: alert.severity,
+        timestamp: alert.lastTriggeredAt,
+        sensorValue: alert.sensorValue,
+        unit: alert.unit || '',
+        occurrenceCount: alert.occurrenceCount,
+        source: 'summary'
+      });
+    });
+
+    return Array.from(markers.values());
+  }, [alertEvents, alertsData]);
 
   return (
     <div className="shipments-container">
@@ -2016,6 +2062,28 @@ const Shipments = () => {
               )}
             </>
           )}
+
+          {/* Show alert markers */}
+          {selectedShipmentDetail && combinedAlertMarkers.length > 0 && combinedAlertMarkers.map((marker) => (
+            <Marker
+              key={`alert-marker-${marker.id}`}
+              position={[marker.lat, marker.lng]}
+              icon={createAlertMarkerIcon(marker.severity)}
+              zIndexOffset={1200}
+            >
+              <Popup>
+                <div>
+                  <strong>{marker.alertName}</strong><br />
+                  Time: {marker.timestamp}<br />
+                  Sensor: {marker.sensorValue}{marker.unit}<br />
+                  Coords: {marker.lat.toFixed(6)}, {marker.lng.toFixed(6)}<br />
+                  {marker.source === 'summary' && marker.occurrenceCount ? (
+                    <span>Occurrences: {marker.occurrenceCount}</span>
+                  ) : null}
+                </div>
+              </Popup>
+            </Marker>
+          ))}
         </MapContainer>
       </div>
 
