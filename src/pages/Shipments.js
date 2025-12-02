@@ -46,6 +46,7 @@ const Shipments = () => {
   const [isLoadingSensorData, setIsLoadingSensorData] = useState(false);
   const [alertsData, setAlertsData] = useState([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
+  const [alertEvents, setAlertEvents] = useState([]);
   
   // Add state for hover marker on polyline
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
@@ -58,6 +59,7 @@ const Shipments = () => {
   const mapRef = useRef();
   const currentTrackerIdRef = useRef(null);
   const receivedAlertIdsRef = useRef(new Set());
+  const alertEventIdsRef = useRef(new Set());
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
@@ -310,7 +312,9 @@ const Shipments = () => {
     setSpeedData([]);
     setLocationData([]);
     setAlertsData([]);
+    setAlertEvents([]);
     receivedAlertIdsRef.current = new Set();
+    alertEventIdsRef.current = new Set();
     setIsLoadingAlerts(true);
 
     const trackerId = shipment.trackerId;
@@ -427,6 +431,7 @@ const Shipments = () => {
     }
 
     fetchAlertsForShipment(shipment._id, trackerId);
+    fetchAlertEvents(shipment._id, trackerId, { start: shipDate, end: arrivalDate });
   };
 
   const fetchAlertsForShipment = async (shipmentId, trackerId, options = {}) => {
@@ -477,6 +482,56 @@ const Shipments = () => {
       console.error("Error fetching alerts:", error);
     } finally {
       if (!skipLoading) setIsLoadingAlerts(false);
+    }
+  };
+
+  const fetchAlertEvents = async (shipmentId, trackerId, options = {}) => {
+    const { start, end, skipLoading = false } = options;
+    if (!shipmentId && !trackerId) return;
+    try {
+      const params = new URLSearchParams({ timezone: userTimezone });
+      if (shipmentId) params.append("shipment_id", shipmentId);
+      if (trackerId) params.append("tracker_id", trackerId);
+      if (start) params.append("start", start);
+      if (end) params.append("end", end);
+      const response = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alert_events?${params.toString()}`);
+      if (!response.ok) {
+        console.error("Failed to fetch alert events");
+        return;
+      }
+      const data = await response.json();
+      const normalized = data
+        .map((event) => {
+          const eventId = event._id || `${event.alertId}-${event.timestamp}`;
+          const lat = event.location?.latitude;
+          const lng = event.location?.longitude;
+          if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
+          return {
+            eventId,
+            alertId: event.alertId,
+            alertType: event.alertType,
+            alertName: event.alertName || event.alertType || "Alert",
+            severity: event.severity || "warning",
+            timestamp: event.timestampLocal || formatTimestamp(event.timestamp),
+            timestampRaw: event.timestamp,
+            location: {
+              latitude: parseFloat(lat),
+              longitude: parseFloat(lng)
+            },
+            sensorValue: event.sensorValue,
+            unit: event.unit || ""
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => new Date(b.timestampRaw || 0) - new Date(a.timestampRaw || 0));
+      alertEventIdsRef.current = new Set(normalized.map((evt) => evt.eventId));
+      setAlertEvents(normalized);
+    } catch (error) {
+      console.error("Error fetching alert events:", error);
+    } finally {
+      if (!skipLoading) {
+        // reserved for future loading indicator
+      }
     }
   };
 
@@ -995,7 +1050,7 @@ const Shipments = () => {
             timestamp: formatTimestamp(alertPayload.timestamp),
             timestampRaw: alertPayload.timestamp,
             lastTriggeredAt: formatTimestamp(alertPayload.lastTriggeredAt || alertPayload.timestamp),
-            lastTriggeredAtRaw: alertPayload.lastTriggeredAt || alertPayload.timestamp,
+            lastTriggeredAtRaw: alertPayload.timestamp,
             occurrenceCount: alertPayload.occurrenceCount || 1,
             message: alertPayload.message,
             location: alertPayload.location || {}
@@ -1005,6 +1060,37 @@ const Shipments = () => {
             const remaining = prev.filter((alert) => alert.alertId !== alertId);
             return [normalizedAlert, ...remaining].slice(0, 200);
           });
+
+          const eventId =
+            alertPayload.eventId || `${alertId}-${alertPayload.eventTimestamp || alertPayload.timestamp}`;
+          const eventLocation = alertPayload.eventLocation || alertPayload.location;
+          const eventLat = eventLocation?.latitude;
+          const eventLng = eventLocation?.longitude;
+          if (
+            eventLat != null &&
+            eventLng != null &&
+            !isNaN(parseFloat(eventLat)) &&
+            !isNaN(parseFloat(eventLng)) &&
+            !alertEventIdsRef.current.has(eventId)
+          ) {
+            alertEventIdsRef.current.add(eventId);
+            const newEvent = {
+              eventId,
+              alertId,
+              alertType: alertPayload.alertType,
+              alertName: alertPayload.alertName || alertPayload.alertType || "Alert",
+              severity: alertPayload.severity || "warning",
+              timestamp: formatTimestamp(alertPayload.eventTimestamp || alertPayload.timestamp),
+              timestampRaw: alertPayload.eventTimestamp || alertPayload.timestamp,
+              location: {
+                latitude: parseFloat(eventLat),
+                longitude: parseFloat(eventLng)
+              },
+              sensorValue: alertPayload.sensorValue,
+              unit: alertPayload.unit || ""
+            };
+            setAlertEvents((prev) => [newEvent, ...prev].slice(0, 500));
+          }
           return;
         }
 
@@ -1790,7 +1876,7 @@ const Shipments = () => {
                     html: `
                       <div style="
                         width: 20px;
-                        height: 20px;
+                                               height: 20px;
                         background: #28a745;
                         border: 3px solid white;
                         border-radius: 50%;
