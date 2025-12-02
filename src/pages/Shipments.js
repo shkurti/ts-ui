@@ -429,15 +429,14 @@ const Shipments = () => {
     fetchAlertsForShipment(shipment._id, trackerId);
   };
 
-  const fetchAlertsForShipment = async (shipmentId, trackerId) => {
-    setIsLoadingAlerts(true);
+  const fetchAlertsForShipment = async (shipmentId, trackerId, options = {}) => {
+    const { skipLoading = false } = options;
+    if (!skipLoading) setIsLoadingAlerts(true);
     try {
       const params = new URLSearchParams({ timezone: userTimezone });
       if (shipmentId) params.append("shipment_id", shipmentId);
       if (trackerId) params.append("tracker_id", trackerId);
-      const response = await fetch(
-        `https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alerts?${params.toString()}`
-      );
+      const response = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alerts?${params.toString()}`);
       if (!response.ok) {
         console.error("Failed to fetch shipment alerts");
         return;
@@ -448,6 +447,9 @@ const Shipments = () => {
           alert.alertId ||
           alert._id ||
           `${alert.trackerId || ""}-${alert.alertType || ""}-${alert.timestamp || ""}`;
+        const firstTriggered = alert.timestampLocal || formatTimestamp(alert.timestamp);
+        const lastTriggeredRaw = alert.lastTriggeredAt || alert.timestamp;
+        const lastTriggeredDisplay = alert.lastTriggeredAtLocal || formatTimestamp(lastTriggeredRaw);
         return {
           alertId,
           alertType: alert.alertType,
@@ -457,22 +459,24 @@ const Shipments = () => {
           minThreshold: alert.minThreshold,
           maxThreshold: alert.maxThreshold,
           unit: alert.unit || "",
-          timestamp: alert.timestampLocal || formatTimestamp(alert.timestamp),
+          timestamp: firstTriggered,
           timestampRaw: alert.timestamp,
+          lastTriggeredAt: lastTriggeredDisplay,
+          lastTriggeredAtRaw: lastTriggeredRaw,
+          occurrenceCount: alert.occurrenceCount || 1,
           message: alert.message,
           location: alert.location || {}
         };
       });
       normalized.sort(
-        (a, b) => new Date(b.timestampRaw || 0) - new Date(a.timestampRaw || 0)
+        (a, b) => new Date(b.lastTriggeredAtRaw || 0) - new Date(a.lastTriggeredAtRaw || 0)
       );
-      const idSet = new Set(normalized.map((alert) => alert.alertId));
-      receivedAlertIdsRef.current = idSet;
+      receivedAlertIdsRef.current = new Set(normalized.map((alert) => alert.alertId));
       setAlertsData(normalized);
     } catch (error) {
       console.error("Error fetching alerts:", error);
     } finally {
-      setIsLoadingAlerts(false);
+      if (!skipLoading) setIsLoadingAlerts(false);
     }
   };
 
@@ -977,7 +981,6 @@ const Shipments = () => {
             alertPayload._id ||
             `${alertPayload.trackerId || ""}-${alertPayload.alertType || ""}-${alertPayload.timestamp || ""}`;
 
-          if (receivedAlertIdsRef.current.has(alertId)) return;
           receivedAlertIdsRef.current.add(alertId);
 
           const normalizedAlert = {
@@ -991,13 +994,16 @@ const Shipments = () => {
             unit: alertPayload.unit || "",
             timestamp: formatTimestamp(alertPayload.timestamp),
             timestampRaw: alertPayload.timestamp,
+            lastTriggeredAt: formatTimestamp(alertPayload.lastTriggeredAt || alertPayload.timestamp),
+            lastTriggeredAtRaw: alertPayload.lastTriggeredAt || alertPayload.timestamp,
+            occurrenceCount: alertPayload.occurrenceCount || 1,
             message: alertPayload.message,
             location: alertPayload.location || {}
           };
 
           setAlertsData((prev) => {
-            const next = [normalizedAlert, ...prev];
-            return next.slice(0, 200);
+            const remaining = prev.filter((alert) => alert.alertId !== alertId);
+            return [normalizedAlert, ...remaining].slice(0, 200);
           });
           return;
         }
@@ -1405,12 +1411,14 @@ const Shipments = () => {
                             >
                               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
                                 <span>{alert.alertName}</span>
-                                <span style={{ fontSize: '12px', opacity: 0.8 }}>{alert.timestamp}</span>
+                                <span style={{ fontSize: '12px', opacity: 0.8 }}>{alert.lastTriggeredAt}</span>
                               </div>
                               <p style={{ marginBottom: '8px' }}>
                                 {alert.message || `${(alert.alertType || 'Alert').toUpperCase()} detected.`}
                               </p>
                               <div style={{ fontSize: '12px', color: '#374151', display: 'grid', rowGap: '4px' }}>
+                                <span>First triggered: {alert.timestamp}</span>
+                                <span>Occurrences: {alert.occurrenceCount}</span>
                                 <span>Sensor value: {alert.sensorValue}{alert.unit}</span>
                                 <span>Allowed range: {alert.minThreshold}{alert.unit} - {alert.maxThreshold}{alert.unit}</span>
                                 {alert.location?.latitude != null && alert.location?.longitude != null && (
