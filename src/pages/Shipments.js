@@ -434,6 +434,17 @@ const Shipments = () => {
     fetchAlertEvents(shipment._id, trackerId, { start: shipDate, end: arrivalDate });
   };
 
+  const buildAlertKey = (alert) =>
+    [
+      alert.shipmentId ?? '',
+      alert.alertType ?? '',
+      alert.alertDate ?? '',
+      alert.minThreshold ?? '',
+      alert.maxThreshold ?? '',
+      alert.unit ?? '',
+      alert.alertName ?? ''
+    ].join('|');
+
   const fetchAlertsForShipment = async (shipmentId, trackerId, options = {}) => {
     const { skipLoading = false } = options;
     if (!skipLoading) setIsLoadingAlerts(true);
@@ -447,16 +458,18 @@ const Shipments = () => {
         return;
       }
       const data = await response.json();
-      const normalized = data.map((alert) => {
-        const alertId =
-          alert.alertId ||
-          alert._id ||
-          `${alert.trackerId || ""}-${alert.alertType || ""}-${alert.timestamp || ""}`;
-        const firstTriggered = alert.timestampLocal || formatTimestamp(alert.timestamp);
+
+      const aggregateMap = new Map();
+      data.forEach((alert) => {
+        const firstTriggeredLocal = alert.timestampLocal || (alert.timestamp ? formatTimestamp(alert.timestamp) : 'N/A');
         const lastTriggeredRaw = alert.lastTriggeredAt || alert.timestamp;
-        const lastTriggeredDisplay = alert.lastTriggeredAtLocal || formatTimestamp(lastTriggeredRaw);
-        return {
-          alertId,
+        const lastTriggeredLocal = alert.lastTriggeredAtLocal || (lastTriggeredRaw ? formatTimestamp(lastTriggeredRaw) : firstTriggeredLocal);
+
+        const normalized = {
+          alertId: alert.alertId || alert._id || `${alert.trackerId || ""}-${alert.alertType || ""}-${alert.timestamp || ""}`,
+          shipmentId: alert.shipmentId,
+          trackerId: alert.trackerId,
+          alertDate: alert.alertDate,
           alertType: alert.alertType,
           alertName: alert.alertName || alert.alertType || "Alert",
           severity: alert.severity || "warning",
@@ -464,20 +477,45 @@ const Shipments = () => {
           minThreshold: alert.minThreshold,
           maxThreshold: alert.maxThreshold,
           unit: alert.unit || "",
-          timestamp: firstTriggered,
+          timestamp: firstTriggeredLocal,
           timestampRaw: alert.timestamp,
-          lastTriggeredAt: lastTriggeredDisplay,
+          lastTriggeredAt: lastTriggeredLocal,
           lastTriggeredAtRaw: lastTriggeredRaw,
           occurrenceCount: alert.occurrenceCount || 1,
           message: alert.message,
           location: alert.location || {}
         };
+
+        const key = buildAlertKey(normalized);
+        normalized.alertKey = key;
+
+        const existing = aggregateMap.get(key);
+        if (existing) {
+          existing.occurrenceCount += normalized.occurrenceCount;
+          if (normalized.timestampRaw && (!existing.timestampRaw || normalized.timestampRaw < existing.timestampRaw)) {
+            existing.timestampRaw = normalized.timestampRaw;
+            existing.timestamp = normalized.timestamp;
+          }
+          if (normalized.lastTriggeredAtRaw && (!existing.lastTriggeredAtRaw || normalized.lastTriggeredAtRaw > existing.lastTriggeredAtRaw)) {
+            existing.lastTriggeredAtRaw = normalized.lastTriggeredAtRaw;
+            existing.lastTriggeredAt = normalized.lastTriggeredAt;
+            existing.sensorValue = normalized.sensorValue;
+            existing.message = normalized.message;
+            existing.location = normalized.location;
+            existing.severity = normalized.severity;
+          }
+          aggregateMap.set(key, existing);
+        } else {
+          aggregateMap.set(key, normalized);
+        }
       });
-      normalized.sort(
+
+      const normalizedList = Array.from(aggregateMap.values()).sort(
         (a, b) => new Date(b.lastTriggeredAtRaw || 0) - new Date(a.lastTriggeredAtRaw || 0)
       );
-      receivedAlertIdsRef.current = new Set(normalized.map((alert) => alert.alertId));
-      setAlertsData(normalized);
+
+      receivedAlertIdsRef.current = new Set(aggregateMap.keys());
+      setAlertsData(normalizedList);
     } catch (error) {
       console.error("Error fetching alerts:", error);
     } finally {
@@ -825,20 +863,18 @@ const Shipments = () => {
     const map = useMap();
     
     useEffect(() => {
-      if (selectedShipmentDetail && locationData.length > 0) {
-        const coordinates = getPolylineCoordinates();
-        if (coordinates.length > 0) {
-          // Create bounds from coordinates
-          const bounds = L.latLngBounds(coordinates);
-          
-          // Fit map to bounds with padding
-          map.fitBounds(bounds, {
-            padding: [20, 20], // Add padding around the route
-            maxZoom: 15 // Prevent zooming in too much for short routes
-          });
-        }
+      if (!selectedShipmentDetail) return;
+      const routeCoordinates = getPolylineCoordinates();
+      const eventCoordinates = alertEvents.map((evt) => [evt.location.latitude, evt.location.longitude]);
+      const coordinates = [...routeCoordinates, ...eventCoordinates];
+      if (coordinates.length > 0) {
+        const bounds = L.latLngBounds(coordinates);
+        map.fitBounds(bounds, {
+          padding: [20, 20],
+          maxZoom: 15
+        });
       }
-    }, [map]); // Remove selectedShipmentDetail and locationData from dependencies
+    }, [map, selectedShipmentDetail?._id, locationData, alertEvents]);
 
     return null;
   };
@@ -1036,10 +1072,13 @@ const Shipments = () => {
             alertPayload._id ||
             `${alertPayload.trackerId || ""}-${alertPayload.alertType || ""}-${alertPayload.timestamp || ""}`;
 
-          receivedAlertIdsRef.current.add(alertId);
-
+          const firstTriggeredRaw = alertPayload.timestamp;
+          const lastTriggeredRaw = alertPayload.lastTriggeredAt || alertPayload.timestamp;
           const normalizedAlert = {
             alertId,
+            shipmentId: alertPayload.shipmentId,
+            trackerId: alertPayload.trackerId,
+            alertDate: alertPayload.alertDate || (firstTriggeredRaw ? firstTriggeredRaw.slice(0, 10) : ''),
             alertType: alertPayload.alertType,
             alertName: alertPayload.alertName || alertPayload.alertType || "Alert",
             severity: alertPayload.severity || "warning",
@@ -1047,18 +1086,47 @@ const Shipments = () => {
             minThreshold: alertPayload.minThreshold,
             maxThreshold: alertPayload.maxThreshold,
             unit: alertPayload.unit || "",
-            timestamp: formatTimestamp(alertPayload.timestamp),
-            timestampRaw: alertPayload.timestamp,
-            lastTriggeredAt: formatTimestamp(alertPayload.lastTriggeredAt || alertPayload.timestamp),
-            lastTriggeredAtRaw: alertPayload.timestamp,
+            timestamp: formatTimestamp(firstTriggeredRaw),
+            timestampRaw: firstTriggeredRaw,
+            lastTriggeredAt: formatTimestamp(lastTriggeredRaw),
+            lastTriggeredAtRaw: lastTriggeredRaw,
             occurrenceCount: alertPayload.occurrenceCount || 1,
             message: alertPayload.message,
             location: alertPayload.location || {}
           };
 
+          normalizedAlert.alertKey = buildAlertKey(normalizedAlert);
+          receivedAlertIdsRef.current.add(normalizedAlert.alertKey);
+
           setAlertsData((prev) => {
-            const remaining = prev.filter((alert) => alert.alertId !== alertId);
-            return [normalizedAlert, ...remaining].slice(0, 200);
+            const map = new Map(prev.map((item) => [item.alertKey, { ...item }]));
+            const existing = map.get(normalizedAlert.alertKey);
+            if (existing) {
+              existing.alertId = normalizedAlert.alertId;
+              existing.alertName = normalizedAlert.alertName;
+              existing.severity = normalizedAlert.severity;
+              existing.minThreshold = normalizedAlert.minThreshold;
+              existing.maxThreshold = normalizedAlert.maxThreshold;
+              existing.unit = normalizedAlert.unit;
+              existing.occurrenceCount = alertPayload.occurrenceCount || existing.occurrenceCount;
+              if (normalizedAlert.timestampRaw && (!existing.timestampRaw || normalizedAlert.timestampRaw < existing.timestampRaw)) {
+                existing.timestampRaw = normalizedAlert.timestampRaw;
+                existing.timestamp = normalizedAlert.timestamp;
+              }
+              if (normalizedAlert.lastTriggeredAtRaw && (!existing.lastTriggeredAtRaw || normalizedAlert.lastTriggeredAtRaw > existing.lastTriggeredAtRaw)) {
+                existing.lastTriggeredAtRaw = normalizedAlert.lastTriggeredAtRaw;
+                existing.lastTriggeredAt = normalizedAlert.lastTriggeredAt;
+                existing.sensorValue = normalizedAlert.sensorValue;
+                existing.location = normalizedAlert.location;
+                existing.message = normalizedAlert.message;
+              }
+              map.set(normalizedAlert.alertKey, existing);
+            } else {
+              map.set(normalizedAlert.alertKey, normalizedAlert);
+            }
+            return Array.from(map.values())
+              .sort((a, b) => new Date(b.lastTriggeredAtRaw || 0) - new Date(a.lastTriggeredAtRaw || 0))
+              .slice(0, 200);
           });
 
           const eventId =
@@ -1791,7 +1859,7 @@ const Shipments = () => {
           })()}
 
           {/* Remove this: Show all leg markers and polyline for selected shipment (always, even if no sensor data) */}
-          {/* {selectedShipmentDetail && legPoints.length > 0 && (
+          {/* {selectedShipmentDetail && legPoints.length >  0 && (
             <>
               <Polyline
                 positions={legPoints.map(p => [p.lat, p.lng])}
@@ -1878,7 +1946,7 @@ const Shipments = () => {
                         width: 20px;
                                                height: 20px;
                         background: #28a745;
-                        border: 3px solid white;
+                        border: 3px solid #fff;
                         border-radius: 50%;
                         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
                       "></div>
@@ -1908,7 +1976,7 @@ const Shipments = () => {
                         width: 20px;
                         height: 20px;
                         background: #dc3545;
-                        border: 3px solid white;
+                        border: 3px solid #fff;
                         border-radius: 50%;
                         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
                       "></div>
