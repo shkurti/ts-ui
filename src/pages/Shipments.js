@@ -44,6 +44,8 @@ const Shipments = () => {
   const [speedData, setSpeedData] = useState([]);
   const [locationData, setLocationData] = useState([]);
   const [isLoadingSensorData, setIsLoadingSensorData] = useState(false);
+  const [alertsData, setAlertsData] = useState([]);
+  const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   
   // Add state for hover marker on polyline
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
@@ -55,6 +57,7 @@ const Shipments = () => {
   // Add ref for map instance
   const mapRef = useRef();
   const currentTrackerIdRef = useRef(null);
+  const receivedAlertIdsRef = useRef(new Set());
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
@@ -306,6 +309,9 @@ const Shipments = () => {
     setBatteryData([]);
     setSpeedData([]);
     setLocationData([]);
+    setAlertsData([]);
+    receivedAlertIdsRef.current = new Set();
+    setIsLoadingAlerts(true);
 
     const trackerId = shipment.trackerId;
     const legs = shipment.legs || [];
@@ -315,6 +321,7 @@ const Shipments = () => {
     const arrivalDate = lastLeg.arrivalDate;
 
     if (!trackerId || !shipDate || !arrivalDate) {
+      setIsLoadingAlerts(false);
       return;
     }
 
@@ -417,6 +424,55 @@ const Shipments = () => {
       console.error('Error fetching sensor data:', error);
     } finally {
       setIsLoadingSensorData(false);
+    }
+
+    fetchAlertsForShipment(shipment._id, trackerId);
+  };
+
+  const fetchAlertsForShipment = async (shipmentId, trackerId) => {
+    setIsLoadingAlerts(true);
+    try {
+      const params = new URLSearchParams({ timezone: userTimezone });
+      if (shipmentId) params.append("shipment_id", shipmentId);
+      if (trackerId) params.append("tracker_id", trackerId);
+      const response = await fetch(
+        `https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alerts?${params.toString()}`
+      );
+      if (!response.ok) {
+        console.error("Failed to fetch shipment alerts");
+        return;
+      }
+      const data = await response.json();
+      const normalized = data.map((alert) => {
+        const alertId =
+          alert.alertId ||
+          alert._id ||
+          `${alert.trackerId || ""}-${alert.alertType || ""}-${alert.timestamp || ""}`;
+        return {
+          alertId,
+          alertType: alert.alertType,
+          alertName: alert.alertName || alert.alertType || "Alert",
+          severity: alert.severity || "warning",
+          sensorValue: alert.sensorValue,
+          minThreshold: alert.minThreshold,
+          maxThreshold: alert.maxThreshold,
+          unit: alert.unit || "",
+          timestamp: alert.timestampLocal || formatTimestamp(alert.timestamp),
+          timestampRaw: alert.timestamp,
+          message: alert.message,
+          location: alert.location || {}
+        };
+      });
+      normalized.sort(
+        (a, b) => new Date(b.timestampRaw || 0) - new Date(a.timestampRaw || 0)
+      );
+      const idSet = new Set(normalized.map((alert) => alert.alertId));
+      receivedAlertIdsRef.current = idSet;
+      setAlertsData(normalized);
+    } catch (error) {
+      console.error("Error fetching alerts:", error);
+    } finally {
+      setIsLoadingAlerts(false);
     }
   };
 
@@ -888,6 +944,7 @@ const Shipments = () => {
   useEffect(() => {
     currentTrackerIdRef.current = selectedShipmentDetail?.trackerId ?? null;
     processedMessagesRef.current = new Set();
+    receivedAlertIdsRef.current = new Set();
   }, [selectedShipmentDetail?.trackerId]);
 
   // removed legacy WebSocket listener to avoid duplicate unfiltered handlers
@@ -900,6 +957,51 @@ const Shipments = () => {
     const handleMessage = (event) => {
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+
+        if (msg?.type === 'alert' && msg.data) {
+          const alertPayload = msg.data;
+          const activeShipment = selectedShipmentDetail;
+          if (!activeShipment) return;
+
+          const shipmentMatches =
+            alertPayload.shipmentId &&
+            String(alertPayload.shipmentId) === String(activeShipment._id);
+          const trackerMatches =
+            alertPayload.trackerId &&
+            String(alertPayload.trackerId) === String(activeShipment.trackerId);
+
+          if (!shipmentMatches && !trackerMatches) return;
+
+          const alertId =
+            alertPayload.alertId ||
+            alertPayload._id ||
+            `${alertPayload.trackerId || ""}-${alertPayload.alertType || ""}-${alertPayload.timestamp || ""}`;
+
+          if (receivedAlertIdsRef.current.has(alertId)) return;
+          receivedAlertIdsRef.current.add(alertId);
+
+          const normalizedAlert = {
+            alertId,
+            alertType: alertPayload.alertType,
+            alertName: alertPayload.alertName || alertPayload.alertType || "Alert",
+            severity: alertPayload.severity || "warning",
+            sensorValue: alertPayload.sensorValue,
+            minThreshold: alertPayload.minThreshold,
+            maxThreshold: alertPayload.maxThreshold,
+            unit: alertPayload.unit || "",
+            timestamp: formatTimestamp(alertPayload.timestamp),
+            timestampRaw: alertPayload.timestamp,
+            message: alertPayload.message,
+            location: alertPayload.location || {}
+          };
+
+          setAlertsData((prev) => {
+            const next = [normalizedAlert, ...prev];
+            return next.slice(0, 200);
+          });
+          return;
+        }
+
         if (!msg || msg.type === 'alert') return;
 
         const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
@@ -990,19 +1092,20 @@ const Shipments = () => {
 
           if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
             setLocationData((prev) => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
+
+            // Also update temperature, humidity, battery, and speed with the latest values
+            const t = full.Temp ?? full.temperature;
+            if (t !== undefined && t !== null) setTemperatureData((prev) => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
+
+            const h = full.Hum ?? full.humidity;
+            if (h !== undefined && h !== null) setHumidityData((prev) => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
+
+            const b = full.Batt ?? full.battery;
+            if (b !== undefined && b !== null) setBatteryData((prev) => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
+
+            const s = full.Speed ?? full.speed;
+            if (s !== undefined && s !== null) setSpeedData((prev) => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
           }
-
-          const t = full.Temp ?? full.temperature;
-          if (t !== undefined && t !== null) setTemperatureData((prev) => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
-
-          const h = full.Hum ?? full.humidity;
-          if (h !== undefined && h !== null) setHumidityData((prev) => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
-
-          const b = full.Batt ?? full.battery;
-          if (b !== undefined && b !== null) setBatteryData((prev) => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
-
-          const s = full.Speed ?? full.speed;
-          if (s !== undefined && s !== null) setSpeedData((prev) => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
         }
       } catch (e) {
         console.error('Error parsing WS message', e);
@@ -1279,20 +1382,46 @@ const Shipments = () => {
 
                     {activeTab === 'alerts' && (
                       <div className="alerts-content">
-                        <div className="alert-item">
-                          <div className="alert-header">
-                            <span className="alert-type warning">Temperature Alert</span>
-                            <span className="alert-time">2 hours ago</span>
+                        {isLoadingAlerts ? (
+                          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                            <div style={{
+                              width: '32px',
+                              height: '32px',
+                              border: '3px solid #ddd',
+                              borderTop: '3px solid #f97316',
+                              borderRadius: '50%',
+                              animation: 'spin 1s linear infinite',
+                              margin: '0 auto 15px'
+                            }}></div>
+                            Loading alerts...
                           </div>
-                          <p>Temperature exceeded threshold: 28°C</p>
-                        </div>
-                        <div className="alert-item">
-                          <div className="alert-header">
-                            <span className="alert-type info">Location Update</span>
-                            <span className="alert-time">4 hours ago</span>
-                          </div>
-                          <p>Shipment arrived at distribution center</p>
-                        </div>
+                        ) : alertsData.length === 0 ? (
+                          <div className="no-messages">No alerts triggered for this shipment.</div>
+                        ) : (
+                          alertsData.map((alert) => (
+                            <div
+                              key={alert.alertId}
+                              className={`alert ${alert.severity === 'critical' ? 'alert-error' : 'alert-info'}`}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
+                                <span>{alert.alertName}</span>
+                                <span style={{ fontSize: '12px', opacity: 0.8 }}>{alert.timestamp}</span>
+                              </div>
+                              <p style={{ marginBottom: '8px' }}>
+                                {alert.message || `${(alert.alertType || 'Alert').toUpperCase()} detected.`}
+                              </p>
+                              <div style={{ fontSize: '12px', color: '#374151', display: 'grid', rowGap: '4px' }}>
+                                <span>Sensor value: {alert.sensorValue}{alert.unit}</span>
+                                <span>Allowed range: {alert.minThreshold}{alert.unit} - {alert.maxThreshold}{alert.unit}</span>
+                                {alert.location?.latitude != null && alert.location?.longitude != null && (
+                                  <span>
+                                    Location: {Number(alert.location.latitude).toFixed(4)}, {Number(alert.location.longitude).toFixed(4)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     )}
 
