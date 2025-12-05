@@ -473,6 +473,39 @@ const Shipments = () => {
     });
   };
 
+  const displaceMarkers = (markers, offsetMeters = 35) => {
+    const PRECISION = 5;
+    const displaced = [];
+    const groups = new Map();
+
+    markers.forEach((marker) => {
+      const key = `${marker.lat.toFixed(PRECISION)}|${marker.lng.toFixed(PRECISION)}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(marker);
+    });
+
+    groups.forEach((group) => {
+      if (group.length === 1) {
+        displaced.push(group[0]);
+        return;
+      }
+      group.forEach((marker, index) => {
+        const angle = (2 * Math.PI * index) / group.length;
+        const latOffset = offsetMeters / 111320;
+        const lngOffset = offsetMeters / (111320 * Math.cos((marker.lat * Math.PI) / 180) || 1);
+        displaced.push({
+          ...marker,
+          lat: marker.lat + latOffset * Math.sin(angle),
+          lng: marker.lng + lngOffset * Math.cos(angle),
+          originalLat: marker.originalLat ?? marker.lat,
+          originalLng: marker.originalLng ?? marker.lng,
+        });
+      });
+    });
+
+    return displaced;
+  };
+
   const fetchAlertsForShipment = async (shipmentId, trackerId, options = {}) => {
     const { skipLoading = false } = options;
     if (!skipLoading) setIsLoadingAlerts(true);
@@ -1342,6 +1375,11 @@ const Shipments = () => {
     return Array.from(markers.values());
   }, [alertEvents, alertsData]);
 
+  const displayAlertMarkers = useMemo(
+    () => displaceMarkers(combinedAlertMarkers),
+    [combinedAlertMarkers]
+  );
+
   return (
     <div className="shipments-container">
       {/* WebSocket status indicator */}
@@ -2063,7 +2101,7 @@ const Shipments = () => {
           )}
 
           {/* Show alert markers */}
-          {selectedShipmentDetail && combinedAlertMarkers.length > 0 && combinedAlertMarkers.map((marker) => (
+          {selectedShipmentDetail && displayAlertMarkers.length > 0 && displayAlertMarkers.map((marker) => (
             <Marker
               key={`alert-marker-${marker.id}`}
               position={[marker.lat, marker.lng]}
@@ -2075,7 +2113,7 @@ const Shipments = () => {
                   <strong>{marker.alertName}</strong><br />
                   Time: {marker.timestamp}<br />
                   Sensor: {marker.sensorValue}{marker.unit}<br />
-                  Coords: {marker.lat.toFixed(6)}, {marker.lng.toFixed(6)}<br />
+                  Coords: {(marker.originalLat ?? marker.lat).toFixed(6)}, {(marker.originalLng ?? marker.lng).toFixed(6)}<br />
                   {marker.source === 'summary' && marker.occurrenceCount ? (
                     <span>Occurrences: {marker.occurrenceCount}</span>
                   ) : null}
