@@ -706,31 +706,3 @@
   transform: translateX(2px);
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
-
-/* Lucide marker styles */
-.lucide-triangle-alert {
-  --marker-color: #f97316;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  background: var(--marker-color);
-  border: 3px solid #ffffff;
-  border-radius: 10px;
-  transform: rotate(0deg);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25), 0 0 18px rgba(249, 115, 22, 0.55);
-  animation: lucide-alert-glow 1.8s ease-in-out infinite;
-}
-
-.lucide-triangle-alert svg {
-  stroke: #ffffff;
-}
-
-@keyframes lucide-alert-glow {
-  0%, 100% {
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25), 0 0 12px rgba(249, 115, 22, 0.45);
-  }
-  50% {
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25), 0 0 22px rgba(249, 115, 22, 0.9);
-  }
-}

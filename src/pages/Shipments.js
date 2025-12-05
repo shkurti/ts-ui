@@ -3,8 +3,6 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import './Shipments.css';
-import { TriangleAlert } from 'lucide-react';
-import { renderToStaticMarkup } from 'react-dom/server';
 
 // Fix for default markers
 delete L.Icon.Default.prototype._getIconUrl;
@@ -53,8 +51,6 @@ const Shipments = () => {
   // Add state for hover marker on polyline
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
   const [hoverMarkerData, setHoverMarkerData] = useState(null);
-  const [mapInstance, setMapInstance] = useState(null);
-  const [mapZoom, setMapZoom] = useState(2);
   
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -461,116 +457,22 @@ const Shipments = () => {
 
   const createAlertMarkerIcon = (severity = "warning") => {
     const color = severity === "critical" ? "#dc2626" : "#f97316";
-    const iconMarkup = renderToStaticMarkup(
-      <div className="lucide-triangle-alert" style={{ "--marker-color": color }}>
-        <TriangleAlert size={18} strokeWidth={2.2} />
-      </div>
-    );
-
     return L.divIcon({
       className: 'alert-marker',
-      html: iconMarkup,
-      iconSize: [28, 32],
-      iconAnchor: [14, 32]
+      html: `
+        <div style="
+          width: 22px;
+          height: 22px;
+          background: ${color};
+          border: 3px solid #fff;
+          border-radius: 50%;
+          box-shadow: 0 0 0 3px rgba(0,0,0,0.15), 0 0 12px ${color};
+          animation: pulse 1.8s ease-in-out infinite;
+        "></div>
+      `,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
     });
-  };
-
-  const jitterMarkersMeters = (markers, meters = 80) => {
-    const PRECISION = 5;
-    const displaced = [];
-    const groups = new Map();
-
-    markers.forEach((marker) => {
-      const lat = Number(marker.lat);
-      const lng = Number(marker.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        displaced.push(marker);
-        return;
-      }
-      const key = `${lat.toFixed(PRECISION)}|${lng.toFixed(PRECISION)}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(marker);
-    });
-
-    groups.forEach((group) => {
-      if (group.length === 1) {
-        const single = group[0];
-        displaced.push({
-          ...single,
-          originalLat: single.originalLat ?? single.lat,
-          originalLng: single.originalLng ?? single.lng,
-        });
-        return;
-      }
-      group.forEach((marker, index) => {
-        const angle = (2 * Math.PI * index) / group.length;
-        const latOffset = meters / 111320;
-        const lngOffset = meters / (111320 * Math.cos((Number(marker.lat) * Math.PI) / 180) || 1);
-        displaced.push({
-          ...marker,
-          lat: Number(marker.lat) + latOffset * Math.sin(angle),
-          lng: Number(marker.lng) + lngOffset * Math.cos(angle),
-          originalLat: marker.originalLat ?? marker.lat,
-          originalLng: marker.originalLng ?? marker.lng,
-        });
-      });
-    });
-
-    return displaced;
-  };
-
-  const displaceMarkers = (markers, map, zoom, offsetPx = 48) => {
-    if (!markers?.length) return markers;
-    if (!map || !Number.isFinite(zoom)) return jitterMarkersMeters(markers);
-
-    const PRECISION = 6;
-    const groups = new Map();
-
-    markers.forEach((marker) => {
-      const lat = Number(marker.lat);
-      const lng = Number(marker.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const key = `${lat.toFixed(PRECISION)}|${lng.toFixed(PRECISION)}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(marker);
-    });
-
-    const displaced = [];
-    groups.forEach((group) => {
-      if (group.length === 1) {
-        const single = group[0];
-        displaced.push({
-          ...single,
-          originalLat: single.originalLat ?? single.lat,
-          originalLng: single.originalLng ?? single.lng,
-        });
-        return;
-      }
-
-      const basePoint = map.project(
-        L.latLng(Number(group[0].lat), Number(group[0].lng)),
-        zoom
-      );
-      const ringRadius = offsetPx + group.length * 6;
-
-      group.forEach((marker, index) => {
-        const angle = (2 * Math.PI * index) / group.length;
-        const targetPoint = L.point(
-          basePoint.x + ringRadius * Math.cos(angle),
-          basePoint.y + ringRadius * Math.sin(angle)
-        );
-        const projected = map.unproject(targetPoint, zoom);
-        displaced.push({
-          ...marker,
-          lat: projected.lat,
-          lng: projected.lng,
-          originalLat: marker.originalLat ?? marker.lat,
-          originalLng: marker.originalLng ?? marker.lng,
-        });
-      });
-    });
-
-    return displaced;
   };
 
   const fetchAlertsForShipment = async (shipmentId, trackerId, options = {}) => {
@@ -1442,11 +1344,6 @@ const Shipments = () => {
     return Array.from(markers.values());
   }, [alertEvents, alertsData]);
 
-  const displayAlertMarkers = useMemo(
-    () => displaceMarkers(combinedAlertMarkers, mapInstance, mapZoom),
-    [combinedAlertMarkers, mapInstance, mapZoom]
-  );
-
   return (
     <div className="shipments-container">
       {/* WebSocket status indicator */}
@@ -1877,7 +1774,7 @@ const Shipments = () => {
       <div className="map-container">
         <MapContainer
           ref={mapRef}
-          center={[20, 0]}
+          center={[20, 0]} // Default world view
           zoom={2}
           minZoom={1}
           maxZoom={18}
@@ -1885,7 +1782,6 @@ const Shipments = () => {
           worldCopyJump={true}
           preferCanvas={true}
           key={selectedShipmentDetail ? `detail-${selectedShipmentDetail.trackerId}` : 'overview'}
-          whenCreated={setMapInstance}
         >
           {/* Use MapTiler tiles for better geocoding/visual consistency */}
           <TileLayer
@@ -1964,7 +1860,6 @@ const Shipments = () => {
             return (
               <>
                 {/* Dashed line from current GPS to next destination marker */}
-               
                 {showDashedToNext && (
                   <Polyline
                     positions={[gpsPos, [legPoints[nextIdx].lat, legPoints[nextIdx].lng]]}
@@ -2169,7 +2064,7 @@ const Shipments = () => {
           )}
 
           {/* Show alert markers */}
-          {selectedShipmentDetail && displayAlertMarkers.length > 0 && displayAlertMarkers.map((marker) => (
+          {selectedShipmentDetail && combinedAlertMarkers.length > 0 && combinedAlertMarkers.map((marker) => (
             <Marker
               key={`alert-marker-${marker.id}`}
               position={[marker.lat, marker.lng]}
@@ -2181,7 +2076,7 @@ const Shipments = () => {
                   <strong>{marker.alertName}</strong><br />
                   Time: {marker.timestamp}<br />
                   Sensor: {marker.sensorValue}{marker.unit}<br />
-                  Coords: {(marker.originalLat ?? marker.lat).toFixed(6)}, {(marker.originalLng ?? marker.lng).toFixed(6)}<br />
+                  Coords: {marker.lat.toFixed(6)}, {marker.lng.toFixed(6)}<br />
                   {marker.source === 'summary' && marker.occurrenceCount ? (
                     <span>Occurrences: {marker.occurrenceCount}</span>
                   ) : null}
