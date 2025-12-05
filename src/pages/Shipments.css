@@ -706,3 +706,38 @@
   transform: translateX(2px);
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
+
+/* ...existing code... */
+.alert-marker.alert-marker--triangle .alert-marker-triangle {
+  position: relative;
+  width: 0;
+  height: 0;
+  border-left: 13px solid transparent;
+  border-right: 13px solid transparent;
+  border-bottom: 24px solid var(--marker-color, #f97316);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+  animation: alert-glow 1.6s ease-in-out infinite;
+}
+
+.alert-marker.alert-marker--triangle .alert-marker-triangle::after {
+  content: '';
+  position: absolute;
+  left: -7px;
+  top: 6px;
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 12px solid #fffefa;
+}
+
+@keyframes alert-glow {
+  0%, 100% {
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35))
+            drop-shadow(0 0 0 rgba(249, 115, 22, 0.55));
+  }
+  50% {
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35))
+            drop-shadow(0 0 12px rgba(249, 115, 22, 0.9));
+  }
+}
