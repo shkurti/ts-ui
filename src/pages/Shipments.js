@@ -460,10 +460,12 @@ const Shipments = () => {
     return L.divIcon({
       className: 'alert-marker alert-marker--triangle',
       html: `
-        <div class="alert-marker-triangle" style="--marker-color: ${color};"></div>
+        <div class="alert-marker-shape" style="--marker-color: ${color};">
+          <span class="alert-marker-symbol">!</span>
+        </div>
       `,
-      iconSize: [26, 26],
-      iconAnchor: [13, 26]
+      iconSize: [26, 30],
+      iconAnchor: [13, 30]
     });
   };
 
@@ -1855,9 +1857,10 @@ const Shipments = () => {
                 {showDashedToNext && (
                   <Polyline
                     positions={[gpsPos, [legPoints[nextIdx].lat, legPoints[nextIdx].lng]]}
+                   
                     pathOptions={{
                       color: '#1976d2',
-                      weight:  3,
+                      weight: 3,
                       opacity: 0.7,
                       dashArray: '8, 8'
                     }}
