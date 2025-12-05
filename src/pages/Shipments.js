@@ -464,8 +464,8 @@ const Shipments = () => {
           <span class="alert-marker-symbol">!</span>
         </div>
       `,
-      iconSize: [26, 30],
-      iconAnchor: [13, 30]
+      iconSize: [28, 32],
+      iconAnchor: [14, 32]
     });
   };
 
@@ -1228,7 +1228,7 @@ const Shipments = () => {
                 return { timestamp: ts, temperature: parseFloat(t) };
               })
               .filter(Boolean),
-          ]);
+          );
 
           setHumidityData((prev) => [
             ...prev,
@@ -1240,7 +1240,7 @@ const Shipments = () => {
                 return { timestamp: ts, humidity: parseFloat(h) };
               })
               .filter(Boolean),
-          ]);
+          );
 
           setBatteryData((prev) => [
             ...prev,
@@ -1252,7 +1252,7 @@ const Shipments = () => {
                 return { timestamp: ts, battery: parseFloat(b) };
               })
               .filter(Boolean),
-          ]);
+          );
 
           setSpeedData((prev) => [
             ...prev,
@@ -1857,7 +1857,6 @@ const Shipments = () => {
                 {showDashedToNext && (
                   <Polyline
                     positions={[gpsPos, [legPoints[nextIdx].lat, legPoints[nextIdx].lng]]}
-                   
                     pathOptions={{
                       color: '#1976d2',
                       weight: 3,
