@@ -460,15 +460,15 @@ const Shipments = () => {
     return L.divIcon({
       className: 'alert-marker',
       html: `
-      <div style="
-      width: 16px;
-      height: 16px;
-      background: ${color};
-      border: 3px solid #fff;
-      border-radius: 50%;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      animation: pulse 1.8s ease-in-out infinite;
-      "></div>
+        <div style="
+          width: 22px;
+          height: 22px;
+          background: ${color};
+          border: 3px solid #fff;
+          border-radius: 50%;
+          box-shadow: 0 0 0 3px rgba(0,0,0,0.15), 0 0 12px ${color};
+          animation: pulse 1.8s ease-in-out infinite;
+        "></div>
       `,
       iconSize: [22, 22],
       iconAnchor: [11, 11]
