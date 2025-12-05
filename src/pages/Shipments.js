@@ -53,6 +53,8 @@ const Shipments = () => {
   // Add state for hover marker on polyline
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
   const [hoverMarkerData, setHoverMarkerData] = useState(null);
+  const [mapInstance, setMapInstance] = useState(null);
+  const [mapZoom, setMapZoom] = useState(2);
   
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -473,30 +475,95 @@ const Shipments = () => {
     });
   };
 
-  const displaceMarkers = (markers, offsetMeters = 35) => {
+  const jitterMarkersMeters = (markers, meters = 80) => {
     const PRECISION = 5;
     const displaced = [];
     const groups = new Map();
 
     markers.forEach((marker) => {
-      const key = `${marker.lat.toFixed(PRECISION)}|${marker.lng.toFixed(PRECISION)}`;
+      const lat = Number(marker.lat);
+      const lng = Number(marker.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        displaced.push(marker);
+        return;
+      }
+      const key = `${lat.toFixed(PRECISION)}|${lng.toFixed(PRECISION)}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(marker);
     });
 
     groups.forEach((group) => {
       if (group.length === 1) {
-        displaced.push(group[0]);
+        const single = group[0];
+        displaced.push({
+          ...single,
+          originalLat: single.originalLat ?? single.lat,
+          originalLng: single.originalLng ?? single.lng,
+        });
         return;
       }
       group.forEach((marker, index) => {
         const angle = (2 * Math.PI * index) / group.length;
-        const latOffset = offsetMeters / 111320;
-        const lngOffset = offsetMeters / (111320 * Math.cos((marker.lat * Math.PI) / 180) || 1);
+        const latOffset = meters / 111320;
+        const lngOffset = meters / (111320 * Math.cos((Number(marker.lat) * Math.PI) / 180) || 1);
         displaced.push({
           ...marker,
-          lat: marker.lat + latOffset * Math.sin(angle),
-          lng: marker.lng + lngOffset * Math.cos(angle),
+          lat: Number(marker.lat) + latOffset * Math.sin(angle),
+          lng: Number(marker.lng) + lngOffset * Math.cos(angle),
+          originalLat: marker.originalLat ?? marker.lat,
+          originalLng: marker.originalLng ?? marker.lng,
+        });
+      });
+    });
+
+    return displaced;
+  };
+
+  const displaceMarkers = (markers, map, zoom, offsetPx = 48) => {
+    if (!markers?.length) return markers;
+    if (!map || !Number.isFinite(zoom)) return jitterMarkersMeters(markers);
+
+    const PRECISION = 6;
+    const groups = new Map();
+
+    markers.forEach((marker) => {
+      const lat = Number(marker.lat);
+      const lng = Number(marker.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const key = `${lat.toFixed(PRECISION)}|${lng.toFixed(PRECISION)}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(marker);
+    });
+
+    const displaced = [];
+    groups.forEach((group) => {
+      if (group.length === 1) {
+        const single = group[0];
+        displaced.push({
+          ...single,
+          originalLat: single.originalLat ?? single.lat,
+          originalLng: single.originalLng ?? single.lng,
+        });
+        return;
+      }
+
+      const basePoint = map.project(
+        L.latLng(Number(group[0].lat), Number(group[0].lng)),
+        zoom
+      );
+      const ringRadius = offsetPx + group.length * 6;
+
+      group.forEach((marker, index) => {
+        const angle = (2 * Math.PI * index) / group.length;
+        const targetPoint = L.point(
+          basePoint.x + ringRadius * Math.cos(angle),
+          basePoint.y + ringRadius * Math.sin(angle)
+        );
+        const projected = map.unproject(targetPoint, zoom);
+        displaced.push({
+          ...marker,
+          lat: projected.lat,
+          lng: projected.lng,
           originalLat: marker.originalLat ?? marker.lat,
           originalLng: marker.originalLng ?? marker.lng,
         });
@@ -1376,8 +1443,8 @@ const Shipments = () => {
   }, [alertEvents, alertsData]);
 
   const displayAlertMarkers = useMemo(
-    () => displaceMarkers(combinedAlertMarkers),
-    [combinedAlertMarkers]
+    () => displaceMarkers(combinedAlertMarkers, mapInstance, mapZoom),
+    [combinedAlertMarkers, mapInstance, mapZoom]
   );
 
   return (
@@ -1810,7 +1877,7 @@ const Shipments = () => {
       <div className="map-container">
         <MapContainer
           ref={mapRef}
-          center={[20, 0]} // Default world view
+          center={[20, 0]}
           zoom={2}
           minZoom={1}
           maxZoom={18}
@@ -1818,6 +1885,7 @@ const Shipments = () => {
           worldCopyJump={true}
           preferCanvas={true}
           key={selectedShipmentDetail ? `detail-${selectedShipmentDetail.trackerId}` : 'overview'}
+          whenCreated={setMapInstance}
         >
           {/* Use MapTiler tiles for better geocoding/visual consistency */}
           <TileLayer
