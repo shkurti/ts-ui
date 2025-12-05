@@ -1228,7 +1228,7 @@ const Shipments = () => {
                 return { timestamp: ts, temperature: parseFloat(t) };
               })
               .filter(Boolean),
-          );
+          ]);
 
           setHumidityData((prev) => [
             ...prev,
@@ -1240,7 +1240,7 @@ const Shipments = () => {
                 return { timestamp: ts, humidity: parseFloat(h) };
               })
               .filter(Boolean),
-          );
+          ]);
 
           setBatteryData((prev) => [
             ...prev,
@@ -1252,7 +1252,7 @@ const Shipments = () => {
                 return { timestamp: ts, battery: parseFloat(b) };
               })
               .filter(Boolean),
-          );
+          ]);
 
           setSpeedData((prev) => [
             ...prev,
