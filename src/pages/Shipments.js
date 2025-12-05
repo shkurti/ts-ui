@@ -3,8 +3,6 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import './Shipments.css';
-import { TriangleAlert } from 'lucide-react';
-import { renderToStaticMarkup } from 'react-dom/server';
 
 // Fix for default markers
 delete L.Icon.Default.prototype._getIconUrl;
@@ -459,26 +457,21 @@ const Shipments = () => {
 
   const createAlertMarkerIcon = (severity = "warning") => {
     const color = severity === "critical" ? "#dc2626" : "#f97316";
-    const iconMarkup = renderToStaticMarkup(
-      <div style={{
-        width: 28,
-        height: 28,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'white',
-        borderRadius: '50%',
-        boxShadow: `0 0 0 2px ${color} inset, 0 0 10px ${color}55`,
-      }}>
-        <TriangleAlert color={color} size={18} strokeWidth={2.2} />
-      </div>
-    );
     return L.divIcon({
       className: 'alert-marker',
-      html: iconMarkup,
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
-      popupAnchor: [0, -14],
+      html: `
+        <div style="
+          width: 22px;
+          height: 22px;
+          background: ${color};
+          border: 3px solid #fff;
+          border-radius: 50%;
+          box-shadow: 0 0 0 3px rgba(0,0,0,0.15), 0 0 12px ${color};
+          animation: pulse 1.8s ease-in-out infinite;
+        "></div>
+      `,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
     });
   };
 
@@ -1351,21 +1344,6 @@ const Shipments = () => {
     return Array.from(markers.values());
   }, [alertEvents, alertsData]);
 
-  const isNearAlert = (lat, lng, alerts, thresholdMeters = 25) => {
-    if (!alerts || alerts.length === 0) return false;
-    // approximate meters per degree
-    const metersPerDegLat = 111320;
-    const metersPerDegLng = (latDeg) => 111320 * Math.cos((latDeg * Math.PI) / 180) || 1;
-
-    for (const a of alerts) {
-      const dLat = (lat - a.lat) * metersPerDegLat;
-      const dLng = (lng - a.lng) * metersPerDegLng(lat);
-      const dist = Math.hypot(dLat, dLng);
-      if (dist <= thresholdMeters) return true;
-    }
-    return false;
-  };
-
   return (
     <div className="shipments-container">
       {/* WebSocket status indicator */}
@@ -1866,10 +1844,6 @@ const Shipments = () => {
           {selectedShipmentDetail && locationData.length > 0 && legPoints.length > 1 && (() => {
             const lastGps = locationData[locationData.length - 1];
             const gpsPos = [lastGps.latitude, lastGps.longitude];
-
-            // If current GPS is on top of an alert marker, skip the red dot to avoid double marker
-            const hideCurrentDot = isNearAlert(gpsPos[0], gpsPos[1], combinedAlertMarkers, 25);
-
             // Find the next destination marker (first marker after closest)
             let minDist = Infinity, closestIdx = 0;
             for (let i = 0; i < legPoints.length; i++) {
@@ -1879,11 +1853,13 @@ const Shipments = () => {
                 closestIdx = i;
               }
             }
+            // Next destination is the next marker after closest, or last marker if at the end
             const nextIdx = Math.min(closestIdx + 1, legPoints.length - 1);
+            // Only show dashed line if not already at the last marker
             const showDashedToNext = nextIdx !== 0 && (gpsPos[0] !== legPoints[nextIdx].lat || gpsPos[1] !== legPoints[nextIdx].lng);
-
             return (
               <>
+                {/* Dashed line from current GPS to next destination marker */}
                 {showDashedToNext && (
                   <Polyline
                     positions={[gpsPos, [legPoints[nextIdx].lat, legPoints[nextIdx].lng]]}
@@ -1895,32 +1871,31 @@ const Shipments = () => {
                     }}
                   />
                 )}
-                {!hideCurrentDot && (
-                  <Marker
-                    position={gpsPos}
-                    icon={L.divIcon({
-                      className: 'current-gps-dot',
-                      html: `<div style="
-                        width: 18px;
-                        height: 18px;
-                        background: #ff4444;
-                        border: 3px solid #fff;
-                        border-radius: 50%;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                      "></div>`,
-                      iconSize: [18, 18],
-                      iconAnchor: [9, 9]
-                    })}
-                  >
-                    <Popup>
-                      <div>
-                        <strong>Current Location</strong><br />
-                        Lat: {gpsPos[0].toFixed(6)}<br />
-                        Lng: {gpsPos[1].toFixed(6)}
-                      </div>
-                    </Popup>
-                  </Marker>
-                )}
+                {/* Red dot at current GPS */}
+                <Marker
+                  position={gpsPos}
+                  icon={L.divIcon({
+                    className: 'current-gps-dot',
+                    html: `<div style="
+                      width: 18px;
+                      height: 18px;
+                      background: #ff4444;
+                      border: 3px solid #fff;
+                      border-radius: 50%;
+                      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                    "></div>`,
+                    iconSize: [18, 18],
+                    iconAnchor: [9, 9]
+                  })}
+                >
+                  <Popup>
+                    <div>
+                      <strong>Current Location</strong><br />
+                      Lat: {gpsPos[0].toFixed(6)}<br />
+                      Lng: {gpsPos[1].toFixed(6)}
+                    </div>
+                  </Popup>
+                </Marker>
                 {/* Green dot at start (origin) */}
                 <Marker
                   position={[legPoints[0].lat, legPoints[0].lng]}
