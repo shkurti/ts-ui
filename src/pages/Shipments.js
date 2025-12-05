@@ -458,14 +458,20 @@ const Shipments = () => {
   const createAlertMarkerIcon = (severity = "warning") => {
     const color = severity === "critical" ? "#dc2626" : "#f97316";
     return L.divIcon({
-      className: 'alert-marker alert-marker--triangle',
+      className: 'alert-marker',
       html: `
-        <div class="alert-marker-shape" style="--marker-color: ${color};">
-          <span class="alert-marker-symbol">!</span>
-        </div>
+      <div style="
+        width: 0;
+        height: 0;
+        border-left: 12px solid transparent;
+        border-right: 12px solid transparent;
+        border-bottom: 20px solid ${color};
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)) drop-shadow(0 0 8px ${color});
+        animation: pulse 1.8s ease-in-out infinite;
+      "></div>
       `,
-      iconSize: [26, 30],
-      iconAnchor: [13, 30]
+      iconSize: [24, 20],
+      iconAnchor: [12, 20]
     });
   };
 
@@ -1857,7 +1863,6 @@ const Shipments = () => {
                 {showDashedToNext && (
                   <Polyline
                     positions={[gpsPos, [legPoints[nextIdx].lat, legPoints[nextIdx].lng]]}
-                   
                     pathOptions={{
                       color: '#1976d2',
                       weight: 3,
