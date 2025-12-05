@@ -707,50 +707,30 @@
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-/* Triangle alert marker styling */
-.alert-marker.alert-marker--triangle .alert-marker-shape {
-  position: relative;
+/* Lucide marker styles */
+.lucide-triangle-alert {
+  --marker-color: #f97316;
   width: 28px;
   height: 28px;
-  display: inline-flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 6px;
-  animation: alert-triangle-glow 1.8s ease-in-out infinite;
+  display: grid;
+  place-items: center;
+  background: var(--marker-color);
+  border: 3px solid #ffffff;
+  border-radius: 10px;
+  transform: rotate(0deg);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25), 0 0 18px rgba(249, 115, 22, 0.55);
+  animation: lucide-alert-glow 1.8s ease-in-out infinite;
 }
 
-.alert-marker.alert-marker--triangle .alert-marker-shape::before,
-.alert-marker.alert-marker--triangle .alert-marker-shape::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  clip-path: polygon(50% 0, 0 100%, 100% 100%);
+.lucide-triangle-alert svg {
+  stroke: #ffffff;
 }
 
-.alert-marker.alert-marker--triangle .alert-marker-shape::before {
-  background: #ffffff;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25);
-}
-
-.alert-marker.alert-marker--triangle .alert-marker-shape::after {
-  inset: 3px 3px 4px;
-  background: var(--marker-color, #f97316);
-}
-
-.alert-marker.alert-marker--triangle .alert-marker-symbol {
-  position: relative;
-  font-size: 14px;
-  font-weight: 700;
-  color: #ffffff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-  pointer-events: none;
-}
-
-@keyframes alert-triangle-glow {
+@keyframes lucide-alert-glow {
   0%, 100% {
-    filter: drop-shadow(0 0 0 rgba(249, 115, 22, 0.0));
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25), 0 0 12px rgba(249, 115, 22, 0.45);
   }
   50% {
-    filter: drop-shadow(0 0 10px rgba(249, 115, 22, 0.55));
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25), 0 0 22px rgba(249, 115, 22, 0.9);
   }
 }

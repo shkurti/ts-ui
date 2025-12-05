@@ -3,6 +3,8 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import './Shipments.css';
+import { TriangleAlert } from 'lucide-react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 // Fix for default markers
 delete L.Icon.Default.prototype._getIconUrl;
@@ -457,13 +459,15 @@ const Shipments = () => {
 
   const createAlertMarkerIcon = (severity = "warning") => {
     const color = severity === "critical" ? "#dc2626" : "#f97316";
+    const iconMarkup = renderToStaticMarkup(
+      <div className="lucide-triangle-alert" style={{ "--marker-color": color }}>
+        <TriangleAlert size={18} strokeWidth={2.2} />
+      </div>
+    );
+
     return L.divIcon({
-      className: 'alert-marker alert-marker--triangle',
-      html: `
-        <div class="alert-marker-shape" style="--marker-color: ${color};">
-          <span class="alert-marker-symbol">!</span>
-        </div>
-      `,
+      className: 'alert-marker',
+      html: iconMarkup,
       iconSize: [28, 32],
       iconAnchor: [14, 32]
     });
@@ -1854,6 +1858,7 @@ const Shipments = () => {
             return (
               <>
                 {/* Dashed line from current GPS to next destination marker */}
+               
                 {showDashedToNext && (
                   <Polyline
                     positions={[gpsPos, [legPoints[nextIdx].lat, legPoints[nextIdx].lng]]}
