@@ -461,29 +461,17 @@ const Shipments = () => {
       className: 'alert-marker',
       html: `
       <div style="
-      width: 0;
-      height: 0;
-      border-left: 12px solid transparent;
-      border-right: 12px solid transparent;
-      border-bottom: 20px solid ${color};
-      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)) drop-shadow(0 0 8px ${color});
+      width: 16px;
+      height: 16px;
+      background: ${color};
+      border: 3px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
       animation: pulse 1.8s ease-in-out infinite;
-      position: relative;
-      "></div>
-      <div style="
-      position: absolute;
-      top: -20px;
-      left: -12px;
-      width: 0;
-      height: 0;
-      border-left: 13px solid transparent;
-      border-right: 13px solid transparent;
-      border-bottom: 21px solid white;
-      z-index: -1;
       "></div>
       `,
-      iconSize: [24, 20],
-      iconAnchor: [12, 20]
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
     });
   };
 
