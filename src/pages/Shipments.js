@@ -458,16 +458,32 @@ const Shipments = () => {
     ].join('|');
 
   const createAlertMarkerIcon = (severity = "warning") => {
-    const color = severity === "critical" ? "#dc2626" : "#f97316";
-    const iconMarkup = renderToStaticMarkup(
-      <TriangleAlert color={color} size={24} strokeWidth={2.2} />
+    // Light red fill, white border and white exclamation
+    const fillColor = '#eb6f6fff';     // light red
+    const strokeColor = '#ffffff';   // white
+
+    // Render lucide svg, then force-fill the triangle path(s)
+    let svgMarkup = renderToStaticMarkup(
+      <TriangleAlert
+        size={28}
+        color={strokeColor}      // exclamation color (stroke)
+        stroke={strokeColor}     // border color
+        strokeWidth={2.2}
+        fill={fillColor}         // desired fill (will be enforced below)
+      />
     );
+
+    // Ensure fill applies even if internal paths set fill="none"
+    svgMarkup = svgMarkup
+      .replace(/fill="none"/g, `fill="${fillColor}"`)
+      .replace(/stroke="currentColor"/g, `stroke="${strokeColor}"`);
+
     return L.divIcon({
       className: 'alert-marker',
-      html: iconMarkup,
-      iconSize: [24, 24],
-      iconAnchor: [12, 12],
-      popupAnchor: [0, -12],
+      html: svgMarkup,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      popupAnchor: [0, -14],
     });
   };
 
