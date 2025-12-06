@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import './Shipments.css';
@@ -32,7 +32,10 @@ const Shipments = () => {
       transportMode: '',
       carrier: '',
       arrivalDate: '',
-      departureDate: ''
+      departureDate: '',
+      alertOnArrival: false,
+      alertOnDeparture: false,
+      alertRadius: 1000 // meters
     }]
   });
   // Add state for shipment detail view
@@ -196,7 +199,10 @@ const Shipments = () => {
         transportMode: '',
         carrier: '',
         arrivalDate: '',
-        departureDate: ''
+        departureDate: '',
+        alertOnArrival: false,
+        alertOnDeparture: false,
+        alertRadius: 1000
       }]
     }));
   };
@@ -247,6 +253,12 @@ const Shipments = () => {
           stopAddress: leg.stopAddress || leg.shipTo,
           arrivalDate: leg.arrivalDate,
           departureDate: leg.departureDate,
+          locationAlerts: {
+            enabled: leg.alertOnArrival || leg.alertOnDeparture,
+            alertOnArrival: leg.alertOnArrival,
+            alertOnDeparture: leg.alertOnDeparture,
+            alertRadius: leg.alertRadius
+          }
         }))
       };
 
@@ -978,11 +990,13 @@ const Shipments = () => {
   // Geocode all legs for selectedShipmentDetail (fix: use MapTiler API for better reliability)
   const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
   const [legPoints, setLegPoints] = useState([]);
+  const [legAlertCircles, setLegAlertCircles] = useState([]);
 
   useEffect(() => {
     const geocodeLegs = async () => {
       if (!selectedShipmentDetail || !selectedShipmentDetail.legs || selectedShipmentDetail.legs.length === 0) {
         setLegPoints([]);
+        setLegAlertCircles([]);
         return;
       }
       // Build ordered addresses: origin, stops, destination
@@ -1008,7 +1022,32 @@ const Shipments = () => {
         } catch {}
         return null;
       }));
-      setLegPoints(results.map((r, i) => r && { ...r, number: i + 1 }).filter(Boolean));
+      const points = results.map((r, i) => r && { ...r, number: i + 1 }).filter(Boolean);
+      setLegPoints(points);
+      
+      // Build alert circles for legs with location alerts
+      const circles = [];
+      legs.forEach((leg, legIndex) => {
+        const locationAlerts = leg.locationAlerts;
+        if (locationAlerts && locationAlerts.enabled && locationAlerts.alertRadius) {
+          // For leg 0, use the stopAddress (destination of first leg)
+          // For other legs, use stopAddress which was mapped from shipTo
+          const pointIndex = legIndex === 0 ? 1 : legIndex + 1; // Offset by 1 since first point is origin
+          const point = points[pointIndex];
+          if (point) {
+            circles.push({
+              lat: point.lat,
+              lng: point.lng,
+              radius: locationAlerts.alertRadius,
+              address: point.address,
+              legNumber: legIndex + 1,
+              alertOnArrival: locationAlerts.alertOnArrival,
+              alertOnDeparture: locationAlerts.alertOnDeparture
+            });
+          }
+        }
+      });
+      setLegAlertCircles(circles);
     };
     geocodeLegs();
   }, [selectedShipmentDetail]);
@@ -1808,6 +1847,32 @@ const Shipments = () => {
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
           <MapBoundsHandler />
 
+          {/* Show alert radius circles */}
+          {selectedShipmentDetail && legAlertCircles.length > 0 && legAlertCircles.map((circle, idx) => (
+            <Circle
+              key={`alert-circle-${idx}`}
+              center={[circle.lat, circle.lng]}
+              radius={circle.radius}
+              pathOptions={{
+                color: '#2196F3',
+                fillColor: '#2196F3',
+                fillOpacity: 0.1,
+                weight: 2,
+                dashArray: '5, 5'
+              }}
+            >
+              <Popup>
+                <div>
+                  <strong>Alert Zone - Leg {circle.legNumber}</strong><br />
+                  {circle.address}<br />
+                  Radius: {circle.radius >= 1000 ? `${(circle.radius / 1000).toFixed(1)} km` : `${circle.radius} m`}<br />
+                  {circle.alertOnArrival && <span>✓ Alert on arrival<br /></span>}
+                  {circle.alertOnDeparture && <span>✓ Alert on departure<br /></span>}
+                </div>
+              </Popup>
+            </Circle>
+          ))}
+
           {/* Show all leg markers */}
           {selectedShipmentDetail && legPoints.length > 0 && legPoints.map((point, idx) => (
             <Marker
@@ -2191,6 +2256,79 @@ const Shipments = () => {
                         onChange={(e) => handleLegChange(index, 'departureDate', e.target.value)}
                         required
                       />
+                    </div>
+                  </div>
+                  
+                  {/* Location Alert Configuration */}
+                  <div className="alert-config-section" style={{
+                    marginTop: '1rem',
+                    padding: '1rem',
+                    background: '#f8f9fa',
+                    borderRadius: '8px',
+                    border: '1px solid #e0e0e0'
+                  }}>
+                    <h5 style={{ marginBottom: '0.75rem', fontSize: '14px', fontWeight: 600 }}>
+                      📍 Location Alerts
+                    </h5>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <label className="checkbox-container" style={{ marginBottom: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={leg.alertOnArrival}
+                          onChange={(e) => handleLegChange(index, 'alertOnArrival', e.target.checked)}
+                        />
+                        <span className="checkmark"></span>
+                        Alert when arriving at {index === 0 ? leg.stopAddress || 'destination' : leg.shipTo || 'destination'}
+                      </label>
+                      
+                      {index > 0 && (
+                        <label className="checkbox-container" style={{ marginBottom: 0 }}>
+                          <input
+                            type="checkbox"
+                            checked={leg.alertOnDeparture}
+                            onChange={(e) => handleLegChange(index, 'alertOnDeparture', e.target.checked)}
+                          />
+                          <span className="checkmark"></span>
+                          Alert when departing from previous location
+                        </label>
+                      )}
+                      
+                      {(leg.alertOnArrival || leg.alertOnDeparture) && (
+                        <div className="form-group" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
+                          <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <span>Alert Radius</span>
+                            <span style={{ fontWeight: 600, color: '#007bff' }}>
+                              {leg.alertRadius >= 1000 
+                                ? `${(leg.alertRadius / 1000).toFixed(1)} km` 
+                                : `${leg.alertRadius} m`}
+                            </span>
+                          </label>
+                          <input
+                            type="range"
+                            min="100"
+                            max="10000"
+                            step="100"
+                            value={leg.alertRadius}
+                            onChange={(e) => handleLegChange(index, 'alertRadius', parseInt(e.target.value))}
+                            style={{
+                              width: '100%',
+                              cursor: 'pointer',
+                              accentColor: '#007bff'
+                            }}
+                          />
+                          <div style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            fontSize: '11px', 
+                            color: '#666',
+                            marginTop: '0.25rem'
+                          }}>
+                            <span>100m</span>
+                            <span>10km</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
