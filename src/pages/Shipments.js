@@ -129,7 +129,7 @@ const Shipments = () => {
 
     const normalizedAlert = {
       alertId,
-      alertKey: `${selectedShipmentDetail._id}|location_${alertType}|${timestamp.slice(0, 10)}|||m|${alertName}`,
+      alertKey: `${selectedShipmentDetail._id}|${selectedShipmentDetail.trackerId}|location_${alertType}|${timestamp.slice(0, 10)}|0|${circle.radius}|m|${alertName}`,
       shipmentId: selectedShipmentDetail._id,
       trackerId: selectedShipmentDetail.trackerId,
       alertDate: timestamp.slice(0, 10),
@@ -724,6 +724,7 @@ const Shipments = () => {
   const buildAlertKey = (alert) =>
     [
       alert.shipmentId ?? '',
+      alert.trackerId ?? '',
       alert.alertType ?? '',
       alert.alertDate ?? '',
       alert.minThreshold ?? '',
@@ -769,12 +770,18 @@ const Shipments = () => {
       const params = new URLSearchParams({ timezone: userTimezone });
       if (shipmentId) params.append("shipment_id", shipmentId);
       if (trackerId) params.append("tracker_id", trackerId);
+      
+      console.log('Fetching alerts with params:', params.toString());
+      
       const response = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alerts?${params.toString()}`);
       if (!response.ok) {
         console.error("Failed to fetch shipment alerts");
         return;
       }
       const data = await response.json();
+      
+      console.log('Raw alerts data received:', data);
+      console.log('Location alerts in response:', data.filter(a => a.alertType?.startsWith('location_')));
 
       const aggregateMap = new Map();
       data.forEach((alert) => {
@@ -830,6 +837,9 @@ const Shipments = () => {
       const normalizedList = Array.from(aggregateMap.values()).sort(
         (a, b) => new Date(b.lastTriggeredAtRaw || 0) - new Date(a.lastTriggeredAtRaw || 0)
       );
+
+      console.log('Final processed alerts:', normalizedList);
+      console.log('Location alerts after processing:', normalizedList.filter(a => a.alertType?.startsWith('location_')));
 
       receivedAlertIdsRef.current = new Set(aggregateMap.keys());
       setAlertsData(normalizedList);
