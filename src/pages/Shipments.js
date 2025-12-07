@@ -168,7 +168,70 @@ const Shipments = () => {
       unit: 'm'
     };
 
+    // Save alert to backend
+    saveLocationAlertToBackend(normalizedAlert, alertEvent);
+
     return { alert: normalizedAlert, event: alertEvent };
+  };
+
+  // Function to save location alert to backend
+  const saveLocationAlertToBackend = async (alert, event) => {
+    try {
+      // Save the alert
+      const alertResponse = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alerts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          alertId: alert.alertId,
+          shipmentId: alert.shipmentId,
+          trackerId: alert.trackerId,
+          alertDate: alert.alertDate,
+          alertType: alert.alertType,
+          alertName: alert.alertName,
+          severity: alert.severity,
+          sensorValue: alert.sensorValue,
+          minThreshold: alert.minThreshold,
+          maxThreshold: alert.maxThreshold,
+          unit: alert.unit,
+          timestamp: alert.timestampRaw,
+          lastTriggeredAt: alert.timestampRaw,
+          occurrenceCount: alert.occurrenceCount,
+          message: alert.message,
+          location: alert.location
+        })
+      });
+
+      if (!alertResponse.ok) {
+        console.error('Failed to save alert to backend');
+      }
+
+      // Save the alert event
+      const eventResponse = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alert_events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId: event.eventId,
+          alertId: event.alertId,
+          shipmentId: alert.shipmentId,
+          trackerId: alert.trackerId,
+          alertType: event.alertType,
+          alertName: event.alertName,
+          severity: event.severity,
+          timestamp: event.timestampRaw,
+          location: event.location,
+          sensorValue: event.sensorValue,
+          unit: event.unit
+        })
+      });
+
+      if (!eventResponse.ok) {
+        console.error('Failed to save alert event to backend');
+      }
+
+      console.log('Location alert saved to backend successfully');
+    } catch (error) {
+      console.error('Error saving location alert to backend:', error);
+    }
   };
 
   // Function to check and update circle states
@@ -1817,7 +1880,7 @@ const Shipments = () => {
                               borderTop: '3px solid #f97316',
                               borderRadius: '50%',
                               animation: 'spin 1s linear infinite',
-                              margin: '0 auto 15px'
+                              margin: '0 auto  15px'
                             }}></div>
                             Loading alerts...
                           </div>
