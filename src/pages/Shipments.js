@@ -1239,8 +1239,6 @@ const Shipments = () => {
     receivedAlertIdsRef.current = new Set();
   }, [selectedShipmentDetail?.trackerId]);
 
-  // removed legacy WebSocket listener to avoid duplicate unfiltered handlers
-
   useEffect(() => {
     if (!selectedShipmentDetail) return;
     const ws = wsRef.current;
@@ -1392,10 +1390,20 @@ const Shipments = () => {
               })
               .filter(Boolean);
             
-            // Check circle states for new location points
+            // Check circle states for new location points using latest state
             if (newPoints.length > 0) {
               const latestPoint = newPoints[newPoints.length - 1];
-              setTimeout(() => checkCircleStates(latestPoint), 100);
+              // Use setTimeout to avoid stale closure issues
+              setTimeout(() => {
+                // Get current circles and states from refs to avoid stale closures
+                const currentCircles = legAlertCircles;
+                const currentStates = circleStates;
+                const currentSelectedShipment = selectedShipmentDetail;
+                
+                if (currentSelectedShipment && currentCircles.length > 0 && latestPoint) {
+                  checkCircleStates(latestPoint);
+                }
+              }, 100);
             }
             
             return newPoints.length ? [...prev, ...newPoints] : prev;
@@ -1457,8 +1465,16 @@ const Shipments = () => {
             const newLocation = { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts };
             
             setLocationData((prev) => {
-              // Check circle states for new location
-              setTimeout(() => checkCircleStates(newLocation), 100);
+              // Check circle states for new location using latest state
+              setTimeout(() => {
+                const currentCircles = legAlertCircles;
+                const currentStates = circleStates;
+                const currentSelectedShipment = selectedShipmentDetail;
+                
+                if (currentSelectedShipment && currentCircles.length > 0 && newLocation) {
+                  checkCircleStates(newLocation);
+                }
+              }, 100);
               return [...prev, newLocation];
             });
 
@@ -1485,8 +1501,9 @@ const Shipments = () => {
     return () => {
       ws.removeEventListener('message', handleMessage);
     };
-  }, [selectedShipmentDetail?.trackerId, wsConnected, legAlertCircles, circleStates, lastProcessedLocation]);
+  }, [selectedShipmentDetail?.trackerId, wsConnected]); // Remove problematic dependencies
 
+  // Combine and normalize alert and event markers for display
   const combinedAlertMarkers = useMemo(() => {
     const markers = new Map();
     alertEvents.forEach((event) => {
