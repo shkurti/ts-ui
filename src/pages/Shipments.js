@@ -57,9 +57,6 @@ const Shipments = () => {
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
   const [hoverMarkerData, setHoverMarkerData] = useState(null);
   
-  // Add state for tracking alert circle status
-  const [alertCircleStates, setAlertCircleStates] = useState({});
-  
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -77,154 +74,6 @@ const Shipments = () => {
       return { latitude: lat, longitude: lng };
     }
     return null;
-  };
-
-  // Add function to calculate distance between two points (Haversine formula)
-  const calculateDistance = (lat1, lng1, lat2, lng2) => {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLng/2) * Math.sin(dLng/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // Distance in meters
-  };
-
-  // Add function to create location-based alert
-  const createLocationAlert = async (circle, currentLocation, alertType) => {
-    if (!selectedShipmentDetail) return;
-    
-    const alertId = `location-${circle.legNumber}-${alertType}-${Date.now()}`;
-    const timestamp = new Date().toISOString();
-    const localTimestamp = formatTimestamp(timestamp);
-    
-    // Create alert document
-    const alertDoc = {
-      alertId,
-      shipmentId: selectedShipmentDetail._id,
-      trackerId: selectedShipmentDetail.trackerId,
-      alertType: 'location',
-      alertName: `${alertType === 'arrival' ? 'Arrival' : 'Departure'} Alert - Leg ${circle.legNumber}`,
-      severity: 'info',
-      sensorValue: calculateDistance(currentLocation.latitude, currentLocation.longitude, circle.lat, circle.lng),
-      minThreshold: 0,
-      maxThreshold: circle.radius,
-      unit: 'm',
-      timestamp: localTimestamp,
-      timestampRaw: timestamp,
-      lastTriggeredAt: localTimestamp,
-      lastTriggeredAtRaw: timestamp,
-      occurrenceCount: 1,
-      message: `Vehicle ${alertType === 'arrival' ? 'entered' : 'exited'} alert zone for ${circle.address}`,
-      location: {
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude
-      }
-    };
-
-    // Build alert key for deduplication
-    const alertKey = buildAlertKey(alertDoc);
-    alertDoc.alertKey = alertKey;
-
-    // Add to alerts data
-    setAlertsData(prev => {
-      const existing = prev.find(alert => alert.alertKey === alertKey);
-      if (existing) {
-        return prev.map(alert => 
-          alert.alertKey === alertKey 
-            ? { ...alert, occurrenceCount: alert.occurrenceCount + 1, lastTriggeredAt: localTimestamp, lastTriggeredAtRaw: timestamp }
-            : alert
-        );
-      } else {
-        return [alertDoc, ...prev];
-      }
-    });
-
-    // Create alert event
-    const eventId = `${alertId}-${timestamp}`;
-    const alertEvent = {
-      eventId,
-      alertId,
-      alertType: 'location',
-      alertName: alertDoc.alertName,
-      severity: 'info',
-      timestamp: localTimestamp,
-      timestampRaw: timestamp,
-      location: {
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude
-      },
-      sensorValue: alertDoc.sensorValue,
-      unit: 'm'
-    };
-
-    // Add to alert events if not already exists
-    if (!alertEventIdsRef.current.has(eventId)) {
-      alertEventIdsRef.current.add(eventId);
-      setAlertEvents(prev => [alertEvent, ...prev]);
-    }
-
-    // Send alert to backend
-    try {
-      const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alerts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(alertDoc),
-      });
-      
-      if (response.ok) {
-        console.log('Location alert created successfully');
-      } else {
-        console.error('Failed to create location alert');
-      }
-    } catch (error) {
-      console.error('Error creating location alert:', error);
-    }
-  };
-
-  // Add function to check GPS against alert circles
-  const checkAlertCircles = (currentGPS) => {
-    if (!selectedShipmentDetail || !legAlertCircles.length || !currentGPS) return;
-
-    legAlertCircles.forEach((circle, index) => {
-      const circleKey = `leg-${circle.legNumber}-${index}`;
-      const distance = calculateDistance(
-        currentGPS.latitude,
-        currentGPS.longitude,
-        circle.lat,
-        circle.lng
-      );
-      
-      const isInsideNow = distance <= circle.radius;
-      const wasInsideBefore = alertCircleStates[circleKey]?.inside || false;
-      
-      // Update circle state
-      setAlertCircleStates(prev => ({
-        ...prev,
-        [circleKey]: {
-          inside: isInsideNow,
-          lastChecked: new Date().toISOString(),
-          distance: distance
-        }
-      }));
-
-      // Check for transitions
-      if (!wasInsideBefore && isInsideNow) {
-        // Outside → Inside transition (Arrival)
-        if (circle.alertOnArrival) {
-          console.log(`Entering alert zone for Leg ${circle.legNumber}: ${circle.address}`);
-          createLocationAlert(circle, currentGPS, 'arrival');
-        }
-      } else if (wasInsideBefore && !isInsideNow) {
-        // Inside → Outside transition (Departure)
-        if (circle.alertOnDeparture) {
-          console.log(`Exiting alert zone for Leg ${circle.legNumber}: ${circle.address}`);
-          createLocationAlert(circle, currentGPS, 'departure');
-        }
-      }
-    });
   };
 
   // Fetch shipments and trackers from backend on component mount
@@ -1426,24 +1275,6 @@ const Shipments = () => {
             return newPoints.length ? [...prev, ...newPoints] : prev;
           });
 
-          // Check alert circles for the latest GPS position
-          const latestGPSRecord = full.data
-            .filter(r => {
-              const lat = r.Lat ?? r.latitude ?? r.lat;
-              const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
-              return lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng));
-            })
-            .pop(); // Get the last valid GPS record
-          
-          if (latestGPSRecord) {
-            const currentGPS = {
-              latitude: parseFloat(latestGPSRecord.Lat ?? latestGPSRecord.latitude ?? latestGPSRecord.lat),
-              longitude: parseFloat(latestGPSRecord.Lng ?? latestGPSRecord.longitude ?? latestGPSRecord.lng ?? latestGPSRecord.lon),
-              timestamp: latestGPSRecord.DT ?? latestGPSRecord.timestamp ?? latestGPSRecord.timestamp_local ?? fallbackTimestamp
-            };
-            checkAlertCircles(currentGPS);
-          }
-
           setTemperatureData((prev) => [
             ...prev,
             ...full.data
@@ -1497,14 +1328,7 @@ const Shipments = () => {
           const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? fallbackTimestamp;
 
           if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
-            const currentGPS = {
-              latitude: parseFloat(lat),
-              longitude: parseFloat(lng),
-              timestamp: ts
-            };
-            
-            setLocationData((prev) => [...prev, currentGPS]);
-            checkAlertCircles(currentGPS);
+            setLocationData((prev) => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
 
             // Also update temperature, humidity, battery, and speed with the latest values
             const t = full.Temp ?? full.temperature;
@@ -1529,7 +1353,7 @@ const Shipments = () => {
     return () => {
       ws.removeEventListener('message', handleMessage);
     };
-  }, [selectedShipmentDetail?.trackerId, wsConnected, legAlertCircles, alertCircleStates]);
+  }, [selectedShipmentDetail?.trackerId, wsConnected]);
 
   const combinedAlertMarkers = useMemo(() => {
     const markers = new Map();
@@ -2023,43 +1847,31 @@ const Shipments = () => {
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
           <MapBoundsHandler />
 
-          {/* Show alert radius circles with enhanced styling */}
-          {selectedShipmentDetail && legAlertCircles.length > 0 && legAlertCircles.map((circle, idx) => {
-            const circleKey = `leg-${circle.legNumber}-${idx}`;
-            const circleState = alertCircleStates[circleKey];
-            const isActive = circleState?.inside || false;
-            
-            return (
-              <Circle
-                key={`alert-circle-${idx}`}
-                center={[circle.lat, circle.lng]}
-                radius={circle.radius}
-                pathOptions={{
-                  color: isActive ? '#ff4444' : '#2196F3',
-                  fillColor: isActive ? '#ff4444' : '#2196F3',
-                  fillOpacity: isActive ? 0.2 : 0.1,
-                  weight: isActive ? 3 : 2,
-                  dashArray: isActive ? '10, 5' : '5, 5'
-                }}
-              >
-                <Popup>
-                  <div>
-                    <strong>Alert Zone - Leg {circle.legNumber}</strong><br />
-                    {circle.address}<br />
-                    Radius: {circle.radius >= 1000 ? `${(circle.radius / 1000).toFixed(1)} km` : `${circle.radius} m`}<br />
-                    {circle.alertOnArrival && <span>✓ Alert on arrival<br /></span>}
-                    {circle.alertOnDeparture && <span>✓ Alert on departure<br /></span>}
-                    {circleState && (
-                      <>
-                        <strong>Status:</strong> {isActive ? 'INSIDE' : 'OUTSIDE'}<br />
-                        <strong>Distance:</strong> {circleState.distance?.toFixed(0)}m
-                      </>
-                    )}
-                  </div>
-                </Popup>
-              </Circle>
-            );
-          })}
+          {/* Show alert radius circles */}
+          {selectedShipmentDetail && legAlertCircles.length > 0 && legAlertCircles.map((circle, idx) => (
+            <Circle
+              key={`alert-circle-${idx}`}
+              center={[circle.lat, circle.lng]}
+              radius={circle.radius}
+              pathOptions={{
+                color: '#2196F3',
+                fillColor: '#2196F3',
+                fillOpacity: 0.1,
+                weight: 2,
+                dashArray: '5, 5'
+              }}
+            >
+              <Popup>
+                <div>
+                  <strong>Alert Zone - Leg {circle.legNumber}</strong><br />
+                  {circle.address}<br />
+                  Radius: {circle.radius >= 1000 ? `${(circle.radius / 1000).toFixed(1)} km` : `${circle.radius} m`}<br />
+                  {circle.alertOnArrival && <span>✓ Alert on arrival<br /></span>}
+                  {circle.alertOnDeparture && <span>✓ Alert on departure<br /></span>}
+                </div>
+              </Popup>
+            </Circle>
+          ))}
 
           {/* Show all leg markers */}
           {selectedShipmentDetail && legPoints.length > 0 && legPoints.map((point, idx) => (
