@@ -168,6 +168,10 @@ const Shipments = () => {
       unit: 'm'
     };
 
+    // Immediately persist to backend
+    // Note: occurrence aggregation is handled server-side by alertKey
+    sendLocationAlertToBackend(normalizedAlert, alertEvent);
+
     return { alert: normalizedAlert, event: alertEvent };
   };
 
