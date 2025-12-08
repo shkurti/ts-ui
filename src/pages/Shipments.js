@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import './Shipments.css';
@@ -32,10 +32,7 @@ const Shipments = () => {
       transportMode: '',
       carrier: '',
       arrivalDate: '',
-      departureDate: '',
-      alertOnArrival: false,
-      alertOnDeparture: false,
-      alertRadius: 1000 // meters
+      departureDate: ''
     }]
   });
   // Add state for shipment detail view
@@ -57,15 +54,6 @@ const Shipments = () => {
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
   const [hoverMarkerData, setHoverMarkerData] = useState(null);
   
-  // Add state for tracking alert circle status
-  const [circleStates, setCircleStates] = useState(new Map()); // Map<circleId, isInside>
-  const [lastProcessedLocation, setLastProcessedLocation] = useState(null);
-
-  // Geocode all legs for selectedShipmentDetail (fix: use MapTiler API for better reliability)
-  const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
-  const [legPoints, setLegPoints] = useState([]);
-  const [legAlertCircles, setLegAlertCircles] = useState([]);
-
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -84,210 +72,6 @@ const Shipments = () => {
     }
     return null;
   };
-
-  // Helper function to format timestamp for tooltip
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp || timestamp === 'N/A') return 'N/A';
-    try {
-      const date = new Date(timestamp);
-      return date.toLocaleString();
-    } catch {
-      return timestamp;
-    }
-  };
-
-  // Helper function to calculate distance between two coordinates (in meters)
-  const calculateDistance = (lat1, lng1, lat2, lng2) => {
-    const R = 6371000; // Earth's radius in meters
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLng/2) * Math.sin(dLng/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
-
-  // Helper function to generate alert circle ID
-  const generateCircleId = (circle, legIndex) => {
-    return `circle-${legIndex}-${circle.lat.toFixed(6)}-${circle.lng.toFixed(6)}-${circle.radius}`;
-  };
-
-  // Helper function to create location-based alert
-  const createLocationAlert = (circle, legIndex, alertType, currentLocation) => {
-    const alertId = `location-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const timestamp = new Date().toISOString();
-    const timestampLocal = formatTimestamp(timestamp);
-    
-    const alertName = alertType === 'arrival' 
-      ? `Arrival Alert - Leg ${circle.legNumber}` 
-      : `Departure Alert - Leg ${circle.legNumber}`;
-    
-    const message = alertType === 'arrival'
-      ? `Vehicle has arrived within ${circle.radius >= 1000 ? `${(circle.radius / 1000).toFixed(1)} km` : `${circle.radius} m`} of ${circle.address}`
-      : `Vehicle has departed from ${circle.address} (${circle.radius >= 1000 ? `${(circle.radius / 1000).toFixed(1)} km` : `${circle.radius} m`} radius)`;
-
-    const normalizedAlert = {
-      alertId,
-      alertKey: `${selectedShipmentDetail._id}|location_${alertType}|${timestamp.slice(0, 10)}|||m|${alertName}`,
-      shipmentId: selectedShipmentDetail._id,
-      trackerId: selectedShipmentDetail.trackerId,
-      alertDate: timestamp.slice(0, 10),
-      alertType: `location_${alertType}`,
-      alertName,
-      severity: 'info',
-      sensorValue: calculateDistance(currentLocation.latitude, currentLocation.longitude, circle.lat, circle.lng).toFixed(0),
-      minThreshold: 0,
-      maxThreshold: circle.radius,
-      unit: 'm',
-      timestamp: timestampLocal,
-      timestampRaw: timestamp,
-      lastTriggeredAt: timestampLocal,
-      lastTriggeredAtRaw: timestamp,
-      occurrenceCount: 1,
-      message,
-      location: {
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude
-      }
-    };
-
-    const alertEvent = {
-      eventId: alertId + '-event',
-      alertId,
-      alertType: `location_${alertType}`,
-      alertName,
-      severity: 'info',
-      timestamp: timestampLocal,
-      timestampRaw: timestamp,
-      location: {
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude
-      },
-      sensorValue: calculateDistance(currentLocation.latitude, currentLocation.longitude, circle.lat, circle.lng).toFixed(0),
-      unit: 'm'
-    };
-
-    // Immediately persist to backend
-    // Note: occurrence aggregation is handled server-side by alertKey
-    sendLocationAlertToBackend(normalizedAlert, alertEvent);
-
-    return { alert: normalizedAlert, event: alertEvent };
-  };
-
-  // Function to check and update circle states
-  const checkCircleStates = (currentLocation) => {
-    if (!selectedShipmentDetail || !legAlertCircles.length || !currentLocation) return;
-
-    const newCircleStates = new Map(circleStates);
-    
-    legAlertCircles.forEach((circle, legIndex) => {
-      const circleId = generateCircleId(circle, legIndex);
-      const distance = calculateDistance(
-        currentLocation.latitude, 
-        currentLocation.longitude, 
-        circle.lat, 
-        circle.lng
-      );
-      
-      const isCurrentlyInside = distance <= circle.radius;
-      const wasInside = newCircleStates.get(circleId) || false;
-      
-      // Check for transitions
-      if (!wasInside && isCurrentlyInside) {
-        // Entering circle - trigger arrival alert if enabled
-        if (circle.alertOnArrival) {
-          const { alert, event } = createLocationAlert(circle, legIndex, 'arrival', currentLocation);
-          
-          // Add to alerts data
-          setAlertsData(prev => {
-            const existing = prev.find(a => a.alertKey === alert.alertKey);
-            if (existing) {
-              existing.occurrenceCount++;
-              existing.lastTriggeredAt = alert.lastTriggeredAt;
-              existing.lastTriggeredAtRaw = alert.lastTriggeredAtRaw;
-              existing.sensorValue = alert.sensorValue;
-              existing.location = alert.location;
-              existing.message = alert.message;
-              return [...prev];
-            } else {
-              return [alert, ...prev].slice(0, 200);
-            }
-          });
-          
-          // Add to alert events
-          setAlertEvents(prev => [event, ...prev].slice(0, 500));
-          
-          console.log(`🚨 ARRIVAL ALERT: Entered ${circle.address} (${distance.toFixed(0)}m from center)`);
-        }
-        
-        newCircleStates.set(circleId, true);
-      } else if (wasInside && !isCurrentlyInside) {
-        // Exiting circle - trigger departure alert if enabled
-        if (circle.alertOnDeparture) {
-          const { alert, event } = createLocationAlert(circle, legIndex, 'departure', currentLocation);
-          
-          // Add to alerts data
-          setAlertsData(prev => {
-            const existing = prev.find(a => a.alertKey === alert.alertKey);
-            if (existing) {
-              existing.occurrenceCount++;
-              existing.lastTriggeredAt = alert.lastTriggeredAt;
-              existing.lastTriggeredAtRaw = alert.lastTriggeredAtRaw;
-              existing.sensorValue = alert.sensorValue;
-              existing.location = alert.location;
-              existing.message = alert.message;
-              return [...prev];
-            } else {
-              return [alert, ...prev].slice(0, 200);
-            }
-          });
-          
-          // Add to alert events
-          setAlertEvents(prev => [event, ...prev].slice(0, 500));
-          
-          console.log(`🚨 DEPARTURE ALERT: Exited ${circle.address} (${distance.toFixed(0)}m from center)`);
-        }
-        
-        newCircleStates.set(circleId, false);
-      } else {
-        // No transition, maintain current state
-        newCircleStates.set(circleId, isCurrentlyInside);
-      }
-    });
-    
-    setCircleStates(newCircleStates);
-  };
-
-  // Reset circle states when shipment changes
-  useEffect(() => {
-    setCircleStates(new Map());
-    setLastProcessedLocation(null);
-  }, [selectedShipmentDetail?._id]);
-
-  // Monitor location changes for circle detection
-  useEffect(() => {
-    if (!selectedShipmentDetail || !locationData.length) return;
-    
-    const currentLocation = locationData[locationData.length - 1];
-    if (!currentLocation || !currentLocation.latitude || !currentLocation.longitude) return;
-    
-    // Only check if location has significantly changed (to avoid excessive checks)
-    if (lastProcessedLocation) {
-      const distance = calculateDistance(
-        lastProcessedLocation.latitude,
-        lastProcessedLocation.longitude,
-        currentLocation.latitude,
-        currentLocation.longitude
-      );
-      
-      // Only process if moved more than 50 meters
-      if (distance < 50) return;
-    }
-    
-    checkCircleStates(currentLocation);
-    setLastProcessedLocation(currentLocation);
-  }, [locationData, legAlertCircles, selectedShipmentDetail?._id, circleStates, lastProcessedLocation]);
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
@@ -412,10 +196,7 @@ const Shipments = () => {
         transportMode: '',
         carrier: '',
         arrivalDate: '',
-        departureDate: '',
-        alertOnArrival: false,
-        alertOnDeparture: false,
-        alertRadius: 1000
+        departureDate: ''
       }]
     }));
   };
@@ -466,12 +247,6 @@ const Shipments = () => {
           stopAddress: leg.stopAddress || leg.shipTo,
           arrivalDate: leg.arrivalDate,
           departureDate: leg.departureDate,
-          locationAlerts: {
-            enabled: leg.alertOnArrival || leg.alertOnDeparture,
-            alertOnArrival: leg.alertOnArrival,
-            alertOnDeparture: leg.alertOnDeparture,
-            alertRadius: leg.alertRadius
-          }
         }))
       };
 
@@ -517,6 +292,15 @@ const Shipments = () => {
     }
   };
 
+  // Helper function to format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return 'Invalid Date';
+    }
+  };
   // Helper function to get shipment status
   const getShipmentStatus = (shipment) => {
     // Simple logic to determine status based on dates
@@ -869,13 +653,14 @@ const Shipments = () => {
     return values.length > 0 ? values[values.length - 1] : 'N/A';
   };
 
-  // Helper function to format date for display
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+  // Helper function to format timestamp for tooltip
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp || timestamp === 'N/A') return 'N/A';
     try {
-      return new Date(dateString).toLocaleDateString();
+      const date = new Date(timestamp);
+      return date.toLocaleString();
     } catch {
-      return 'Invalid Date';
+      return timestamp;
     }
   };
 
@@ -896,9 +681,7 @@ const Shipments = () => {
       index: clampedIndex,
       x: clampedIndex * stepSize
     };
-  };
-
-  // Helper function to find location data point by timestamp
+  };  // Helper function to find location data point by timestamp
   const findLocationByTimestamp = (timestamp) => {
     if (!locationData || locationData.length === 0 || !timestamp || timestamp === 'N/A') {
       return null;
@@ -920,6 +703,84 @@ const Shipments = () => {
     });
 
     return closestPoint;
+  };
+
+  // Helper function to handle chart hover
+  const handleChartHover = (e, data, valueKey, sensorName, unit) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseX = ((e.clientX - rect.left) / rect.width) * 300; // Scale to viewBox width
+    
+    const closestPoint = findClosestDataPoint(data, valueKey, mouseX);
+    
+    if (closestPoint) {
+      // Find corresponding location on polyline
+      const locationPoint = findLocationByTimestamp(closestPoint.timestamp);
+      
+      if (locationPoint) {
+        setHoverMarkerPosition([locationPoint.latitude, locationPoint.longitude]);
+        setHoverMarkerData({
+          timestamp: closestPoint.timestamp,
+          sensorName: sensorName,
+          sensorValue: closestPoint.value,
+          unit: unit,
+          location: locationPoint
+        });
+      }
+
+      // Create unique ID for each chart's vertical line
+      const chartId = sensorName.toLowerCase().replace(' ', '-');
+      const verticalLineId = `chart-vertical-line-${chartId}`;
+      
+      // Show vertical line
+      let verticalLine = document.getElementById(verticalLineId);
+      if (!verticalLine) {
+        verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        verticalLine.id = verticalLineId;
+        verticalLine.setAttribute('stroke', '#666');
+        verticalLine.setAttribute('stroke-width', '1');
+        verticalLine.setAttribute('stroke-dasharray', '3,3');
+        verticalLine.setAttribute('opacity', '0.7');
+        e.currentTarget.appendChild(verticalLine);
+      }
+      
+      verticalLine.setAttribute('x1', closestPoint.x);
+      verticalLine.setAttribute('y1', '0');
+      verticalLine.setAttribute('x2', closestPoint.x);
+      verticalLine.setAttribute('y2', '60');
+      verticalLine.style.display = 'block';
+      
+      // Show tooltip
+      const tooltip = document.getElementById('chart-tooltip');
+      if (tooltip) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = e.pageX + 15 + 'px';
+        tooltip.style.top = e.pageY - 60 + 'px';
+        tooltip.innerHTML = `
+          <strong>${sensorName}:</strong> ${closestPoint.value.toFixed(1)}${unit}<br/>
+          <strong>Time:</strong> ${formatTimestamp(closestPoint.timestamp)}<br/>
+          <strong>Location:</strong> ${locationPoint ? `${locationPoint.latitude.toFixed(4)}, ${locationPoint.longitude.toFixed(4)}` : 'N/A'}
+        `;
+      }
+    }
+  };
+
+  // Helper function to handle chart leave
+  const handleChartLeave = (sensorName) => {
+    // Hide hover marker
+    setHoverMarkerPosition(null);
+    setHoverMarkerData(null);
+    
+    const chartId = sensorName.toLowerCase().replace(' ', '-');
+    const verticalLineId = `chart-vertical-line-${chartId}`;
+    const verticalLine = document.getElementById(verticalLineId);
+    if (verticalLine) {
+      verticalLine.style.display = 'none';
+    }
+    
+    const tooltip = document.getElementById('chart-tooltip');
+    if (tooltip) {
+      tooltip.style.display = 'none';
+    }
   };
 
   // Helper function to handle chart hover and touch events
@@ -1039,34 +900,6 @@ const Shipments = () => {
     return sortedData.map(point => [point.latitude, point.longitude]);
   };
 
-  // Helper to create a numbered marker icon for legs (origin, stops, destination)
-  const createNumberedMarkerIcon = (number, isFirst, isLast) => {
-    let bg = "#1976d2";
-    if (isFirst) bg = "#28a745";
-    if (isLast) bg = "#dc3545";
-    return L.divIcon({
-      className: 'numbered-marker',
-      html: `<div style="
-        background: ${bg};
-        color: #fff;
-        border-radius: 50%;
-        width: 28px;
-        height: 28px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        font-size: 15px;
-        border: 2px solid #fff;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        font-family: Arial, sans-serif;
-      ">${number}</div>`,
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
-      popupAnchor: [0, -14],
-    });
-  };
-
   // Component to handle map bounds fitting
   const MapBoundsHandler = () => {
     const map = useMap();
@@ -1114,12 +947,42 @@ const Shipments = () => {
     return null;
   };
 
+  // Helper to create a numbered marker icon for legs (origin, stops, destination)
+  const createNumberedMarkerIcon = (number, isFirst, isLast) => {
+    let bg = "#1976d2";
+    if (isFirst) bg = "#28a745";
+    if (isLast) bg = "#dc3545";
+    return L.divIcon({
+      className: 'numbered-marker',
+      html: `<div style="
+        background: ${bg};
+        color: #fff;
+        border-radius: 50%;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 15px;
+        border: 2px solid #fff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        font-family: Arial, sans-serif;
+      ">${number}</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      popupAnchor: [0, -14],
+    });
+  };
+
   // Geocode all legs for selectedShipmentDetail (fix: use MapTiler API for better reliability)
+  const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
+  const [legPoints, setLegPoints] = useState([]);
+
   useEffect(() => {
     const geocodeLegs = async () => {
       if (!selectedShipmentDetail || !selectedShipmentDetail.legs || selectedShipmentDetail.legs.length === 0) {
         setLegPoints([]);
-        setLegAlertCircles([]);
         return;
       }
       // Build ordered addresses: origin, stops, destination
@@ -1145,32 +1008,7 @@ const Shipments = () => {
         } catch {}
         return null;
       }));
-      const points = results.map((r, i) => r && { ...r, number: i + 1 }).filter(Boolean);
-      setLegPoints(points);
-      
-      // Build alert circles for legs with location alerts
-      const circles = [];
-      legs.forEach((leg, legIndex) => {
-        const locationAlerts = leg.locationAlerts;
-        if (locationAlerts && locationAlerts.enabled && locationAlerts.alertRadius) {
-          // For leg 0, use the stopAddress (destination of first leg)
-          // For other legs, use stopAddress which was mapped from shipTo
-          const pointIndex = legIndex === 0 ? 1 : legIndex + 1; // Offset by 1 since first point is origin
-          const point = points[pointIndex];
-          if (point) {
-            circles.push({
-              lat: point.lat,
-              lng: point.lng,
-              radius: locationAlerts.alertRadius,
-              address: point.address,
-              legNumber: legIndex + 1,
-              alertOnArrival: locationAlerts.alertOnArrival,
-              alertOnDeparture: locationAlerts.alertOnDeparture
-            });
-          }
-        }
-      });
-      setLegAlertCircles(circles);
+      setLegPoints(results.map((r, i) => r && { ...r, number: i + 1 }).filter(Boolean));
     };
     geocodeLegs();
   }, [selectedShipmentDetail]);
@@ -1242,6 +1080,8 @@ const Shipments = () => {
     processedMessagesRef.current = new Set();
     receivedAlertIdsRef.current = new Set();
   }, [selectedShipmentDetail?.trackerId]);
+
+  // removed legacy WebSocket listener to avoid duplicate unfiltered handlers
 
   useEffect(() => {
     if (!selectedShipmentDetail) return;
@@ -1393,23 +1233,6 @@ const Shipments = () => {
                 return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
               })
               .filter(Boolean);
-            
-            // Check circle states for new location points using latest state
-            if (newPoints.length > 0) {
-              const latestPoint = newPoints[newPoints.length - 1];
-              // Use setTimeout to avoid stale closure issues
-              setTimeout(() => {
-                // Get current circles and states from refs to avoid stale closures
-                const currentCircles = legAlertCircles;
-                const currentStates = circleStates;
-                const currentSelectedShipment = selectedShipmentDetail;
-                
-                if (currentSelectedShipment && currentCircles.length > 0 && latestPoint) {
-                  checkCircleStates(latestPoint);
-                }
-              }, 100);
-            }
-            
             return newPoints.length ? [...prev, ...newPoints] : prev;
           });
 
@@ -1466,21 +1289,7 @@ const Shipments = () => {
           const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? fallbackTimestamp;
 
           if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
-            const newLocation = { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts };
-            
-            setLocationData((prev) => {
-              // Check circle states for new location using latest state
-              setTimeout(() => {
-                const currentCircles = legAlertCircles;
-                const currentStates = circleStates;
-                const currentSelectedShipment = selectedShipmentDetail;
-                
-                if (currentSelectedShipment && currentCircles.length > 0 && newLocation) {
-                  checkCircleStates(newLocation);
-                }
-              }, 100);
-              return [...prev, newLocation];
-            });
+            setLocationData((prev) => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
 
             // Also update temperature, humidity, battery, and speed with the latest values
             const t = full.Temp ?? full.temperature;
@@ -1505,9 +1314,8 @@ const Shipments = () => {
     return () => {
       ws.removeEventListener('message', handleMessage);
     };
-  }, [selectedShipmentDetail?.trackerId, wsConnected]); // Remove problematic dependencies
+  }, [selectedShipmentDetail?.trackerId, wsConnected]);
 
-  // Combine and normalize alert and event markers for display
   const combinedAlertMarkers = useMemo(() => {
     const markers = new Map();
     alertEvents.forEach((event) => {
@@ -2000,38 +1808,6 @@ const Shipments = () => {
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
           <MapBoundsHandler />
 
-          {/* Show alert radius circles with enhanced styling for active detection */}
-          {selectedShipmentDetail && legAlertCircles.length > 0 && legAlertCircles.map((circle, idx) => {
-            const circleId = generateCircleId(circle, idx);
-            const isInside = circleStates.get(circleId) || false;
-            
-            return (
-              <Circle
-                key={`alert-circle-${idx}`}
-                center={[circle.lat, circle.lng]}
-                radius={circle.radius}
-                pathOptions={{
-                  color: isInside ? '#f39c12' : '#2196F3',
-                  fillColor: isInside ? '#f39c12' : '#2196F3',
-                  fillOpacity: isInside ? 0.2 : 0.1,
-                  weight: isInside ? 3 : 2,
-                  dashArray: '5, 5'
-                }}
-              >
-                <Popup>
-                  <div>
-                    <strong>Alert Zone - Leg {circle.legNumber}</strong><br />
-                    {circle.address}<br />
-                    Radius: {circle.radius >= 1000 ? `${(circle.radius / 1000).toFixed(1)} km` : `${circle.radius} m`}<br />
-                    {circle.alertOnArrival && <span>✓ Alert on arrival<br /></span>}
-                    {circle.alertOnDeparture && <span>✓ Alert on departure<br /></span>}
-                    <strong>Status: {isInside ? '🟠 INSIDE' : '🔵 OUTSIDE'}</strong>
-                  </div>
-                </Popup>
-              </Circle>
-            );
-          })}
-
           {/* Show all leg markers */}
           {selectedShipmentDetail && legPoints.length > 0 && legPoints.map((point, idx) => (
             <Marker
@@ -2415,79 +2191,6 @@ const Shipments = () => {
                         onChange={(e) => handleLegChange(index, 'departureDate', e.target.value)}
                         required
                       />
-                    </div>
-                  </div>
-                  
-                  {/* Location Alert Configuration */}
-                  <div className="alert-config-section" style={{
-                    marginTop: '1rem',
-                    padding: '1rem',
-                    background: '#f8f9fa',
-                    borderRadius: '8px',
-                    border: '1px solid #e0e0e0'
-                  }}>
-                    <h5 style={{ marginBottom: '0.75rem', fontSize: '14px', fontWeight: 600 }}>
-                      📍 Location Alerts
-                    </h5>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      <label className="checkbox-container" style={{ marginBottom: 0 }}>
-                        <input
-                          type="checkbox"
-                          checked={leg.alertOnArrival}
-                          onChange={(e) => handleLegChange(index, 'alertOnArrival', e.target.checked)}
-                        />
-                        <span className="checkmark"></span>
-                        Alert when arriving at {index === 0 ? leg.stopAddress || 'destination' : leg.shipTo || 'destination'}
-                      </label>
-                      
-                      {index > 0 && (
-                        <label className="checkbox-container" style={{ marginBottom: 0 }}>
-                          <input
-                            type="checkbox"
-                            checked={leg.alertOnDeparture}
-                            onChange={(e) => handleLegChange(index, 'alertOnDeparture', e.target.checked)}
-                          />
-                          <span className="checkmark"></span>
-                          Alert when departing from previous location
-                        </label>
-                      )}
-                      
-                      {(leg.alertOnArrival || leg.alertOnDeparture) && (
-                        <div className="form-group" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
-                          <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                            <span>Alert Radius</span>
-                            <span style={{ fontWeight: 600, color: '#007bff' }}>
-                              {leg.alertRadius >= 1000 
-                                ? `${(leg.alertRadius / 1000).toFixed(1)} km` 
-                                : `${leg.alertRadius} m`}
-                            </span>
-                          </label>
-                          <input
-                            type="range"
-                            min="100"
-                            max="10000"
-                            step="100"
-                            value={leg.alertRadius}
-                            onChange={(e) => handleLegChange(index, 'alertRadius', parseInt(e.target.value))}
-                            style={{
-                              width: '100%',
-                              cursor: 'pointer',
-                              accentColor: '#007bff'
-                            }}
-                          />
-                          <div style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            fontSize: '11px', 
-                            color: '#666',
-                            marginTop: '0.25rem'
-                          }}>
-                            <span>100m</span>
-                            <span>10km</span>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
