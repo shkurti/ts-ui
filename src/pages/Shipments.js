@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import './Shipments.css';
@@ -53,6 +53,10 @@ const Shipments = () => {
   // Add state for hover marker on polyline
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
   const [hoverMarkerData, setHoverMarkerData] = useState(null);
+  
+  // Add state for geocoded leg coordinates and geofence radii
+  const [legCoordinates, setLegCoordinates] = useState({});
+  const [geofenceRadii, setGeofenceRadii] = useState({});
   
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -171,20 +175,53 @@ const Shipments = () => {
     setShowNewShipmentForm(true);
   };
 
-  const handleCancelForm = () => {
-    setShowNewShipmentForm(false);
-    setSelectedTracker('');
-    setFormData({
-      legs: [{
-        shipFrom: '',
-        stopAddress: '',
-        shipDate: '',
-        transportMode: '',
-        carrier: '',
-        arrivalDate: '',
-        departureDate: ''
-      }]
-    });
+  const handleLegChange = (legIndex, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      legs: prev.legs.map((leg, index) => 
+        index === legIndex ? { ...leg, [field]: value } : leg
+      )
+    }));
+    
+    // If stop address changed, geocode it
+    if (field === 'stopAddress' && value) {
+      geocodeAddress(value, legIndex);
+    }
+  };
+
+  const geocodeAddress = async (address, legIndex) => {
+    if (!address) return;
+    try {
+      const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(address)}.json?key=${MAPTILER_API_KEY}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data && data.features && data.features.length > 0) {
+        const coords = {
+          latitude: data.features[0].geometry.coordinates[1],
+          longitude: data.features[0].geometry.coordinates[0]
+        };
+        setLegCoordinates(prev => ({
+          ...prev,
+          [legIndex]: coords
+        }));
+        // Initialize default radius if not set
+        if (!geofenceRadii[legIndex]) {
+          setGeofenceRadii(prev => ({
+            ...prev,
+            [legIndex]: 1000 // Default 1km
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error geocoding address:', error);
+    }
+  };
+
+  const handleRadiusChange = (legIndex, radius) => {
+    setGeofenceRadii(prev => ({
+      ...prev,
+      [legIndex]: radius
+    }));
   };
 
   const handleAddStop = () => {
@@ -198,15 +235,6 @@ const Shipments = () => {
         arrivalDate: '',
         departureDate: ''
       }]
-    }));
-  };
-
-  const handleLegChange = (legIndex, field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      legs: prev.legs.map((leg, index) => 
-        index === legIndex ? { ...leg, [field]: value } : leg
-      )
     }));
   };
 
@@ -241,7 +269,13 @@ const Shipments = () => {
           legNumber: index + 1,
           shipFromAddress: index === 0 ? leg.shipFrom : undefined,
           shipDate: leg.shipDate,
-          alertPresets: [],
+          alertPresets: legCoordinates[index] ? [{
+            type: 'geofence',
+            latitude: legCoordinates[index].latitude,
+            longitude: legCoordinates[index].longitude,
+            radius: geofenceRadii[index] || 1000,
+            enabled: true
+          }] : [],
           mode: leg.transportMode,
           carrier: leg.carrier,
           stopAddress: leg.stopAddress || leg.shipTo,
@@ -251,7 +285,6 @@ const Shipments = () => {
       };
 
       const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta', {
-      //const response = await fetch('http://localhost:8000/shipment_meta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(shipmentData),
@@ -261,22 +294,15 @@ const Shipments = () => {
         const result = await response.json();
         console.log('Shipment created successfully:', result);
         
-        // Refetch all shipments from the database to get the correct data structure
+        // Refetch all shipments
         try {
           const fetchResponse = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta');
-          //const fetchResponse = await fetch('http://localhost:8000/shipment_meta');
           if (fetchResponse.ok) {
             const updatedShipments = await fetchResponse.json();
             setShipments(updatedShipments);
-          } else {
-            console.error('Failed to refetch shipments');
-            // Fallback: just add the result to avoid empty list
-            setShipments(prev => [...prev, result]);
           }
         } catch (fetchError) {
           console.error('Error refetching shipments:', fetchError);
-          // Fallback: just add the result to avoid empty list
-          setShipments(prev => [...prev, result]);
         }
         
         alert('Shipment created successfully!');
@@ -290,6 +316,24 @@ const Shipments = () => {
       console.error('Error:', error);
       alert('An error occurred while creating the shipment.');
     }
+  };
+
+  const handleCancelForm = () => {
+    setShowNewShipmentForm(false);
+    setSelectedTracker('');
+    setLegCoordinates({});
+    setGeofenceRadii({});
+    setFormData({
+      legs: [{
+        shipFrom: '',
+        stopAddress: '',
+        shipDate: '',
+        transportMode: '',
+        carrier: '',
+        arrivalDate: '',
+        departureDate: ''
+      }]
+    });
   };
 
   // Helper function to format date for display
@@ -1808,6 +1852,42 @@ const Shipments = () => {
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
           <MapBoundsHandler />
 
+          {/* Show geofence circles for each leg with alertPresets */}
+          {selectedShipmentDetail && selectedShipmentDetail.legs && selectedShipmentDetail.legs.map((leg, legIndex) => {
+            const geofencePreset = leg.alertPresets?.find(preset => preset.type === 'geofence' && preset.enabled);
+            if (!geofencePreset) return null;
+            
+            const destLat = geofencePreset.latitude;
+            const destLng = geofencePreset.longitude;
+            const radius = geofencePreset.radius || 1000;
+            
+            if (destLat == null || destLng == null) return null;
+            
+            return (
+              <Circle
+                key={`geofence-${legIndex}`}
+                center={[destLat, destLng]}
+                radius={radius}
+                pathOptions={{
+                  color: '#3b82f6',
+                  fillColor: '#3b82f6',
+                  fillOpacity: 0.15,
+                  weight: 2,
+                  dashArray: '5, 5'
+                }}
+              >
+                <Popup>
+                  <div>
+                    <strong>Geofence Alert Zone</strong><br />
+                    Radius: {radius}m<br />
+                    Leg: {leg.legNumber || legIndex + 1}<br />
+                    Destination: {leg.stopAddress || 'N/A'}
+                  </div>
+                </Popup>
+              </Circle>
+            );
+          })}
+
           {/* Show all leg markers */}
           {selectedShipmentDetail && legPoints.length > 0 && legPoints.map((point, idx) => (
             <Marker
@@ -2193,9 +2273,35 @@ const Shipments = () => {
                       />
                     </div>
                   </div>
+                  
+                  {/* Geofence Radius Slider */}
+                  {legCoordinates[index] && (
+                    <div className="form-group" style={{ marginTop: '15px' }}>
+                      <label>
+                        Destination Geofence Radius: {geofenceRadii[index] || 1000}m
+                        <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
+                          (Alert when within this distance from destination)
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        min="100"
+                        max="5000"
+                        step="100"
+                        value={geofenceRadii[index] || 1000}
+                        onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
+                        style={{ width: '100%' }}
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#999' }}>
+                        <span>100m</span>
+                        <span>5000m (5km)</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
               
+              {/* Tracker selection and buttons */}
               <div className="form-group" style={{ marginBottom: '1rem' }}>
                 <label>Select Tracker *</label>
                 <select
