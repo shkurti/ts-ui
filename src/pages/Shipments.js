@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import './Shipments.css';
@@ -1371,6 +1371,22 @@ const Shipments = () => {
     return Array.from(markers.values());
   }, [alertEvents, alertsData]);
 
+  // Add a function to calculate the distance between two coordinates
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3; // Earth's radius in meters
+    const toRadians = (deg) => (deg * Math.PI) / 180;
+    const dLat = toRadians(lat2 - lat1);
+    const dLon = toRadians(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRadians(lat1)) *
+        Math.cos(toRadians(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in meters
+  };
+
   return (
     <div className="shipments-container">
       {/* WebSocket status indicator */}
@@ -2087,7 +2103,7 @@ const Shipments = () => {
                   </Popup>
                 </Marker>
               )}
-            </>
+          </>
           )}
 
           {/* Show alert markers */}
