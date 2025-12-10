@@ -185,6 +185,7 @@ const Shipments = () => {
         departureDate: ''
       }]
     });
+    setRadiusAlerts([]);
   };
 
   const handleAddStop = () => {
@@ -199,8 +200,13 @@ const Shipments = () => {
         departureDate: ''
       }]
     }));
+    setRadiusAlerts(prev => [...prev, 0]);
   };
 
+  // Add state for radius alerts in the form
+  const [radiusAlerts, setRadiusAlerts] = useState([]);
+
+  // Update handleLegChange to include radius alert configuration
   const handleLegChange = (legIndex, field, value) => {
     setFormData(prev => ({
       ...prev,
@@ -208,6 +214,13 @@ const Shipments = () => {
         index === legIndex ? { ...leg, [field]: value } : leg
       )
     }));
+    if (field === 'radiusAlert') {
+      setRadiusAlerts(prev => {
+        const updated = [...prev];
+        updated[legIndex] = value;
+        return updated;
+      });
+    }
   };
 
   const handleCreateShipment = async () => {
@@ -247,6 +260,7 @@ const Shipments = () => {
           stopAddress: leg.stopAddress || leg.shipTo,
           arrivalDate: leg.arrivalDate,
           departureDate: leg.departureDate,
+          radiusAlert: radiusAlerts[index] || 0, // Add radius alert
         }))
       };
 
@@ -444,6 +458,7 @@ const Shipments = () => {
 
     fetchAlertsForShipment(shipment._id, trackerId);
     fetchAlertEvents(shipment._id, trackerId, { start: shipDate, end: arrivalDate });
+    setRadiusAlerts(shipment.legs.map(leg => leg.radiusAlert || 0));
   };
 
   const buildAlertKey = (alert) =>
@@ -1853,7 +1868,7 @@ const Shipments = () => {
           )}
 
           {/* Red marker at current GPS, connected to next destination marker by dashed line */}
-          {selectedShipmentDetail && locationData.length > 0 && legPoints.length > 1 && (() => {
+          {selectedShipmentDetail && locationData.length >  0 && legPoints.length > 1 && (() => {
             const lastGps = locationData[locationData.length - 1];
             const gpsPos = [lastGps.latitude, lastGps.longitude];
             // Find the next destination marker (first marker after closest)
@@ -2191,6 +2206,18 @@ const Shipments = () => {
                         onChange={(e) => handleLegChange(index, 'departureDate', e.target.value)}
                         required
                       />
+                    </div>
+                    <div className="form-group">
+                      <label>Radius Alert (meters)</label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="5000"
+                        step="100"
+                        value={radiusAlerts[index] || 0}
+                        onChange={(e) => handleLegChange(index, 'radiusAlert', parseInt(e.target.value))}
+                      />
+                      <span>{radiusAlerts[index] || 0} meters</span>
                     </div>
                   </div>
                 </div>
