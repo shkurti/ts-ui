@@ -183,8 +183,8 @@ const Shipments = () => {
       )
     }));
     
-    // If stop address changed, geocode it
-    if (field === 'stopAddress' && value) {
+    // If any address field changed, geocode it
+    if ((field === 'stopAddress' || field === 'shipTo') && value) {
       geocodeAddress(value, legIndex);
     }
   };
@@ -222,6 +222,20 @@ const Shipments = () => {
       ...prev,
       [legIndex]: radius
     }));
+  };
+
+  const toggleGeofence = (legIndex) => {
+    setGeofenceRadii(prev => {
+      const newRadii = { ...prev };
+      if (newRadii[legIndex]) {
+        // Disable geofence by removing radius
+        delete newRadii[legIndex];
+      } else {
+        // Enable geofence with default radius
+        newRadii[legIndex] = 1000;
+      }
+      return newRadii;
+    });
   };
 
   const handleAddStop = () => {
@@ -2274,28 +2288,59 @@ const Shipments = () => {
                     </div>
                   </div>
                   
-                  {/* Geofence Radius Slider */}
+                  {/* Geofence Toggle and Configuration */}
                   {legCoordinates[index] && (
-                    <div className="form-group" style={{ marginTop: '15px' }}>
-                      <label>
-                        Destination Geofence Radius: {geofenceRadii[index] || 1000}m
-                        <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
-                          (Alert when within this distance from destination)
-                        </span>
-                      </label>
-                      <input
-                        type="range"
-                        min="100"
-                        max="5000"
-                        step="100"
-                        value={geofenceRadii[index] || 1000}
-                        onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
-                        style={{ width: '100%' }}
-                      />
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#999' }}>
-                        <span>100m</span>
-                        <span>5000m (5km)</span>
+                    <div className="form-group" style={{ marginTop: '15px', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                        <input
+                          type="checkbox"
+                          id={`geofence-toggle-${index}`}
+                          checked={geofenceRadii[index] !== undefined}
+                          onChange={() => toggleGeofence(index)}
+                          style={{ marginRight: '10px', width: '18px', height: '18px', cursor: 'pointer' }}
+                        />
+                        <label 
+                          htmlFor={`geofence-toggle-${index}`}
+                          style={{ margin: 0, cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
+                        >
+                          Enable Geofence Alert for this destination
+                        </label>
                       </div>
+                      
+                      {geofenceRadii[index] !== undefined && (
+                        <>
+                          <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px' }}>
+                            Geofence Radius: {geofenceRadii[index]}m
+                            <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
+                              (Alert when within this distance)
+                            </span>
+                          </label>
+                          <input
+                            type="range"
+                            min="100"
+                            max="5000"
+                            step="100"
+                            value={geofenceRadii[index]}
+                            onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
+                            style={{ width: '100%' }}
+                          />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#999', marginTop: '4px' }}>
+                            <span>100m</span>
+                            <span>2.5km</span>
+                            <span>5km</span>
+                          </div>
+                          <div style={{ marginTop: '10px', padding: '8px', background: '#e3f2fd', borderRadius: '4px', fontSize: '12px', color: '#1976d2' }}>
+                            📍 Destination: {index === 0 ? leg.stopAddress : leg.shipTo}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Show message if address not geocoded yet */}
+                  {!legCoordinates[index] && (index === 0 ? leg.stopAddress : leg.shipTo) && (
+                    <div style={{ marginTop: '10px', padding: '8px', background: '#fff3cd', borderRadius: '4px', fontSize: '12px', color: '#856404' }}>
+                      ⏳ Enter and blur the address field to enable geofence configuration
                     </div>
                   )}
                 </div>
