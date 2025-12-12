@@ -183,8 +183,8 @@ const Shipments = () => {
       )
     }));
     
-    // If any address field changed, geocode it
-    if ((field === 'stopAddress' || field === 'shipTo') && value) {
+    // If stop address changed, geocode it
+    if (field === 'stopAddress' && value) {
       geocodeAddress(value, legIndex);
     }
   };
@@ -222,20 +222,6 @@ const Shipments = () => {
       ...prev,
       [legIndex]: radius
     }));
-  };
-
-  const toggleGeofence = (legIndex) => {
-    setGeofenceRadii(prev => {
-      const newRadii = { ...prev };
-      if (newRadii[legIndex]) {
-        // Disable geofence by removing radius
-        delete newRadii[legIndex];
-      } else {
-        // Enable geofence with default radius
-        newRadii[legIndex] = 1000;
-      }
-      return newRadii;
-    });
   };
 
   const handleAddStop = () => {
@@ -1150,9 +1136,6 @@ const Shipments = () => {
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
 
-        // Log incoming messages for debugging
-        console.log('📩 WebSocket message received:', msg);
-
         if (msg?.type === 'alert' && msg.data) {
           const alertPayload = msg.data;
           const activeShipment = selectedShipmentDetail;
@@ -1264,27 +1247,13 @@ const Shipments = () => {
         if (!msg || msg.type === 'alert') return;
 
         const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
-        if (!full) {
-          console.log('⚠️ No fullDocument in message');
-          return;
-        }
+        if (!full) return;
 
         const activeTrackerId = currentTrackerIdRef.current;
+        if (!activeTrackerId) return;
+
         const msgTrackerId = full.trackerID ?? full.trackerId;
-        
-        console.log(`🔍 Comparing trackers - Active: ${activeTrackerId}, Message: ${msgTrackerId}`);
-        
-        if (!activeTrackerId) {
-          console.log('⚠️ No active tracker ID set');
-          return;
-        }
-
-        if (String(msgTrackerId) !== String(activeTrackerId)) {
-          console.log(`⏭️ Skipping - tracker mismatch (${msgTrackerId} !== ${activeTrackerId})`);
-          return;
-        }
-
-        console.log('✅ Processing sensor data for tracker:', msgTrackerId);
+        if (String(msgTrackerId) !== String(activeTrackerId)) return;
 
         const msgId =
           msg._id?._data ||
@@ -1292,17 +1261,12 @@ const Shipments = () => {
           (msg.wallTime && (msg.wallTime.$date || JSON.stringify(msg.wallTime))) ||
           JSON.stringify(msg).slice(0, 200);
 
-        if (processedMessagesRef.current.has(msgId)) {
-          console.log('⏭️ Duplicate message, skipping');
-          return;
-        }
+        if (processedMessagesRef.current.has(msgId)) return;
         processedMessagesRef.current.add(msgId);
 
         const fallbackTimestamp = new Date().toISOString();
 
         if (Array.isArray(full.data) && full.data.length > 0) {
-          console.log(`📊 Processing ${full.data.length} sensor readings`);
-          
           setLocationData((prev) => {
             const newPoints = full.data
               .map((r) => {
@@ -1313,10 +1277,6 @@ const Shipments = () => {
                 return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
               })
               .filter(Boolean);
-            
-            if (newPoints.length > 0) {
-              console.log(`📍 Adding ${newPoints.length} new location points`);
-            }
             return newPoints.length ? [...prev, ...newPoints] : prev;
           });
 
@@ -1368,14 +1328,11 @@ const Shipments = () => {
               .filter(Boolean),
           ]);
         } else {
-          console.log('📊 Processing single sensor reading');
-          
           const lat = full.Lat ?? full.latitude ?? full.lat;
           const lng = full.Lng ?? full.longitude ?? full.lng ?? full.lon;
           const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? fallbackTimestamp;
 
           if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
-            console.log(`📍 Adding single location point: (${lat}, ${lng})`);
             setLocationData((prev) => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
 
             // Also update temperature, humidity, battery, and speed with the latest values
@@ -1393,7 +1350,7 @@ const Shipments = () => {
           }
         }
       } catch (e) {
-        console.error('❌ Error parsing WS message:', e);
+        console.error('Error parsing WS message', e);
       }
     };
 
@@ -2317,59 +2274,28 @@ const Shipments = () => {
                     </div>
                   </div>
                   
-                  {/* Geofence Toggle and Configuration */}
+                  {/* Geofence Radius Slider */}
                   {legCoordinates[index] && (
-                    <div className="form-group" style={{ marginTop: '15px', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
-                        <input
-                          type="checkbox"
-                          id={`geofence-toggle-${index}`}
-                          checked={geofenceRadii[index] !== undefined}
-                          onChange={() => toggleGeofence(index)}
-                          style={{ marginRight: '10px', width: '18px', height: '18px', cursor: 'pointer' }}
-                        />
-                        <label 
-                          htmlFor={`geofence-toggle-${index}`}
-                          style={{ margin: 0, cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
-                        >
-                          Enable Geofence Alert for this destination
-                        </label>
+                    <div className="form-group" style={{ marginTop: '15px' }}>
+                      <label>
+                        Destination Geofence Radius: {geofenceRadii[index] || 1000}m
+                        <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
+                          (Alert when within this distance from destination)
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        min="100"
+                        max="5000"
+                        step="100"
+                        value={geofenceRadii[index] || 1000}
+                        onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
+                        style={{ width: '100%' }}
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#999' }}>
+                        <span>100m</span>
+                        <span>5000m (5km)</span>
                       </div>
-                      
-                      {geofenceRadii[index] !== undefined && (
-                        <>
-                          <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px' }}>
-                            Geofence Radius: {geofenceRadii[index]}m
-                            <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
-                              (Alert when within this distance)
-                            </span>
-                          </label>
-                          <input
-                            type="range"
-                            min="100"
-                            max="5000"
-                            step="100"
-                            value={geofenceRadii[index]}
-                            onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
-                            style={{ width: '100%' }}
-                          />
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#999', marginTop: '4px' }}>
-                            <span>100m</span>
-                            <span>2.5km</span>
-                            <span>5km</span>
-                          </div>
-                          <div style={{ marginTop: '10px', padding: '8px', background: '#e3f2fd', borderRadius: '4px', fontSize: '12px', color: '#1976d2' }}>
-                            📍 Destination: {index === 0 ? leg.stopAddress : leg.shipTo}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* Show message if address not geocoded yet */}
-                  {!legCoordinates[index] && (index === 0 ? leg.stopAddress : leg.shipTo) && (
-                    <div style={{ marginTop: '10px', padding: '8px', background: '#fff3cd', borderRadius: '4px', fontSize: '12px', color: '#856404' }}>
-                      ⏳ Enter and blur the address field to enable geofence configuration
                     </div>
                   )}
                 </div>
