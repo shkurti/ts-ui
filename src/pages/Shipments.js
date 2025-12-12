@@ -1150,6 +1150,9 @@ const Shipments = () => {
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
 
+        // Log incoming messages for debugging
+        console.log('📩 WebSocket message received:', msg);
+
         if (msg?.type === 'alert' && msg.data) {
           const alertPayload = msg.data;
           const activeShipment = selectedShipmentDetail;
@@ -1261,13 +1264,27 @@ const Shipments = () => {
         if (!msg || msg.type === 'alert') return;
 
         const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
-        if (!full) return;
+        if (!full) {
+          console.log('⚠️ No fullDocument in message');
+          return;
+        }
 
         const activeTrackerId = currentTrackerIdRef.current;
-        if (!activeTrackerId) return;
-
         const msgTrackerId = full.trackerID ?? full.trackerId;
-        if (String(msgTrackerId) !== String(activeTrackerId)) return;
+        
+        console.log(`🔍 Comparing trackers - Active: ${activeTrackerId}, Message: ${msgTrackerId}`);
+        
+        if (!activeTrackerId) {
+          console.log('⚠️ No active tracker ID set');
+          return;
+        }
+
+        if (String(msgTrackerId) !== String(activeTrackerId)) {
+          console.log(`⏭️ Skipping - tracker mismatch (${msgTrackerId} !== ${activeTrackerId})`);
+          return;
+        }
+
+        console.log('✅ Processing sensor data for tracker:', msgTrackerId);
 
         const msgId =
           msg._id?._data ||
@@ -1275,12 +1292,17 @@ const Shipments = () => {
           (msg.wallTime && (msg.wallTime.$date || JSON.stringify(msg.wallTime))) ||
           JSON.stringify(msg).slice(0, 200);
 
-        if (processedMessagesRef.current.has(msgId)) return;
+        if (processedMessagesRef.current.has(msgId)) {
+          console.log('⏭️ Duplicate message, skipping');
+          return;
+        }
         processedMessagesRef.current.add(msgId);
 
         const fallbackTimestamp = new Date().toISOString();
 
         if (Array.isArray(full.data) && full.data.length > 0) {
+          console.log(`📊 Processing ${full.data.length} sensor readings`);
+          
           setLocationData((prev) => {
             const newPoints = full.data
               .map((r) => {
@@ -1291,6 +1313,10 @@ const Shipments = () => {
                 return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
               })
               .filter(Boolean);
+            
+            if (newPoints.length > 0) {
+              console.log(`📍 Adding ${newPoints.length} new location points`);
+            }
             return newPoints.length ? [...prev, ...newPoints] : prev;
           });
 
@@ -1342,11 +1368,14 @@ const Shipments = () => {
               .filter(Boolean),
           ]);
         } else {
+          console.log('📊 Processing single sensor reading');
+          
           const lat = full.Lat ?? full.latitude ?? full.lat;
           const lng = full.Lng ?? full.longitude ?? full.lng ?? full.lon;
           const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? fallbackTimestamp;
 
           if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
+            console.log(`📍 Adding single location point: (${lat}, ${lng})`);
             setLocationData((prev) => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
 
             // Also update temperature, humidity, battery, and speed with the latest values
@@ -1364,7 +1393,7 @@ const Shipments = () => {
           }
         }
       } catch (e) {
-        console.error('Error parsing WS message', e);
+        console.error('❌ Error parsing WS message:', e);
       }
     };
 
