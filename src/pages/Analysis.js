@@ -1055,6 +1055,11 @@ const Analysis = () => {
                 </div>
               </div>
             </div>
+
+            {/* Add Temperature Chart */}
+            <div className="chart-section">
+              <TemperatureChart />
+            </div>
           </div>
 
           {/* Right Column - Carrier Performance */}
@@ -1083,11 +1088,6 @@ const Analysis = () => {
             {/* Add Duration Chart */}
             <div className="chart-section">
               <ShipmentDurationChart />
-            </div>
-
-            {/* Add Temperature Chart */}
-            <div className="chart-section">
-              <TemperatureChart />
             </div>
 
             {/* Add Carrier Temperature Chart */}
