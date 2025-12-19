@@ -618,6 +618,7 @@ const Shipments = () => {
       });
 
       receivedAlertIdsRef.current = new Set(aggregateMap.keys());
+      console.log('Setting alerts data:', normalizedList);
       setAlertsData(normalizedList);
     } catch (error) {
       console.error("Error fetching alerts:", error);
@@ -802,9 +803,10 @@ const Shipments = () => {
         e.currentTarget.appendChild(verticalLine);
       }
       
-      verticalLine.setAttribute('x1', closestPoint.x);
+      const xPos = isNaN(closestPoint.x) ? 0 : closestPoint.x;
+      verticalLine.setAttribute('x1', xPos);
       verticalLine.setAttribute('y1', '0');
-      verticalLine.setAttribute('x2', closestPoint.x);
+      verticalLine.setAttribute('x2', xPos);
       verticalLine.setAttribute('y2', '60');
       verticalLine.style.display = 'block';
       
@@ -895,9 +897,10 @@ const Shipments = () => {
         e.currentTarget.appendChild(verticalLine);
       }
       
-      verticalLine.setAttribute('x1', closestPoint.x);
+      const xPos = isNaN(closestPoint.x) ? 0 : closestPoint.x;
+      verticalLine.setAttribute('x1', xPos);
       verticalLine.setAttribute('y1', '0');
-      verticalLine.setAttribute('x2', closestPoint.x);
+      verticalLine.setAttribute('x2', xPos);
       verticalLine.setAttribute('y2', '60');
       verticalLine.style.display = 'block';
       
