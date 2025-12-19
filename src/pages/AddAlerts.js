@@ -91,15 +91,12 @@ const AddAlerts = () => {
       ));
 
       // Reset form
-        setAlertName('');
-        setMinValue(alertType === 'temperature' ? -10 : 20);
-        setMaxValue(alertType === 'temperature' ? 40 : 80);
-        setSelectedShipment('');
-        
-        alert(`${alertType} alert "${alertName}" created successfully for shipment!`);
-      } else {
-        throw new Error('Failed to create alert');
-      }
+      setAlertName('');
+      setMinValue(alertType === 'temperature' ? -10 : 20);
+      setMaxValue(alertType === 'temperature' ? 40 : 80);
+      setSelectedShipment('');
+      
+      alert(`${alertType} alert "${alertName}" created successfully for shipment!`);
     } catch (error) {
       console.error('Error creating alert:', error);
       alert(`Failed to create alert: ${error.message}`);

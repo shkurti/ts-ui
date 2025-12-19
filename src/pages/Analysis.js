@@ -92,7 +92,6 @@ const Analysis = () => {
         }
         
         console.log('Updated analytics data:', newAnalyticsData);
-      }
 
       // Fetch shipment duration data separately
       const durationParams = new URLSearchParams();
