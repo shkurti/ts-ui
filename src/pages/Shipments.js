@@ -102,21 +102,8 @@ const Shipments = () => {
         console.log('Fetched shipments:', data); // Debug log
         setShipments(data);
         
-        // Restore previously selected shipment from localStorage
-        const savedShipmentId = localStorage.getItem(SELECTED_SHIPMENT_KEY);
-        if (savedShipmentId) {
-          const savedShipment = data.find(ship => ship._id === savedShipmentId);
-          if (savedShipment) {
-            console.log('Restoring selected shipment from localStorage:', savedShipment);
-            // Use setTimeout to ensure the shipments state is updated first
-            setTimeout(() => {
-              handleShipmentClick(savedShipment);
-            }, 100);
-          } else {
-            // Clean up invalid localStorage entry
-            localStorage.removeItem(SELECTED_SHIPMENT_KEY);
-          }
-        }
+        // Note: Removed automatic shipment restoration to show main page by default
+        // Users can manually select shipments as before
       } catch (error) {
         console.error('Error fetching shipments:', error);
       } finally {
@@ -490,7 +477,7 @@ const Shipments = () => {
     }
 
     fetchAlertsForShipment(shipment._id, trackerId, { shipment });
-    // Note: fetchAlertEvents is now called within fetchAlertsForShipment to combine data
+    fetchAlertEvents(shipment._id, trackerId, { start: shipDate, end: arrivalDate });
   };
 
   const buildAlertKey = (alert) =>
