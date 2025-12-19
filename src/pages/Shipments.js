@@ -490,7 +490,7 @@ const Shipments = () => {
     }
 
     fetchAlertsForShipment(shipment._id, trackerId, { shipment });
-    fetchAlertEvents(shipment._id, trackerId, { start: shipDate, end: arrivalDate });
+    // Note: fetchAlertEvents is now called within fetchAlertsForShipment to combine data
   };
 
   const buildAlertKey = (alert) =>
@@ -576,8 +576,39 @@ const Shipments = () => {
         console.log('No alert presets found. Current shipment:', currentShipment);
       }
 
-      // Combine triggered alerts and configured alerts
-      const allAlerts = [...filteredData, ...configuredAlerts];
+      // Fetch historical alert events from database
+      let alertEventData = [];
+      try {
+        console.log('Fetching historical alert events for shipment:', shipmentId);
+        const eventData = await shipmentApi.getAlertEvents(shipmentId, trackerId);
+        console.log('Historical alert events:', eventData);
+        alertEventData = eventData.map((event) => ({
+          alertId: event._id || `${event.alertId}-${event.timestamp}`,
+          shipmentId: event.shipmentId,
+          trackerId: event.trackerId,
+          alertDate: event.timestamp ? new Date(event.timestamp).toISOString().slice(0, 10) : '',
+          alertType: event.alertType,
+          alertName: event.alertName || event.alertType || "Alert",
+          severity: event.severity || "warning",
+          sensorValue: event.sensorValue,
+          minThreshold: event.minThreshold,
+          maxThreshold: event.maxThreshold,
+          unit: event.unit || "",
+          timestamp: event.timestampLocal || formatTimestamp(event.timestamp),
+          timestampRaw: event.timestamp,
+          lastTriggeredAt: event.timestampLocal || formatTimestamp(event.timestamp),
+          lastTriggeredAtRaw: event.timestamp,
+          occurrenceCount: 1,
+          message: event.message || `${event.alertType} alert triggered`,
+          location: event.location || {},
+          isConfigured: false
+        }));
+      } catch (error) {
+        console.error('Error fetching alert events:', error);
+      }
+
+      // Combine triggered alerts, alert events, and configured alerts
+      const allAlerts = [...filteredData, ...alertEventData, ...configuredAlerts];
 
       const aggregateMap = new Map();
       allAlerts.forEach((alert) => {
