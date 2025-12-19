@@ -515,7 +515,7 @@ const Shipments = () => {
     const { skipLoading = false, shipment } = options;
     if (!skipLoading) setIsLoadingAlerts(true);
     try {
-      const data = await shipmentApi.getAlerts();
+      const data = await shipmentApi.getAlerts(shipmentId, trackerId);
       // Filter data based on parameters since the API doesn't support query params
       const filteredData = data.filter(alert => {
         if (shipmentId && alert.shipmentId !== shipmentId) return false;
@@ -630,7 +630,7 @@ const Shipments = () => {
     const { start, end, skipLoading = false } = options;
     if (!shipmentId && !trackerId) return;
     try {
-      const data = await shipmentApi.getAlertEvents();
+      const data = await shipmentApi.getAlertEvents(shipmentId, trackerId);
       // Filter data based on parameters since the API doesn't support query params
       const filteredData = data.filter(event => {
         if (shipmentId && event.shipmentId !== shipmentId) return false;
