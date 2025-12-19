@@ -1666,48 +1666,80 @@ const Shipments = () => {
 
                     {activeTab === 'alerts' && (
                       <div className="alerts-content">
-                        {isLoadingAlerts ? (
-                          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-                            <div style={{
-                              width: '32px',
-                              height: '32px',
-                              border: '3px solid #ddd',
-                              borderTop: '3px solid #f97316',
-                              borderRadius: '50%',
-                              animation: 'spin 1s linear infinite',
-                              margin: '0 auto 15px'
-                            }}></div>
-                            Loading alerts...
+                        {/* Alert Configurations Section */}
+                        {selectedShipmentDetail && selectedShipmentDetail.legs && selectedShipmentDetail.legs.length > 0 && 
+                         selectedShipmentDetail.legs[0].alertPresets && selectedShipmentDetail.legs[0].alertPresets.length > 0 && (
+                          <div style={{ marginBottom: '20px' }}>
+                            <h4 style={{ marginBottom: '10px', color: '#374151', fontSize: '14px' }}>Alert Configurations</h4>
+                            {selectedShipmentDetail.legs[0].alertPresets.map((preset, index) => (
+                              <div key={index} className="alert alert-config" style={{ 
+                                backgroundColor: '#f8fafc', 
+                                border: '1px solid #e2e8f0',
+                                marginBottom: '8px'
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
+                                  <span>{preset.name}</span>
+                                  <span style={{ fontSize: '12px', opacity: 0.8, color: '#10b981' }}>Configured</span>
+                                </div>
+                                <p style={{ marginBottom: '8px', fontSize: '13px' }}>
+                                  {preset.type?.toUpperCase()} alert configured
+                                </p>
+                                <div style={{ fontSize: '12px', color: '#374151', display: 'grid', rowGap: '4px' }}>
+                                  <span>Type: {preset.type}</span>
+                                  <span>Range: {preset.minValue}{preset.unit} - {preset.maxValue}{preset.unit}</span>
+                                  <span>Created: {preset.createdAt ? new Date(preset.createdAt).toLocaleString() : 'N/A'}</span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ) : alertsData.length === 0 ? (
-                          <div className="no-messages">No alerts triggered for this shipment.</div>
-                        ) : (
-                          alertsData.map((alert) => (
-                            <div
-                              key={alert.alertId}
-                              className={`alert ${alert.severity === 'critical' ? 'alert-error' : 'alert-info'}`}
-                            >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
-                                <span>{alert.alertName}</span>
-                                <span style={{ fontSize: '12px', opacity: 0.8 }}>{alert.lastTriggeredAt}</span>
-                              </div>
-                              <p style={{ marginBottom: '8px' }}>
-                                {alert.message || `${(alert.alertType || 'Alert').toUpperCase()} detected.`}
-                              </p>
-                              <div style={{ fontSize: '12px', color: '#374151', display: 'grid', rowGap: '4px' }}>
-                                <span>First triggered: {alert.timestamp}</span>
-                                <span>Occurrences: {alert.occurrenceCount}</span>
-                                <span>Sensor value: {alert.sensorValue}{alert.unit}</span>
-                                <span>Allowed range: {alert.minThreshold}{alert.unit} - {alert.maxThreshold}{alert.unit}</span>
-                                {alert.location?.latitude != null && alert.location?.longitude != null && (
-                                  <span>
-                                    Location: {Number(alert.location.latitude).toFixed(4)}, {Number(alert.location.longitude).toFixed(4)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))
                         )}
+                        
+                        {/* Triggered Alerts Section */}
+                        <div>
+                          <h4 style={{ marginBottom: '10px', color: '#374151', fontSize: '14px' }}>Triggered Alerts</h4>
+                          {isLoadingAlerts ? (
+                            <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                              <div style={{
+                                width: '32px',
+                                height: '32px',
+                                border: '3px solid #ddd',
+                                borderTop: '3px solid #f97316',
+                                borderRadius: '50%',
+                                animation: 'spin 1s linear infinite',
+                                margin: '0 auto 15px'
+                              }}></div>
+                              Loading triggered alerts...
+                            </div>
+                          ) : alertsData.length === 0 ? (
+                            <div className="no-messages">No alerts triggered for this shipment.</div>
+                          ) : (
+                            alertsData.map((alert) => (
+                              <div
+                                key={alert.alertId}
+                                className={`alert ${alert.severity === 'critical' ? 'alert-error' : 'alert-info'}`}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
+                                  <span>{alert.alertName}</span>
+                                  <span style={{ fontSize: '12px', opacity: 0.8 }}>{alert.lastTriggeredAt}</span>
+                                </div>
+                                <p style={{ marginBottom: '8px' }}>
+                                  {alert.message || `${(alert.alertType || 'Alert').toUpperCase()} detected.`}
+                                </p>
+                                <div style={{ fontSize: '12px', color: '#374151', display: 'grid', rowGap: '4px' }}>
+                                  <span>First triggered: {alert.timestamp}</span>
+                                  <span>Occurrences: {alert.occurrenceCount}</span>
+                                  <span>Sensor value: {alert.sensorValue}{alert.unit}</span>
+                                  <span>Allowed range: {alert.minThreshold}{alert.unit} - {alert.maxThreshold}{alert.unit}</span>
+                                  {alert.location?.latitude != null && alert.location?.longitude != null && (
+                                    <span>
+                                      Location: {Number(alert.location.latitude).toFixed(4)}, {Number(alert.location.longitude).toFixed(4)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
                     )}
 
