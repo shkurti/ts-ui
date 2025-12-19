@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart as RechartsBarChart, Bar, Cell, PieChart, Pie } from 'recharts';
+import { analysisApi, trackerApi } from '../services/apiService';
 import './Page.css';
 
 const Analysis = () => {
@@ -68,20 +69,18 @@ const Analysis = () => {
   // Function to fetch analytics data with filters
   const fetchFilteredAnalytics = async (carrier = selectedCarrier, start = startDate, end = endDate) => {
     try {
-      const params = new URLSearchParams();
+      const params = {};
       if (carrier && carrier !== 'All') {
-        params.append('carrier', carrier);
+        params.carrier = carrier;
       }
       if (start) {
-        params.append('start_date', `${start}T00:00:00Z`);
+        params.start_date = `${start}T00:00:00Z`;
       }
       if (end) {
-        params.append('end_date', `${end}T23:59:59Z`);
+        params.end_date = `${end}T23:59:59Z`;
       }
 
-      const analyticsRes = await fetch(`${API_BASE}/analytics?${params.toString()}`);
-      if (analyticsRes.ok) {
-        const newAnalyticsData = await analyticsRes.json();
+      const newAnalyticsData = await analysisApi.getAnalytics(params);
         setAnalyticsData(prev => ({
           ...prev,
           ...newAnalyticsData
@@ -104,61 +103,22 @@ const Analysis = () => {
         durationParams.append('end_date', `${end}T23:59:59Z`);
       }
 
-      console.log('Fetching duration data with params:', durationParams.toString());
-      const durationRes = await fetch(`${API_BASE}/shipment_leg_duration?${durationParams.toString()}`);
-      console.log('Duration response status:', durationRes.status);
-      
-      if (durationRes.ok) {
-        const durationData = await durationRes.json();
-        console.log('Duration data received:', durationData);
-        setShipmentDurationData(durationData);
-      } else {
-        console.error('Duration request failed:', durationRes.status, durationRes.statusText);
-        const errorText = await durationRes.text();
-        console.error('Duration error response:', errorText);
-      }
+      console.log('Fetching duration data with params:', JSON.stringify(params));
+      const durationData = await analysisApi.getShipmentLegDuration();
+      console.log('Duration data received:', durationData);
+      setShipmentDurationData(durationData);
 
       // Fetch temperature data separately
-      const tempParams = new URLSearchParams();
-      if (start) {
-        tempParams.append('start_date', `${start}T00:00:00Z`);
-      }
-      if (end) {
-        tempParams.append('end_date', `${end}T23:59:59Z`);
-      }
-
-      console.log('Fetching temperature data with params:', tempParams.toString());
-      const temperatureRes = await fetch(`${API_BASE}/shipment_temperature_data?${tempParams.toString()}`);
-      console.log('Temperature response status:', temperatureRes.status);
-      
-      if (temperatureRes.ok) {
-        const tempData = await temperatureRes.json();
-        console.log('Temperature data received:', tempData);
-        setTemperatureData(tempData);
-      } else {
-        console.error('Temperature request failed:', temperatureRes.status, temperatureRes.statusText);
-      }
+      console.log('Fetching temperature data with params:', JSON.stringify(params));
+      const tempData = await analysisApi.getShipmentTemperatureData();
+      console.log('Temperature data received:', tempData);
+      setTemperatureData(tempData);
 
       // Fetch carrier temperature data separately
-      const carrierTempParams = new URLSearchParams();
-      if (start) {
-        carrierTempParams.append('start_date', `${start}T00:00:00Z`);
-      }
-      if (end) {
-        carrierTempParams.append('end_date', `${end}T23:59:59Z`);
-      }
-
-      console.log('Fetching carrier temperature data with params:', carrierTempParams.toString());
-      const carrierTemperatureRes = await fetch(`${API_BASE}/carrier_temperature_data?${carrierTempParams.toString()}`);
-      console.log('Carrier temperature response status:', carrierTemperatureRes.status);
-      
-      if (carrierTemperatureRes.ok) {
-        const carrierTempData = await carrierTemperatureRes.json();
-        console.log('Carrier temperature data received:', carrierTempData);
-        setCarrierTemperatureData(carrierTempData);
-      } else {
-        console.error('Carrier temperature request failed:', carrierTemperatureRes.status, carrierTemperatureRes.statusText);
-      }
+      console.log('Fetching carrier temperature data with params:', JSON.stringify(params));
+      const carrierTempData = await analysisApi.getCarrierTemperatureData();
+      console.log('Carrier temperature data received:', carrierTempData);
+      setCarrierTemperatureData(carrierTempData);
     } catch (err) {
       console.error('Error fetching filtered analytics:', err);
     }
@@ -170,12 +130,9 @@ const Analysis = () => {
         setLoading(true);
         
         // Fetch carriers
-        const carriersRes = await fetch(`${API_BASE}/carriers`);
-        if (carriersRes.ok) {
-          const carriersData = await carriersRes.json();
-          if (carriersData.carriers && carriersData.carriers.length > 0) {
-            setCarriers(['All', ...carriersData.carriers]);
-          }
+        const carriersData = await analysisApi.getCarriers();
+        if (carriersData.carriers && carriersData.carriers.length > 0) {
+          setCarriers(['All', ...carriersData.carriers]);
         }
         
         // Fetch initial analytics data with broader date range

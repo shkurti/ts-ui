@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { trackerApi } from '../services/apiService';
 import './Trackers.css';
 
 const Trackers = () => {
@@ -25,9 +26,7 @@ const Trackers = () => {
     let mounted = true;
     const fetchTrackers = async () => {
       try {
-        const res = await fetch(`${API_BASE}/registered_trackers`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await trackerApi.getAll();
         if (mounted) {
           setTrackers(data);
         }
@@ -45,9 +44,7 @@ const Trackers = () => {
   const fetchTrackers = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/registered_trackers`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await trackerApi.getAll();
       setTrackers(data);
       setError(null);
     } catch (err) {
@@ -73,20 +70,7 @@ const Trackers = () => {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/registered_trackers`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to register tracker');
-      }
-
-      const result = await response.json();
+      const result = await trackerApi.create(formData);
       console.log('Success:', result);
 
       // Reset form and close modal
@@ -158,20 +142,7 @@ const Trackers = () => {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/registered_trackers`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ tracker_ids: selectedTrackers }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to delete trackers');
-      }
-
-      const result = await response.json();
+      const result = await trackerApi.delete(selectedTrackers);
       console.log('Delete success:', result);
 
       // Clear selected trackers and refresh the list
