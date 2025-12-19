@@ -6,6 +6,7 @@ import './Shipments.css';
 import { TriangleAlert } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ApiService, { shipmentApi, trackerApi } from '../services/apiService';
+import { useAuth } from '../context/AuthContext';
 
 // Fix for default markers
 delete L.Icon.Default.prototype._getIconUrl;
@@ -17,6 +18,7 @@ L.Icon.Default.mergeOptions({
 
 const Shipments = () => {
   const apiService = new ApiService();
+  const { user, isAuthenticated, loading } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
   const [selectedShipments, setSelectedShipments] = useState([]);
@@ -81,6 +83,11 @@ const Shipments = () => {
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
+    // Only fetch data if user is authenticated and not loading
+    if (!isAuthenticated || loading) {
+      return;
+    }
+
     const fetchShipments = async () => {
       setIsLoading(true);
       try {
@@ -105,7 +112,7 @@ const Shipments = () => {
 
     fetchShipments();
     fetchTrackers();
-  }, []);
+  }, [isAuthenticated, loading]);
 
   // Filter shipments based on search term
   const filteredShipments = shipments.filter(shipment => {
@@ -1369,6 +1376,64 @@ const Shipments = () => {
 
     return Array.from(markers.values());
   }, [alertEvents, alertsData]);
+
+  // Handle authentication state
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        background: '#f5f5f5'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            border: '4px solid #ddd',
+            borderTop: '4px solid #007bff',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 20px'
+          }}></div>
+          <p style={{ color: '#666', fontSize: '16px' }}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        background: '#f5f5f5'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ color: '#666', fontSize: '18px', marginBottom: '16px' }}>
+            Please log in to view shipments
+          </p>
+          <button 
+            onClick={() => window.location.href = '/login'}
+            style={{
+              background: '#007bff',
+              color: 'white',
+              border: 'none',
+              padding: '12px 24px',
+              borderRadius: '6px',
+              fontSize: '16px',
+              cursor: 'pointer'
+            }}
+          >
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="shipments-container">
