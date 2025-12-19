@@ -15,8 +15,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token'));
 
-  // API base URL - update this to point to your local backend
-  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+  // API base URL - update this to point to your Heroku backend
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
   useEffect(() => {
     if (token) {
