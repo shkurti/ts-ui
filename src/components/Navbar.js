@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import UserMenu from './UserMenu';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -114,6 +115,9 @@ const Navbar = () => {
             </ul>
           </li>
         </ul>
+        
+        {/* User Menu */}
+        <UserMenu />
       </div>
     </nav>
   );
