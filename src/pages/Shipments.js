@@ -363,6 +363,7 @@ const Shipments = () => {
     setBatteryData([]);
     setSpeedData([]);
     setLocationData([]);
+    console.log('Clearing alerts data for new shipment');
     setAlertsData([]);
     setAlertEvents([]);
     receivedAlertIdsRef.current = new Set();
@@ -1708,6 +1709,7 @@ const Shipments = () => {
 
                     {activeTab === 'alerts' && (
                       <div className="alerts-content">
+                        {console.log('Alerts tab rendering, alertsData:', alertsData, 'length:', alertsData.length, 'isLoadingAlerts:', isLoadingAlerts)}
                         {/* Alert Configurations Section */}
                         {selectedShipmentDetail && selectedShipmentDetail.legs && selectedShipmentDetail.legs.length > 0 && 
                          selectedShipmentDetail.legs[0].alertPresets && selectedShipmentDetail.legs[0].alertPresets.length > 0 && (
