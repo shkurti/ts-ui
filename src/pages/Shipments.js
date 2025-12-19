@@ -5,7 +5,7 @@ import L from 'leaflet';
 import './Shipments.css';
 import { TriangleAlert } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import ApiService, { shipmentApi, trackerApi } from '../services/apiService';
+import apiService, { shipmentApi, trackerApi } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 
 // Fix for default markers
@@ -17,7 +17,6 @@ L.Icon.Default.mergeOptions({
 });
 
 const Shipments = () => {
-  const apiService = new ApiService();
   const { user, isAuthenticated, loading } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
