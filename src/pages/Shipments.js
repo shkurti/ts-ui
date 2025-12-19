@@ -523,11 +523,41 @@ const Shipments = () => {
         return true;
       });
 
+      // Also include configured alerts from the current shipment metadata
+      let configuredAlerts = [];
+      if (selectedShipmentDetail && selectedShipmentDetail.legs && selectedShipmentDetail.legs[0]?.alertPresets) {
+        configuredAlerts = selectedShipmentDetail.legs[0].alertPresets.map((preset, index) => ({
+          alertId: `config-${selectedShipmentDetail._id}-${index}`,
+          shipmentId: selectedShipmentDetail._id,
+          trackerId: selectedShipmentDetail.trackerId,
+          alertDate: preset.createdAt || new Date().toISOString(),
+          alertType: preset.type,
+          alertName: preset.name || `${preset.type} Alert`,
+          severity: "info",
+          sensorValue: null,
+          minThreshold: preset.minValue,
+          maxThreshold: preset.maxValue,
+          unit: preset.unit || (preset.type === 'temperature' ? '°C' : '%'),
+          timestamp: preset.createdAt ? new Date(preset.createdAt).toLocaleString() : 'Recently configured',
+          timestampRaw: preset.createdAt || new Date().toISOString(),
+          lastTriggeredAt: 'Not triggered yet',
+          lastTriggeredAtRaw: null,
+          occurrenceCount: 0,
+          message: `${preset.type?.toUpperCase()} alert configured (${preset.minValue}-${preset.maxValue}${preset.unit || ''})`,
+          location: {},
+          isConfigured: true // Flag to distinguish from triggered alerts
+        }));
+      }
+
+      // Combine triggered alerts and configured alerts
+      const allAlerts = [...filteredData, ...configuredAlerts];
+
       const aggregateMap = new Map();
-      filteredData.forEach((alert) => {
-        const firstTriggeredLocal = alert.timestampLocal || (alert.timestamp ? formatTimestamp(alert.timestamp) : 'N/A');
-        const lastTriggeredRaw = alert.lastTriggeredAt || alert.timestamp;
-        const lastTriggeredLocal = alert.lastTriggeredAtLocal || (lastTriggeredRaw ? formatTimestamp(lastTriggeredRaw) : firstTriggeredLocal);
+      allAlerts.forEach((alert) => {
+        const firstTriggeredLocal = alert.timestampLocal || (alert.timestamp ? formatTimestamp(alert.timestamp) : alert.timestamp);
+        const lastTriggeredRaw = alert.lastTriggeredAt === 'Not triggered yet' ? null : (alert.lastTriggeredAt || alert.timestamp);
+        const lastTriggeredLocal = alert.lastTriggeredAt === 'Not triggered yet' ? 'Not triggered yet' : 
+          (alert.lastTriggeredAtLocal || (lastTriggeredRaw ? formatTimestamp(lastTriggeredRaw) : firstTriggeredLocal));
 
         const normalized = {
           alertId: alert.alertId || alert._id || `${alert.trackerId || ""}-${alert.alertType || ""}-${alert.timestamp || ""}`,
@@ -542,19 +572,21 @@ const Shipments = () => {
           maxThreshold: alert.maxThreshold,
           unit: alert.unit || "",
           timestamp: firstTriggeredLocal,
-          timestampRaw: alert.timestamp,
+          timestampRaw: alert.timestampRaw,
           lastTriggeredAt: lastTriggeredLocal,
           lastTriggeredAtRaw: lastTriggeredRaw,
-          occurrenceCount: alert.occurrenceCount || 1,
+          occurrenceCount: alert.occurrenceCount || (alert.isConfigured ? 0 : 1),
           message: alert.message,
-          location: alert.location || {}
+          location: alert.location || {},
+          isConfigured: alert.isConfigured || false
         };
 
         const key = buildAlertKey(normalized);
         normalized.alertKey = key;
 
         const existing = aggregateMap.get(key);
-        if (existing) {
+        if (existing && !alert.isConfigured) {
+          // Only merge if it's not a configured alert (avoid duplicating configured alerts)
           existing.occurrenceCount += normalized.occurrenceCount;
           if (normalized.timestampRaw && (!existing.timestampRaw || normalized.timestampRaw < existing.timestampRaw)) {
             existing.timestampRaw = normalized.timestampRaw;
@@ -574,9 +606,12 @@ const Shipments = () => {
         }
       });
 
-      const normalizedList = Array.from(aggregateMap.values()).sort(
-        (a, b) => new Date(b.lastTriggeredAtRaw || 0) - new Date(a.lastTriggeredAtRaw || 0)
-      );
+      const normalizedList = Array.from(aggregateMap.values()).sort((a, b) => {
+        // Sort configured alerts first, then by timestamp
+        if (a.isConfigured && !b.isConfigured) return -1;
+        if (!a.isConfigured && b.isConfigured) return 1;
+        return new Date(b.lastTriggeredAtRaw || b.timestampRaw || 0) - new Date(a.lastTriggeredAtRaw || a.timestampRaw || 0);
+      });
 
       receivedAlertIdsRef.current = new Set(aggregateMap.keys());
       setAlertsData(normalizedList);
@@ -1694,9 +1729,9 @@ const Shipments = () => {
                           </div>
                         )}
                         
-                        {/* Triggered Alerts Section */}
+                        {/* All Alerts Section (Combined) */}
                         <div>
-                          <h4 style={{ marginBottom: '10px', color: '#374151', fontSize: '14px' }}>Triggered Alerts</h4>
+                          <h4 style={{ marginBottom: '10px', color: '#374151', fontSize: '14px' }}>All Alerts</h4>
                           {isLoadingAlerts ? (
                             <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
                               <div style={{
@@ -1708,29 +1743,45 @@ const Shipments = () => {
                                 animation: 'spin 1s linear infinite',
                                 margin: '0 auto 15px'
                               }}></div>
-                              Loading triggered alerts...
+                              Loading alerts...
                             </div>
                           ) : alertsData.length === 0 ? (
-                            <div className="no-messages">No alerts triggered for this shipment.</div>
+                            <div className="no-messages">No alerts configured or triggered for this shipment.</div>
                           ) : (
                             alertsData.map((alert) => (
                               <div
                                 key={alert.alertId}
-                                className={`alert ${alert.severity === 'critical' ? 'alert-error' : 'alert-info'}`}
+                                className={`alert ${alert.isConfigured ? 'alert-config' : 
+                                  (alert.severity === 'critical' ? 'alert-error' : 'alert-info')}`}
+                                style={{ 
+                                  backgroundColor: alert.isConfigured ? '#f0f9ff' : undefined,
+                                  border: alert.isConfigured ? '1px solid #0ea5e9' : undefined,
+                                  marginBottom: '8px'
+                                }}
                               >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
                                   <span>{alert.alertName}</span>
-                                  <span style={{ fontSize: '12px', opacity: 0.8 }}>{alert.lastTriggeredAt}</span>
+                                  <span style={{ 
+                                    fontSize: '12px', 
+                                    opacity: 0.8,
+                                    color: alert.isConfigured ? '#0ea5e9' : undefined
+                                  }}>
+                                    {alert.isConfigured ? 'Configured' : alert.lastTriggeredAt}
+                                  </span>
                                 </div>
                                 <p style={{ marginBottom: '8px' }}>
-                                  {alert.message || `${(alert.alertType || 'Alert').toUpperCase()} detected.`}
+                                  {alert.message || `${(alert.alertType || 'Alert').toUpperCase()} ${alert.isConfigured ? 'configured' : 'detected'}.`}
                                 </p>
                                 <div style={{ fontSize: '12px', color: '#374151', display: 'grid', rowGap: '4px' }}>
-                                  <span>First triggered: {alert.timestamp}</span>
-                                  <span>Occurrences: {alert.occurrenceCount}</span>
-                                  <span>Sensor value: {alert.sensorValue}{alert.unit}</span>
+                                  {!alert.isConfigured && <span>First triggered: {alert.timestamp}</span>}
+                                  <span>
+                                    {alert.isConfigured ? 'Status: Active configuration' : `Occurrences: ${alert.occurrenceCount}`}
+                                  </span>
+                                  {!alert.isConfigured && alert.sensorValue != null && (
+                                    <span>Sensor value: {alert.sensorValue}{alert.unit}</span>
+                                  )}
                                   <span>Allowed range: {alert.minThreshold}{alert.unit} - {alert.maxThreshold}{alert.unit}</span>
-                                  {alert.location?.latitude != null && alert.location?.longitude != null && (
+                                  {!alert.isConfigured && alert.location?.latitude != null && alert.location?.longitude != null && (
                                     <span>
                                       Location: {Number(alert.location.latitude).toFixed(4)}, {Number(alert.location.longitude).toFixed(4)}
                                     </span>
