@@ -70,6 +70,9 @@ const Shipments = () => {
   const receivedAlertIdsRef = useRef(new Set());
   const alertEventIdsRef = useRef(new Set());
 
+  // LocalStorage key for persisting selected shipment
+  const SELECTED_SHIPMENT_KEY = 'selectedShipmentId';
+
   const normalizeLocation = (raw) => {
     if (!raw) return null;
     const lat = parseFloat(raw.latitude ?? raw.Lat ?? raw.lat);
@@ -98,6 +101,22 @@ const Shipments = () => {
         const data = await shipmentApi.getAll();
         console.log('Fetched shipments:', data); // Debug log
         setShipments(data);
+        
+        // Restore previously selected shipment from localStorage
+        const savedShipmentId = localStorage.getItem(SELECTED_SHIPMENT_KEY);
+        if (savedShipmentId) {
+          const savedShipment = data.find(ship => ship._id === savedShipmentId);
+          if (savedShipment) {
+            console.log('Restoring selected shipment from localStorage:', savedShipment);
+            // Use setTimeout to ensure the shipments state is updated first
+            setTimeout(() => {
+              handleShipmentClick(savedShipment);
+            }, 100);
+          } else {
+            // Clean up invalid localStorage entry
+            localStorage.removeItem(SELECTED_SHIPMENT_KEY);
+          }
+        }
       } catch (error) {
         console.error('Error fetching shipments:', error);
       } finally {
@@ -354,6 +373,9 @@ const Shipments = () => {
   };
   // Handle shipment detail view
   const handleShipmentClick = async (shipment) => {
+    // Save selected shipment to localStorage for persistence
+    localStorage.setItem(SELECTED_SHIPMENT_KEY, shipment._id);
+    
     setSelectedShipmentDetail(shipment);
     setActiveTab('sensors');
     
@@ -677,6 +699,9 @@ const Shipments = () => {
   };
 
   const handleBackToList = () => {
+    // Clear localStorage when explicitly going back to list
+    localStorage.removeItem(SELECTED_SHIPMENT_KEY);
+    
     setSelectedShipmentDetail(null);
     // Clear sensor data when going back
     setTemperatureData([]);
