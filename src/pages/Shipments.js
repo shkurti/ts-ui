@@ -304,11 +304,6 @@ const Shipments = () => {
       
       alert('Shipment created successfully!');
       handleCancelForm();
-      } else {
-        const error = await response.json();
-        console.error('Error creating shipment:', error);
-        alert('Failed to create shipment.');
-      }
     } catch (error) {
       console.error('Error:', error);
       alert('An error occurred while creating the shipment.');
