@@ -5,6 +5,7 @@ import L from 'leaflet';
 import './Shipments.css';
 import { TriangleAlert } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import ApiService, { shipmentApi, trackerApi } from '../services/apiService';
 
 // Fix for default markers
 delete L.Icon.Default.prototype._getIconUrl;
@@ -15,6 +16,7 @@ L.Icon.Default.mergeOptions({
 });
 
 const Shipments = () => {
+  const apiService = new ApiService();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
   const [selectedShipments, setSelectedShipments] = useState([]);
@@ -82,15 +84,9 @@ const Shipments = () => {
     const fetchShipments = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta');
-        //const response = await fetch('http://localhost:8000/shipment_meta');
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Fetched shipments:', data); // Debug log
-          setShipments(data);
-        } else {
-          console.error('Failed to fetch shipments');
-        }
+        const data = await shipmentApi.getAll();
+        console.log('Fetched shipments:', data); // Debug log
+        setShipments(data);
       } catch (error) {
         console.error('Error fetching shipments:', error);
       } finally {
@@ -100,14 +96,8 @@ const Shipments = () => {
 
     const fetchTrackers = async () => {
       try {
-        const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/registered_trackers');
-        //const response = await fetch('http://localhost:8000/registered_trackers');
-        if (response.ok) {
-          const data = await response.json();
-          setTrackers(data);
-        } else {
-          console.error('Failed to fetch trackers');
-        }
+        const data = await trackerApi.getAll();
+        setTrackers(data);
       } catch (error) {
         console.error('Error fetching trackers:', error);
       }
@@ -150,11 +140,7 @@ const Shipments = () => {
     if (selectedShipments.length > 0) {
       try {
         const deletePromises = selectedShipments.map(shipmentId =>
-          fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta/${shipmentId}`, {
-          //fetch(`http://localhost:8000/shipment_meta/${shipmentId}`, {
-
-            method: 'DELETE'
-          })
+          shipmentApi.delete(shipmentId)
         );
 
         await Promise.all(deletePromises);
@@ -298,29 +284,19 @@ const Shipments = () => {
         }))
       };
 
-      const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(shipmentData),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Shipment created successfully:', result);
-        
-        // Refetch all shipments
-        try {
-          const fetchResponse = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta');
-          if (fetchResponse.ok) {
-            const updatedShipments = await fetchResponse.json();
-            setShipments(updatedShipments);
-          }
-        } catch (fetchError) {
-          console.error('Error refetching shipments:', fetchError);
-        }
-        
-        alert('Shipment created successfully!');
-        handleCancelForm();
+      const result = await shipmentApi.create(shipmentData);
+      console.log('Shipment created successfully:', result);
+      
+      // Refetch all shipments
+      try {
+        const updatedShipments = await shipmentApi.getAll();
+        setShipments(updatedShipments);
+      } catch (fetchError) {
+        console.error('Error refetching shipments:', fetchError);
+      }
+      
+      alert('Shipment created successfully!');
+      handleCancelForm();
       } else {
         const error = await response.json();
         console.error('Error creating shipment:', error);
@@ -401,21 +377,8 @@ const Shipments = () => {
 
     setIsLoadingSensorData(true);
     try {
-      const params = new URLSearchParams({
-        tracker_id: trackerId,
-        start: shipDate,
-        end: arrivalDate,
-        timezone: userTimezone
-      });
-      console.log('Sensor data fetch params:', params.toString());
-
-      
-      //const response = await fetch(`http://localhost:8000/shipment_route_data?${params}`);
-      const response = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_route_data?${params}`);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Sensor data fetch params:', params.toString());
+      const data = await shipmentApi.getRouteData(trackerId, shipDate, arrivalDate, userTimezone);
+      console.log('Sensor data fetched successfully');
         
         // Process sensor data - timestamps are now in local time
         setTemperatureData(
@@ -491,9 +454,6 @@ const Shipments = () => {
             Math.abs(item.longitude) <= 180
           )
         );
-      } else {
-        console.error('Failed to fetch sensor data');
-      }
     } catch (error) {
       console.error('Error fetching sensor data:', error);
     } finally {
@@ -549,18 +509,16 @@ const Shipments = () => {
     const { skipLoading = false } = options;
     if (!skipLoading) setIsLoadingAlerts(true);
     try {
-      const params = new URLSearchParams({ timezone: userTimezone });
-      if (shipmentId) params.append("shipment_id", shipmentId);
-      if (trackerId) params.append("tracker_id", trackerId);
-      const response = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alerts?${params.toString()}`);
-      if (!response.ok) {
-        console.error("Failed to fetch shipment alerts");
-        return;
-      }
-      const data = await response.json();
+      const data = await shipmentApi.getAlerts();
+      // Filter data based on parameters since the API doesn't support query params
+      const filteredData = data.filter(alert => {
+        if (shipmentId && alert.shipmentId !== shipmentId) return false;
+        if (trackerId && alert.trackerId !== trackerId) return false;
+        return true;
+      });
 
       const aggregateMap = new Map();
-      data.forEach((alert) => {
+      filteredData.forEach((alert) => {
         const firstTriggeredLocal = alert.timestampLocal || (alert.timestamp ? formatTimestamp(alert.timestamp) : 'N/A');
         const lastTriggeredRaw = alert.lastTriggeredAt || alert.timestamp;
         const lastTriggeredLocal = alert.lastTriggeredAtLocal || (lastTriggeredRaw ? formatTimestamp(lastTriggeredRaw) : firstTriggeredLocal);
@@ -627,18 +585,16 @@ const Shipments = () => {
     const { start, end, skipLoading = false } = options;
     if (!shipmentId && !trackerId) return;
     try {
-      const params = new URLSearchParams({ timezone: userTimezone });
-      if (shipmentId) params.append("shipment_id", shipmentId);
-      if (trackerId) params.append("tracker_id", trackerId);
-      if (start) params.append("start", start);
-      if (end) params.append("end", end);
-      const response = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alert_events?${params.toString()}`);
-      if (!response.ok) {
-        console.error("Failed to fetch alert events");
-        return;
-      }
-      const data = await response.json();
-      const normalized = data
+      const data = await shipmentApi.getAlertEvents();
+      // Filter data based on parameters since the API doesn't support query params
+      const filteredData = data.filter(event => {
+        if (shipmentId && event.shipmentId !== shipmentId) return false;
+        if (trackerId && event.trackerId !== trackerId) return false;
+        if (start && event.timestamp && new Date(event.timestamp) < new Date(start)) return false;
+        if (end && event.timestamp && new Date(event.timestamp) > new Date(end)) return false;
+        return true;
+      });
+      const normalized = filteredData
         .map((event) => {
           const eventId = event._id || `${event.alertId}-${event.timestamp}`;
           const lat = event.location?.latitude;
