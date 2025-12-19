@@ -71,6 +71,15 @@ function App() {
                 </div>
               </ProtectedRoute>
             } />
+            
+            {/* Fallback route */}
+            <Route path="*" element={
+              <div style={{ padding: '20px', textAlign: 'center' }}>
+                <h2>Page Not Found</h2>
+                <p>The page you're looking for doesn't exist.</p>
+                <a href="/">Go to Home</a>
+              </div>
+            } />
           </Routes>
         </Router>
       </AuthProvider>

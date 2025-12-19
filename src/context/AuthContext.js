@@ -19,9 +19,11 @@ export const AuthProvider = ({ children }) => {
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
   useEffect(() => {
+    console.log('AuthContext: token changed', { hasToken: !!token });
     if (token) {
       fetchCurrentUser();
     } else {
+      console.log('AuthContext: no token, setting loading to false');
       setLoading(false);
     }
   }, [token]);
