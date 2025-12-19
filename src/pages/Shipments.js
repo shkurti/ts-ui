@@ -83,10 +83,14 @@ const Shipments = () => {
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
-    // Only fetch data if user is authenticated and not loading
-    if (!isAuthenticated || loading) {
+    // Only fetch data if we have a token in localStorage (what ApiService actually uses)
+    const token = localStorage.getItem('token');
+    if (!token || loading) {
+      console.log('Skipping API calls - no token or still loading', { token: !!token, loading });
       return;
     }
+
+    console.log('Making authenticated API calls', { token: !!token, loading });
 
     const fetchShipments = async () => {
       setIsLoading(true);
@@ -112,7 +116,7 @@ const Shipments = () => {
 
     fetchShipments();
     fetchTrackers();
-  }, [isAuthenticated, loading]);
+  }, [loading]); // Only depend on loading, check token directly
 
   // Filter shipments based on search term
   const filteredShipments = shipments.filter(shipment => {
@@ -1398,7 +1402,8 @@ const Shipments = () => {
     );
   }
 
-  if (!isAuthenticated) {
+  // Check for token directly since that's what ApiService uses
+  if (!localStorage.getItem('token')) {
     return (
       <div style={{ 
         display: 'flex', 
