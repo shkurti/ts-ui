@@ -466,7 +466,7 @@ const Shipments = () => {
       setIsLoadingSensorData(false);
     }
 
-    fetchAlertsForShipment(shipment._id, trackerId);
+    fetchAlertsForShipment(shipment._id, trackerId, { shipment });
     fetchAlertEvents(shipment._id, trackerId, { start: shipDate, end: arrivalDate });
   };
 
@@ -512,7 +512,7 @@ const Shipments = () => {
   };
 
   const fetchAlertsForShipment = async (shipmentId, trackerId, options = {}) => {
-    const { skipLoading = false } = options;
+    const { skipLoading = false, shipment } = options;
     if (!skipLoading) setIsLoadingAlerts(true);
     try {
       const data = await shipmentApi.getAlerts();
@@ -525,11 +525,13 @@ const Shipments = () => {
 
       // Also include configured alerts from the current shipment metadata
       let configuredAlerts = [];
-      if (selectedShipmentDetail && selectedShipmentDetail.legs && selectedShipmentDetail.legs[0]?.alertPresets) {
-        configuredAlerts = selectedShipmentDetail.legs[0].alertPresets.map((preset, index) => ({
-          alertId: `config-${selectedShipmentDetail._id}-${index}`,
-          shipmentId: selectedShipmentDetail._id,
-          trackerId: selectedShipmentDetail.trackerId,
+      const currentShipment = shipment || selectedShipmentDetail;
+      if (currentShipment && currentShipment.legs && currentShipment.legs[0]?.alertPresets) {
+        console.log('Found alert presets:', currentShipment.legs[0].alertPresets);
+        configuredAlerts = currentShipment.legs[0].alertPresets.map((preset, index) => ({
+          alertId: `config-${currentShipment._id}-${index}`,
+          shipmentId: currentShipment._id,
+          trackerId: currentShipment.trackerId,
           alertDate: preset.createdAt || new Date().toISOString(),
           alertType: preset.type,
           alertName: preset.name || `${preset.type} Alert`,
@@ -547,6 +549,8 @@ const Shipments = () => {
           location: {},
           isConfigured: true // Flag to distinguish from triggered alerts
         }));
+      } else {
+        console.log('No alert presets found. Current shipment:', currentShipment);
       }
 
       // Combine triggered alerts and configured alerts
