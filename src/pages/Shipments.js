@@ -83,14 +83,15 @@ const Shipments = () => {
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
-    // Only fetch data if we have a token in localStorage (what ApiService actually uses)
-    const token = localStorage.getItem('token');
-    if (!token || loading) {
-      console.log('Skipping API calls - no token or still loading', { token: !!token, loading });
+    console.log('Shipments useEffect triggered', { loading });
+    
+    // Only fetch data if not loading (ProtectedRoute already handles auth)
+    if (loading) {
+      console.log('Still loading, skipping API calls');
       return;
     }
 
-    console.log('Making authenticated API calls', { token: !!token, loading });
+    console.log('Making authenticated API calls');
 
     const fetchShipments = async () => {
       setIsLoading(true);
@@ -116,7 +117,7 @@ const Shipments = () => {
 
     fetchShipments();
     fetchTrackers();
-  }, [loading]); // Only depend on loading, check token directly
+  }, [loading]); // Only depend on loading from AuthContext
 
   // Filter shipments based on search term
   const filteredShipments = shipments.filter(shipment => {
@@ -1376,7 +1377,7 @@ const Shipments = () => {
     return Array.from(markers.values());
   }, [alertEvents, alertsData]);
 
-  // Handle authentication state
+  // Handle authentication state - only show loading, ProtectedRoute handles auth redirects
   if (loading) {
     return (
       <div style={{ 
@@ -1397,39 +1398,6 @@ const Shipments = () => {
             margin: '0 auto 20px'
           }}></div>
           <p style={{ color: '#666', fontSize: '16px' }}>Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Check for token directly since that's what ApiService uses
-  if (!localStorage.getItem('token')) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        background: '#f5f5f5'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ color: '#666', fontSize: '18px', marginBottom: '16px' }}>
-            Please log in to view shipments
-          </p>
-          <button 
-            onClick={() => window.location.href = '/login'}
-            style={{
-              background: '#007bff',
-              color: 'white',
-              border: 'none',
-              padding: '12px 24px',
-              borderRadius: '6px',
-              fontSize: '16px',
-              cursor: 'pointer'
-            }}
-          >
-            Go to Login
-          </button>
         </div>
       </div>
     );
