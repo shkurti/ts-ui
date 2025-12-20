@@ -136,9 +136,19 @@ const Analysis = () => {
 
       // Fetch humidity data separately
       console.log('Fetching humidity data with params:', JSON.stringify(params));
-      const humidityDataResult = await analysisApi.getShipmentHumidityData();
-      console.log('Humidity data received:', humidityDataResult);
-      setHumidityData(humidityDataResult);
+      try {
+        const humidityDataResult = await analysisApi.getShipmentHumidityData();
+        console.log('Humidity data received:', humidityDataResult);
+        console.log('Humidity trend data:', humidityDataResult?.humidityTrendData);
+        console.log('Humidity stats:', humidityDataResult?.humidityStats);
+        if (humidityDataResult && typeof humidityDataResult === 'object') {
+          setHumidityData(humidityDataResult);
+        } else {
+          console.warn('Invalid humidity data received:', humidityDataResult);
+        }
+      } catch (humidityError) {
+        console.error('Error fetching humidity data:', humidityError);
+      }
 
       // Fetch carrier temperature data separately
       console.log('Fetching carrier temperature data with params:', JSON.stringify(params));
@@ -148,11 +158,26 @@ const Analysis = () => {
 
       // Fetch carrier humidity data separately
       console.log('Fetching carrier humidity data with params:', JSON.stringify(params));
-      const carrierHumidityDataResult = await analysisApi.getCarrierHumidityData();
-      console.log('Carrier humidity data received:', carrierHumidityDataResult);
-      setCarrierHumidityData(carrierHumidityDataResult);
+      try {
+        const carrierHumidityDataResult = await analysisApi.getCarrierHumidityData();
+        console.log('Carrier humidity data received:', carrierHumidityDataResult);
+        console.log('Carrier humidity chart data:', carrierHumidityDataResult?.carrierHumidityData);
+        console.log('Carrier humidity stats:', carrierHumidityDataResult?.carrierHumidityStats);
+        if (carrierHumidityDataResult && typeof carrierHumidityDataResult === 'object') {
+          setCarrierHumidityData(carrierHumidityDataResult);
+        } else {
+          console.warn('Invalid carrier humidity data received:', carrierHumidityDataResult);
+        }
+      } catch (carrierHumidityError) {
+        console.error('Error fetching carrier humidity data:', carrierHumidityError);
+      }
     } catch (err) {
       console.error('Error fetching filtered analytics:', err);
+      console.error('Error details:', {
+        message: err.message,
+        stack: err.stack,
+        params: params
+      });
     }
   };
 
@@ -745,12 +770,22 @@ const Analysis = () => {
   const HumidityChart = () => {
     const { humidityTrendData, humidityStats } = humidityData;
     
+    console.log('HumidityChart - humidityData:', humidityData);
+    console.log('HumidityChart - humidityTrendData:', humidityTrendData);
+    console.log('HumidityChart - humidityStats:', humidityStats);
+    
     if (!humidityTrendData || humidityTrendData.length === 0) {
       return (
         <div className="no-data">
           <div>No humidity data available</div>
           <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
             Total readings processed: {humidityStats?.totalReadings || 0}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            Debug: humidityData keys: {Object.keys(humidityData || {}).join(', ')}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            TrendData length: {humidityTrendData ? humidityTrendData.length : 'undefined'}
           </div>
         </div>
       );
@@ -1021,6 +1056,10 @@ const Analysis = () => {
   const CarrierHumidityChart = () => {
     const { carrierHumidityData: chartData, carrierHumidityStats } = carrierHumidityData;
     
+    console.log('CarrierHumidityChart - carrierHumidityData:', carrierHumidityData);
+    console.log('CarrierHumidityChart - chartData:', chartData);
+    console.log('CarrierHumidityChart - carrierHumidityStats:', carrierHumidityStats);
+    
     if (!chartData || chartData.length === 0) {
       return (
         <div className="no-data">
@@ -1030,6 +1069,12 @@ const Analysis = () => {
           </div>
           <div style={{ fontSize: '0.8rem', color: '#999' }}>
             Total carriers: {carrierHumidityStats?.totalCarriers || 0}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            Debug: carrierHumidityData keys: {Object.keys(carrierHumidityData || {}).join(', ')}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            ChartData length: {chartData ? chartData.length : 'undefined'}
           </div>
         </div>
       );
