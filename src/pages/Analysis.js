@@ -775,19 +775,29 @@ const Analysis = () => {
     console.log('HumidityChart - humidityData:', humidityData);
     console.log('HumidityChart - humidityTrendData:', humidityTrendData);
     console.log('HumidityChart - humidityStats:', humidityStats);
+    console.log('HumidityChart - render check:', {
+      hasData: humidityTrendData && humidityTrendData.length > 0,
+      dataLength: humidityTrendData ? humidityTrendData.length : 0,
+      dataType: typeof humidityTrendData
+    });
     
-    if (!humidityTrendData || humidityTrendData.length === 0) {
+    // Force component update
+    React.useEffect(() => {
+      console.log('HumidityChart - useEffect triggered, data changed:', humidityTrendData?.length);
+    }, [humidityTrendData]);
+
+    if (!humidityTrendData || !Array.isArray(humidityTrendData) || humidityTrendData.length === 0) {
       return (
-        <div className="no-data">
-          <div>No humidity data available</div>
-          <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
-            Total readings processed: {humidityStats?.totalReadings || 0}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#999' }}>
-            Debug: humidityData keys: {Object.keys(humidityData || {}).join(', ')}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#999' }}>
-            TrendData length: {humidityTrendData ? humidityTrendData.length : 'undefined'}
+        <div className="chart-container">
+          <h4 className="chart-title">💧 Average Shipment Humidity Over Time</h4>
+          <div className="no-data" style={{ padding: '2rem', textAlign: 'center', backgroundColor: '#f8f9fa' }}>
+            <div style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>No humidity data available</div>
+            <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
+              Total readings processed: {humidityStats?.totalReadings || 0}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: '#999' }}>
+              Debug info: {typeof humidityTrendData} with {humidityTrendData ? humidityTrendData.length : 0} items
+            </div>
           </div>
         </div>
       );
@@ -802,8 +812,16 @@ const Analysis = () => {
     console.log('HumidityChart - chartData processed:', chartData);
 
     return (
-      <div className="chart-container" key={`humidity-${humidityTrendData.length}`}>
+      <div className="chart-container" key={`humidity-${humidityTrendData.length}-${Date.now()}`} style={{ 
+        border: '2px solid #4fc3f7', 
+        marginBottom: '2rem', 
+        padding: '1rem',
+        backgroundColor: '#fff'
+      }}>
         <h4 className="chart-title">💧 Average Shipment Humidity Over Time</h4>
+        <div style={{ backgroundColor: '#f0f0f0', padding: '0.5rem', fontSize: '0.8rem', marginBottom: '1rem' }}>
+          Rendering {humidityTrendData.length} data points | Sample: {JSON.stringify(chartData[0] || {})}
+        </div>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
@@ -1090,8 +1108,16 @@ const Analysis = () => {
     console.log('CarrierHumidityChart - sortedChartData:', sortedChartData);
 
     return (
-      <div className="chart-container" key={`carrier-humidity-${chartData.length}`}>
+      <div className="chart-container" key={`carrier-humidity-${chartData.length}-${Date.now()}`} style={{ 
+        border: '2px solid #2196f3', 
+        marginBottom: '2rem', 
+        padding: '1rem',
+        backgroundColor: '#fff'
+      }}>
         <h4 className="chart-title">💧 Average Leg Humidity by Carrier</h4>
+        <div style={{ backgroundColor: '#e3f2fd', padding: '0.5rem', fontSize: '0.8rem', marginBottom: '1rem' }}>
+          Rendering {sortedChartData.length} carriers | Sample: {JSON.stringify(sortedChartData[0] || {})}
+        </div>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={sortedChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
