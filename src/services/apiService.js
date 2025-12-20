@@ -82,6 +82,7 @@ export const trackerApi = {
   getAll: () => apiService.get('/registered_trackers'),
   create: (tracker) => apiService.post('/registered_trackers', tracker),
   delete: (trackerIds) => apiService.delete('/registered_trackers', { tracker_ids: trackerIds }),
+  getLocations: () => apiService.get('/tracker_locations'),
 };
 
 export const shipmentApi = {

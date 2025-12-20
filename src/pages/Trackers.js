@@ -1,9 +1,21 @@
 import React, { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
 import { trackerApi } from '../services/apiService';
 import './Trackers.css';
+import 'leaflet/dist/leaflet.css';
+
+// Fix for default markers not showing
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-shadow.png',
+});
 
 const Trackers = () => {
   const [trackers, setTrackers] = useState([]);
+  const [trackerLocations, setTrackerLocations] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -24,31 +36,41 @@ const Trackers = () => {
 
   useEffect(() => {
     let mounted = true;
-    const fetchTrackers = async () => {
+    const fetchData = async () => {
       try {
-        const data = await trackerApi.getAll();
+        const [trackersData, locationsData] = await Promise.all([
+          trackerApi.getAll(),
+          trackerApi.getLocations()
+        ]);
+        
         if (mounted) {
-          setTrackers(data);
+          setTrackers(trackersData);
+          setTrackerLocations(locationsData);
         }
       } catch (err) {
-        if (mounted) setError(err.message || 'Failed to load trackers');
+        if (mounted) setError(err.message || 'Failed to load data');
       } finally {
         if (mounted) setLoading(false);
       }
     };
-    fetchTrackers();
+    
+    fetchData();
     return () => { mounted = false; };
   }, [API_BASE]);
 
-  // Function to fetch trackers (reusable)
+  // Function to fetch trackers and locations (reusable)
   const fetchTrackers = async () => {
     try {
       setLoading(true);
-      const data = await trackerApi.getAll();
-      setTrackers(data);
+      const [trackersData, locationsData] = await Promise.all([
+        trackerApi.getAll(),
+        trackerApi.getLocations()
+      ]);
+      setTrackers(trackersData);
+      setTrackerLocations(locationsData);
       setError(null);
     } catch (err) {
-      setError(err.message || 'Failed to load trackers');
+      setError(err.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -157,8 +179,8 @@ const Trackers = () => {
     }
   };
 
-  // Mock data for battery, last connected, and location (you can replace this with real data)
-  const getMockTrackerData = (trackerId) => {
+  // Get tracker data combining mock data with real location data
+  const getTrackerData = (trackerId) => {
     const mockData = {
       'J95720': { battery: 63, lastConnected: 'Jul 07, 09:16AM (36 minutes ago)', location: 'Arbenor e Astrit Dehari, Pristina 10000, Kosovo' },
       'J000009': { battery: 100, lastConnected: 'Apr 10, 12:25AM (3 months ago)', location: '' },
@@ -170,7 +192,25 @@ const Trackers = () => {
       'J000015': { battery: 100, lastConnected: 'Apr 10, 12:25AM (3 months ago)', location: '' },
       'J00000002': { battery: null, lastConnected: 'Apr 10, 12:25AM (3 months ago)', location: '' }
     };
-    return mockData[trackerId] || { battery: null, lastConnected: 'Unknown', location: '' };
+    
+    const defaultData = mockData[trackerId] || { battery: null, lastConnected: 'Unknown', location: '' };
+    const locationData = trackerLocations[trackerId];
+    
+    // Use real data when available
+    if (locationData) {
+      return {
+        ...defaultData,
+        battery: locationData.battery || defaultData.battery,
+        lastConnected: locationData.timestamp ? 
+          new Date(locationData.timestamp).toLocaleString() + ' (Live Data)' : 
+          defaultData.lastConnected,
+        location: locationData.latitude && locationData.longitude ? 
+          `${locationData.latitude.toFixed(4)}, ${locationData.longitude.toFixed(4)}` : 
+          defaultData.location
+      };
+    }
+    
+    return defaultData;
   };
 
   const filteredTrackers = trackers.filter(tracker => {
@@ -181,8 +221,8 @@ const Trackers = () => {
   });
 
   const deviceTypes = ['All', ...new Set(trackers.map(t => t.device_type).filter(Boolean))];
-  const activeCount = trackers.filter(t => getMockTrackerData(t.tracker_id).battery > 0).length;
-  const offlineCount = trackers.filter(t => getMockTrackerData(t.tracker_id).battery === null).length;
+  const activeCount = trackers.filter(t => getTrackerData(t.tracker_id).battery > 0).length;
+  const offlineCount = trackers.filter(t => getTrackerData(t.tracker_id).battery === null).length;
 
   return (
     <div className="trackers-layout">
@@ -311,8 +351,8 @@ const Trackers = () => {
                 <tr><td colSpan="6" className="empty-row">No trackers found</td></tr>
               ) : (
                 filteredTrackers.map((tracker) => {
-                  const mockData = getMockTrackerData(tracker.tracker_id);
-                  const isActive = mockData.battery > 0;
+                  const trackerData = getTrackerData(tracker.tracker_id);
+                  const isActive = trackerData.battery > 0;
                   
                   return (
                     <tr key={tracker.tracker_id} className="tracker-row">
@@ -326,9 +366,9 @@ const Trackers = () => {
                       <td className="tracker-id-cell">{tracker.tracker_id}</td>
                       <td className="device-type-cell">{tracker.device_type || 'Unknown'}</td>
                       <td className="battery-cell">
-                        {mockData.battery !== null ? (
-                          <span className={`battery-level ${mockData.battery < 30 ? 'critical' : mockData.battery < 70 ? 'low' : 'good'}`}>
-                            {mockData.battery}%
+                        {trackerData.battery !== null ? (
+                          <span className={`battery-level ${trackerData.battery < 30 ? 'critical' : trackerData.battery < 70 ? 'low' : 'good'}`}>
+                            {trackerData.battery}%
                           </span>
                         ) : (
                           <span className="battery-unknown">—</span>
@@ -339,7 +379,7 @@ const Trackers = () => {
                           {isActive ? 'Active' : 'Offline'}
                         </span>
                       </td>
-                      <td className="last-seen-cell">{mockData.lastConnected}</td>
+                      <td className="last-seen-cell">{trackerData.lastConnected}</td>
                     </tr>
                   );
                 })
@@ -367,19 +407,53 @@ const Trackers = () => {
       {/* Right Panel - Map */}
       <div className="map-panel">
         <div className="map-content">
-          <div className="map-placeholder">
-            <div className="map-overlay">
-              <div className="tracker-marker active">
-                <span className="marker-label">SOT-1059</span>
-                <div className="marker-dot"></div>
-              </div>
-              <div className="location-stats">
-                <div className="stat-circle blue">47</div>
-                <div className="stat-circle green">37</div>
-                <div className="stat-circle small">2</div>
+          {Object.keys(trackerLocations).length > 0 ? (
+            <MapContainer
+              center={[42.3601, -71.0589]} // Default center (Boston)
+              zoom={10}
+              style={{ height: '100%', width: '100%' }}
+            >
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              />
+              {Object.values(trackerLocations).map((location) => {
+                if (location.latitude && location.longitude) {
+                  return (
+                    <Marker
+                      key={location.tracker_id}
+                      position={[location.latitude, location.longitude]}
+                    >
+                      <Popup>
+                        <div className="marker-popup">
+                          <h4>Tracker: {location.tracker_id}</h4>
+                          <p><strong>Last Update:</strong> {new Date(location.timestamp).toLocaleString()}</p>
+                          {location.battery && <p><strong>Battery:</strong> {location.battery}%</p>}
+                          {location.temperature && <p><strong>Temperature:</strong> {location.temperature}°C</p>}
+                          {location.speed && <p><strong>Speed:</strong> {location.speed} km/h</p>}
+                          <p><strong>Coordinates:</strong> {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}</p>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                }
+                return null;
+              })}
+            </MapContainer>
+          ) : (
+            <div className="map-placeholder">
+              <div className="map-loading">
+                {loading ? (
+                  <div className="loading-spinner">Loading map data...</div>
+                ) : (
+                  <div className="no-data">
+                    <h3>No tracker locations available</h3>
+                    <p>Tracker location data will appear here when available</p>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
