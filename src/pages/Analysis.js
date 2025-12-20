@@ -52,9 +52,30 @@ const Analysis = () => {
       totalReadings: 0
     }
   });
+  const [humidityData, setHumidityData] = useState({
+    humidityTrendData: [],
+    humidityStats: {
+      overallAverage: 0,
+      overallMin: 0,
+      overallMax: 0,
+      totalDays: 0,
+      totalReadings: 0
+    }
+  });
   const [carrierTemperatureData, setCarrierTemperatureData] = useState({
     carrierTemperatureData: [],
     carrierTemperatureStats: {
+      overallAverage: 0,
+      overallMin: 0,
+      overallMax: 0,
+      totalCarriers: 0,
+      totalReadings: 0,
+      totalTrackers: 0
+    }
+  });
+  const [carrierHumidityData, setCarrierHumidityData] = useState({
+    carrierHumidityData: [],
+    carrierHumidityStats: {
       overallAverage: 0,
       overallMin: 0,
       overallMax: 0,
@@ -113,13 +134,52 @@ const Analysis = () => {
       console.log('Temperature data received:', tempData);
       setTemperatureData(tempData);
 
+      // Fetch humidity data separately
+      console.log('Fetching humidity data with params:', JSON.stringify(params));
+      try {
+        const humidityDataResult = await analysisApi.getShipmentHumidityData();
+        console.log('Humidity data received:', humidityDataResult);
+        console.log('Humidity trend data:', humidityDataResult?.humidityTrendData);
+        console.log('Humidity stats:', humidityDataResult?.humidityStats);
+        if (humidityDataResult && typeof humidityDataResult === 'object') {
+          setHumidityData(humidityDataResult);
+        } else {
+          console.warn('Invalid humidity data received:', humidityDataResult);
+        }
+      } catch (humidityError) {
+        console.error('Error fetching humidity data:', humidityError);
+      }
+
       // Fetch carrier temperature data separately
       console.log('Fetching carrier temperature data with params:', JSON.stringify(params));
       const carrierTempData = await analysisApi.getCarrierTemperatureData();
       console.log('Carrier temperature data received:', carrierTempData);
       setCarrierTemperatureData(carrierTempData);
+
+      // Fetch carrier humidity data separately
+      console.log('Fetching carrier humidity data with params:', JSON.stringify(params));
+      try {
+        const carrierHumidityDataResult = await analysisApi.getCarrierHumidityData();
+        console.log('Carrier humidity data received:', carrierHumidityDataResult);
+        console.log('Carrier humidity chart data:', carrierHumidityDataResult?.carrierHumidityData);
+        console.log('Carrier humidity stats:', carrierHumidityDataResult?.carrierHumidityStats);
+        if (carrierHumidityDataResult && typeof carrierHumidityDataResult === 'object') {
+          setCarrierHumidityData(carrierHumidityDataResult);
+        } else {
+          console.warn('Invalid carrier humidity data received:', carrierHumidityDataResult);
+        }
+      } catch (carrierHumidityError) {
+        console.error('Error fetching carrier humidity data:', carrierHumidityError);
+      }
     } catch (err) {
       console.error('Error fetching filtered analytics:', err);
+      console.error('Error details:', {
+        message: err.message,
+        stack: err.stack,
+        carrier: carrier || selectedCarrier,
+        startDate: start || startDate,
+        endDate: end || endDate
+      });
     }
   };
 
@@ -685,14 +745,154 @@ const Analysis = () => {
           </div>
         </div>
 
+      </div>
+    );
+  };
+
+  // Custom tooltip for humidity chart
+  const HumidityTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="custom-tooltip">
+          <p className="tooltip-label">{`Date: ${label}`}</p>
+          {payload.map((entry, index) => (
+            <p key={index} style={{ color: entry.color }}>
+              {entry.dataKey === 'averageHumidity' && `Average: ${entry.value}%`}
+              {entry.dataKey === 'minHumidity' && `Min: ${entry.value}%`}
+              {entry.dataKey === 'maxHumidity' && `Max: ${entry.value}%`}
+            </p>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Humidity Chart Component
+  const HumidityChart = () => {
+    const { humidityTrendData, humidityStats } = humidityData;
+    
+    console.log('HumidityChart - humidityData:', humidityData);
+    console.log('HumidityChart - humidityTrendData:', humidityTrendData);
+    console.log('HumidityChart - humidityStats:', humidityStats);
+    console.log('HumidityChart - render check:', {
+      hasData: humidityTrendData && humidityTrendData.length > 0,
+      dataLength: humidityTrendData ? humidityTrendData.length : 0,
+      dataType: typeof humidityTrendData
+    });
+    
+    // Force component update
+    React.useEffect(() => {
+      console.log('HumidityChart - useEffect triggered, data changed:', humidityTrendData?.length);
+    }, [humidityTrendData]);
+
+    if (!humidityTrendData || !Array.isArray(humidityTrendData) || humidityTrendData.length === 0) {
+      return (
+        <div className="chart-container">
+          <h4 className="chart-title">💧 Average Shipment Humidity Over Time</h4>
+          <div className="no-data" style={{ padding: '2rem', textAlign: 'center', backgroundColor: '#f8f9fa' }}>
+            <div style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>No humidity data available</div>
+            <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
+              Total readings processed: {humidityStats?.totalReadings || 0}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: '#999' }}>
+              Debug info: {typeof humidityTrendData} with {humidityTrendData ? humidityTrendData.length : 0} items
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Process data for chart
+    const chartData = humidityTrendData.map(item => ({
+      ...item,
+      date: formatDate(item.date)
+    }));
+
+    console.log('HumidityChart - chartData processed:', chartData);
+
+    return (
+      <div className="chart-container" key={`humidity-${humidityTrendData.length}-${Date.now()}`}>
+        <h4 className="chart-title">💧 Average Shipment Humidity Over Time</h4>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
+            <XAxis 
+              dataKey="date" 
+              fontSize={12}
+              stroke="#666"
+            />
+            <YAxis 
+              label={{ 
+                value: 'Humidity (%)', 
+                angle: -90, 
+                position: 'insideLeft' 
+              }}
+              fontSize={12}
+              stroke="#666"
+              domain={['dataMin - 2', 'dataMax + 2']}
+            />
+            <Tooltip content={<HumidityTooltip />} />
+            <Legend />
+            <Line 
+              type="monotone" 
+              dataKey="averageHumidity" 
+              stroke="#4fc3f7" 
+              strokeWidth={3}
+              dot={{ fill: '#4fc3f7', strokeWidth: 2, r: 4 }}
+              name="Average Humidity"
+            />
+            <Line 
+              type="monotone" 
+              dataKey="minHumidity" 
+              stroke="#81c784" 
+              strokeWidth={2}
+              strokeDasharray="5,5"
+              dot={{ fill: '#81c784', strokeWidth: 1, r: 3 }}
+              name="Min Humidity"
+            />
+            <Line 
+              type="monotone" 
+              dataKey="maxHumidity" 
+              stroke="#64b5f6" 
+              strokeWidth={2}
+              strokeDasharray="5,5"
+              dot={{ fill: '#64b5f6', strokeWidth: 1, r: 3 }}
+              name="Max Humidity"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+        
+        {/* Humidity Summary */}
+        <div className="performance-summary">
+          <div className="performance-item">
+            <span className="performance-label">Overall Avg:</span>
+            <span className="performance-value" style={{ color: '#4fc3f7' }}>
+              {humidityStats.overallAverage}%
+            </span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Min Recorded:</span>
+            <span className="performance-value" style={{ color: '#81c784' }}>
+              {humidityStats.overallMin}%
+            </span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Max Recorded:</span>
+            <span className="performance-value" style={{ color: '#64b5f6' }}>
+              {humidityStats.overallMax}%
+            </span>
+          </div>
+        </div>
+
         <div className="chart-summary">
-          <span>Total days: {temperatureStats.totalDays}</span>
+          <span>Total days: {humidityStats.totalDays}</span>
           <span>•</span>
-          <span>Total readings: {temperatureStats.totalReadings}</span>
+          <span>Total readings: {humidityStats.totalReadings}</span>
           <span>•</span>
-          <span>{temperatureTrendData.length} daily data points</span>
+          <span>{humidityTrendData.length} daily data points</span>
           <span>•</span>
-          <span>Temperature range: {(temperatureStats.overallMax - temperatureStats.overallMin).toFixed(1)}°C</span>
+          <span>Humidity range: {(humidityStats.overallMax - humidityStats.overallMin).toFixed(1)}%</span>
         </div>
       </div>
     );
@@ -833,6 +1033,158 @@ const Analysis = () => {
           <span>Active trackers: {carrierTemperatureStats.totalTrackers}</span>
           <span>•</span>
           <span>Temp range: {(carrierTemperatureStats.overallMax - carrierTemperatureStats.overallMin).toFixed(1)}°C</span>
+        </div>
+      </div>
+    );
+  };
+
+  // Custom tooltip for carrier humidity chart
+  const CarrierHumidityTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      
+      return (
+        <div className="custom-tooltip">
+          <p className="tooltip-label">{`Carrier: ${label}`}</p>
+          {payload.map((entry, index) => (
+            <p key={index} style={{ color: entry.color }}>
+              {entry.dataKey === 'averageHumidity' && `Average: ${entry.value.toFixed(1)}%`}
+              {entry.dataKey === 'minHumidity' && `Min: ${entry.value.toFixed(1)}%`}
+              {entry.dataKey === 'maxHumidity' && `Max: ${entry.value.toFixed(1)}%`}
+            </p>
+          ))}
+          <p className="tooltip-count">
+            <span style={{ color: '#666' }}>
+              Readings: {data.readingCount}<br/>
+              Trackers: {data.trackerCount}<br/>
+              Range: {data.humidityRange}%
+            </span>
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Carrier Humidity Chart Component
+  const CarrierHumidityChart = () => {
+    const { carrierHumidityData: chartData, carrierHumidityStats } = carrierHumidityData;
+    
+    console.log('CarrierHumidityChart - carrierHumidityData:', carrierHumidityData);
+    console.log('CarrierHumidityChart - chartData:', chartData);
+    console.log('CarrierHumidityChart - carrierHumidityStats:', carrierHumidityStats);
+    
+    if (!chartData || chartData.length === 0) {
+      return (
+        <div className="no-data">
+          <div>No carrier humidity data available</div>
+          <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
+            Total readings processed: {carrierHumidityStats?.totalReadings || 0}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            Total carriers: {carrierHumidityStats?.totalCarriers || 0}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            Debug: carrierHumidityData keys: {Object.keys(carrierHumidityData || {}).join(', ')}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#999' }}>
+            ChartData length: {chartData ? chartData.length : 'undefined'}
+          </div>
+        </div>
+      );
+    }
+
+    // Sort data by average humidity for better visualization
+    const sortedChartData = [...chartData].sort((a, b) => b.averageHumidity - a.averageHumidity);
+
+    console.log('CarrierHumidityChart - sortedChartData:', sortedChartData);
+
+    return (
+      <div className="chart-container" key={`carrier-humidity-${chartData.length}-${Date.now()}`}>
+        <h4 className="chart-title">💧 Average Leg Humidity by Carrier</h4>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={sortedChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
+            <XAxis 
+              dataKey="carrier" 
+              fontSize={11}
+              stroke="#666"
+              angle={-45}
+              textAnchor="end"
+              height={60}
+              interval={0}
+            />
+            <YAxis 
+              label={{ 
+                value: 'Humidity (%)', 
+                angle: -90, 
+                position: 'insideLeft' 
+              }}
+              fontSize={12}
+              stroke="#666"
+              domain={['dataMin - 1', 'dataMax + 1']}
+            />
+            <Tooltip content={<CarrierHumidityTooltip />} />
+            <Legend />
+            <Line 
+              type="monotone" 
+              dataKey="averageHumidity" 
+              stroke="#2196f3" 
+              strokeWidth={3}
+              dot={{ fill: '#2196f3', strokeWidth: 2, r: 5 }}
+              name="Average Humidity"
+            />
+            <Line 
+              type="monotone" 
+              dataKey="minHumidity" 
+              stroke="#4caf50" 
+              strokeWidth={2}
+              strokeDasharray="3,3"
+              dot={{ fill: '#4caf50', strokeWidth: 1, r: 3 }}
+              name="Min Humidity"
+            />
+            <Line 
+              type="monotone" 
+              dataKey="maxHumidity" 
+              stroke="#03a9f4" 
+              strokeWidth={2}
+              strokeDasharray="3,3"
+              dot={{ fill: '#03a9f4', strokeWidth: 1, r: 3 }}
+              name="Max Humidity"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+        
+        {/* Carrier Humidity Summary */}
+        <div className="performance-summary">
+          <div className="performance-item">
+            <span className="performance-label">Overall Avg:</span>
+            <span className="performance-value" style={{ color: '#2196f3' }}>
+              {carrierHumidityStats.overallAverage}%
+            </span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Driest Carrier:</span>
+            <span className="performance-value" style={{ color: '#4caf50' }}>
+              {carrierHumidityStats.overallMin}%
+            </span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Most Humid Carrier:</span>
+            <span className="performance-value" style={{ color: '#03a9f4' }}>
+              {carrierHumidityStats.overallMax}%
+            </span>
+          </div>
+        </div>
+
+        <div className="chart-summary">
+          <span>Total carriers: {carrierHumidityStats.totalCarriers}</span>
+          <span>•</span>
+          <span>Total readings: {carrierHumidityStats.totalReadings}</span>
+          <span>•</span>
+          <span>Active trackers: {carrierHumidityStats.totalTrackers}</span>
+          <span>•</span>
+          <span>Humidity range: {(carrierHumidityStats.overallMax - carrierHumidityStats.overallMin).toFixed(1)}%</span>
         </div>
       </div>
     );
@@ -1016,6 +1368,11 @@ const Analysis = () => {
             <div className="chart-section">
               <TemperatureChart />
             </div>
+
+            {/* Add Humidity Chart */}
+            <div className="chart-section">
+              <HumidityChart />
+            </div>
           </div>
 
           {/* Right Column - Carrier Performance */}
@@ -1049,6 +1406,11 @@ const Analysis = () => {
             {/* Add Carrier Temperature Chart */}
             <div className="chart-section">
               <CarrierTemperatureChart />
+            </div>
+
+            {/* Add Carrier Humidity Chart */}
+            <div className="chart-section">
+              <CarrierHumidityChart />
             </div>
           </div>
         </div>
