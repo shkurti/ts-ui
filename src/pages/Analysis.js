@@ -812,12 +812,7 @@ const Analysis = () => {
     console.log('HumidityChart - chartData processed:', chartData);
 
     return (
-      <div className="chart-container" key={`humidity-${humidityTrendData.length}-${Date.now()}`} style={{ 
-        border: '2px solid #4fc3f7', 
-        marginBottom: '2rem', 
-        padding: '1rem',
-        backgroundColor: '#fff'
-      }}>
+      <div className="chart-container" key={`humidity-${humidityTrendData.length}-${Date.now()}`}>
         <h4 className="chart-title">💧 Average Shipment Humidity Over Time</h4>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
@@ -1105,12 +1100,7 @@ const Analysis = () => {
     console.log('CarrierHumidityChart - sortedChartData:', sortedChartData);
 
     return (
-      <div className="chart-container" key={`carrier-humidity-${chartData.length}-${Date.now()}`} style={{ 
-        border: '2px solid #2196f3', 
-        marginBottom: '2rem', 
-        padding: '1rem',
-        backgroundColor: '#fff'
-      }}>
+      <div className="chart-container" key={`carrier-humidity-${chartData.length}-${Date.now()}`}>
         <h4 className="chart-title">💧 Average Leg Humidity by Carrier</h4>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={sortedChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
