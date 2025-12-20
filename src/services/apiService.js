@@ -82,6 +82,7 @@ export const trackerApi = {
   getAll: () => apiService.get('/registered_trackers'),
   create: (tracker) => apiService.post('/registered_trackers', tracker),
   delete: (trackerIds) => apiService.delete('/registered_trackers', { tracker_ids: trackerIds }),
+  getLocations: () => apiService.get('/tracker_locations'),
 };
 
 export const shipmentApi = {
@@ -90,8 +91,18 @@ export const shipmentApi = {
   delete: (shipmentId) => apiService.delete(`/shipment_meta/${shipmentId}`),
   getRouteData: (trackerId, start, end, timezone = 'America/New_York') => 
     apiService.get(`/shipment_route_data?tracker_id=${trackerId}&start=${start}&end=${end}&timezone=${timezone}`),
-  getAlerts: () => apiService.get('/shipment_alerts'),
-  getAlertEvents: () => apiService.get('/shipment_alert_events'),
+  getAlerts: (shipmentId, trackerId) => {
+    const params = new URLSearchParams();
+    if (shipmentId) params.append('shipment_id', shipmentId);
+    if (trackerId) params.append('tracker_id', trackerId);
+    return apiService.get(`/shipment_alerts?${params}`);
+  },
+  getAlertEvents: (shipmentId, trackerId) => {
+    const params = new URLSearchParams();
+    if (shipmentId) params.append('shipment_id', shipmentId);
+    if (trackerId) params.append('tracker_id', trackerId);
+    return apiService.get(`/shipment_alert_events?${params}`);
+  },
 };
 
 export const analysisApi = {

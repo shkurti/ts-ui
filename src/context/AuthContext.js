@@ -19,9 +19,11 @@ export const AuthProvider = ({ children }) => {
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
   useEffect(() => {
+    console.log('AuthContext: token changed', { hasToken: !!token });
     if (token) {
       fetchCurrentUser();
     } else {
+      console.log('AuthContext: no token, setting loading to false');
       setLoading(false);
     }
   }, [token]);
@@ -56,14 +58,20 @@ export const AuthProvider = ({ children }) => {
       formData.append('username', email);
       formData.append('password', password);
 
+      console.log('Attempting login for:', email);
+
       const response = await fetch(`${API_BASE_URL}/auth/jwt/login`, {
         method: 'POST',
         body: formData,
       });
 
+      console.log('Login response status:', response.status);
+
       if (response.ok) {
         const data = await response.json();
         const newToken = data.access_token;
+        
+        console.log('Login successful, token received');
         
         localStorage.setItem('token', newToken);
         setToken(newToken);
@@ -74,6 +82,7 @@ export const AuthProvider = ({ children }) => {
         return { success: true };
       } else {
         const errorData = await response.json();
+        console.error('Login failed:', errorData);
         return { 
           success: false, 
           error: errorData.detail || 'Login failed' 
@@ -119,6 +128,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUserWithToken = async (authToken) => {
     try {
+      console.log('Fetching user data with token');
       const response = await fetch(`${API_BASE_URL}/auth/me`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -126,9 +136,14 @@ export const AuthProvider = ({ children }) => {
         },
       });
 
+      console.log('Fetch user response status:', response.status);
+
       if (response.ok) {
         const userData = await response.json();
+        console.log('User data received:', userData);
         setUser(userData);
+      } else {
+        console.error('Failed to fetch user data');
       }
     } catch (error) {
       console.error('Error fetching user data:', error);

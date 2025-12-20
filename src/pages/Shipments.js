@@ -5,6 +5,8 @@ import L from 'leaflet';
 import './Shipments.css';
 import { TriangleAlert } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import apiService, { shipmentApi, trackerApi } from '../services/apiService';
+import { useAuth } from '../context/AuthContext';
 
 // Fix for default markers
 delete L.Icon.Default.prototype._getIconUrl;
@@ -15,6 +17,7 @@ L.Icon.Default.mergeOptions({
 });
 
 const Shipments = () => {
+  const { user, isAuthenticated, loading } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
   const [selectedShipments, setSelectedShipments] = useState([]);
@@ -67,6 +70,9 @@ const Shipments = () => {
   const receivedAlertIdsRef = useRef(new Set());
   const alertEventIdsRef = useRef(new Set());
 
+  // LocalStorage key for persisting selected shipment
+  const SELECTED_SHIPMENT_KEY = 'selectedShipmentId';
+
   const normalizeLocation = (raw) => {
     if (!raw) return null;
     const lat = parseFloat(raw.latitude ?? raw.Lat ?? raw.lat);
@@ -79,18 +85,25 @@ const Shipments = () => {
 
   // Fetch shipments and trackers from backend on component mount
   useEffect(() => {
+    console.log('Shipments useEffect triggered', { loading });
+    
+    // Only fetch data if not loading (ProtectedRoute already handles auth)
+    if (loading) {
+      console.log('Still loading, skipping API calls');
+      return;
+    }
+
+    console.log('Making authenticated API calls');
+
     const fetchShipments = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta');
-        //const response = await fetch('http://localhost:8000/shipment_meta');
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Fetched shipments:', data); // Debug log
-          setShipments(data);
-        } else {
-          console.error('Failed to fetch shipments');
-        }
+        const data = await shipmentApi.getAll();
+        console.log('Fetched shipments:', data); // Debug log
+        setShipments(data);
+        
+        // Note: Removed automatic shipment restoration to show main page by default
+        // Users can manually select shipments as before
       } catch (error) {
         console.error('Error fetching shipments:', error);
       } finally {
@@ -100,14 +113,8 @@ const Shipments = () => {
 
     const fetchTrackers = async () => {
       try {
-        const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/registered_trackers');
-        //const response = await fetch('http://localhost:8000/registered_trackers');
-        if (response.ok) {
-          const data = await response.json();
-          setTrackers(data);
-        } else {
-          console.error('Failed to fetch trackers');
-        }
+        const data = await trackerApi.getAll();
+        setTrackers(data);
       } catch (error) {
         console.error('Error fetching trackers:', error);
       }
@@ -115,7 +122,7 @@ const Shipments = () => {
 
     fetchShipments();
     fetchTrackers();
-  }, []);
+  }, [loading]); // Only depend on loading from AuthContext
 
   // Filter shipments based on search term
   const filteredShipments = shipments.filter(shipment => {
@@ -150,11 +157,7 @@ const Shipments = () => {
     if (selectedShipments.length > 0) {
       try {
         const deletePromises = selectedShipments.map(shipmentId =>
-          fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta/${shipmentId}`, {
-          //fetch(`http://localhost:8000/shipment_meta/${shipmentId}`, {
-
-            method: 'DELETE'
-          })
+          shipmentApi.delete(shipmentId)
         );
 
         await Promise.all(deletePromises);
@@ -298,34 +301,19 @@ const Shipments = () => {
         }))
       };
 
-      const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(shipmentData),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Shipment created successfully:', result);
-        
-        // Refetch all shipments
-        try {
-          const fetchResponse = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta');
-          if (fetchResponse.ok) {
-            const updatedShipments = await fetchResponse.json();
-            setShipments(updatedShipments);
-          }
-        } catch (fetchError) {
-          console.error('Error refetching shipments:', fetchError);
-        }
-        
-        alert('Shipment created successfully!');
-        handleCancelForm();
-      } else {
-        const error = await response.json();
-        console.error('Error creating shipment:', error);
-        alert('Failed to create shipment.');
+      const result = await shipmentApi.create(shipmentData);
+      console.log('Shipment created successfully:', result);
+      
+      // Refetch all shipments
+      try {
+        const updatedShipments = await shipmentApi.getAll();
+        setShipments(updatedShipments);
+      } catch (fetchError) {
+        console.error('Error refetching shipments:', fetchError);
       }
+      
+      alert('Shipment created successfully!');
+      handleCancelForm();
     } catch (error) {
       console.error('Error:', error);
       alert('An error occurred while creating the shipment.');
@@ -372,6 +360,9 @@ const Shipments = () => {
   };
   // Handle shipment detail view
   const handleShipmentClick = async (shipment) => {
+    // Save selected shipment to localStorage for persistence
+    localStorage.setItem(SELECTED_SHIPMENT_KEY, shipment._id);
+    
     setSelectedShipmentDetail(shipment);
     setActiveTab('sensors');
     
@@ -381,6 +372,7 @@ const Shipments = () => {
     setBatteryData([]);
     setSpeedData([]);
     setLocationData([]);
+    console.log('Clearing alerts data for new shipment');
     setAlertsData([]);
     setAlertEvents([]);
     receivedAlertIdsRef.current = new Set();
@@ -401,21 +393,8 @@ const Shipments = () => {
 
     setIsLoadingSensorData(true);
     try {
-      const params = new URLSearchParams({
-        tracker_id: trackerId,
-        start: shipDate,
-        end: arrivalDate,
-        timezone: userTimezone
-      });
-      console.log('Sensor data fetch params:', params.toString());
-
-      
-      //const response = await fetch(`http://localhost:8000/shipment_route_data?${params}`);
-      const response = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_route_data?${params}`);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Sensor data fetch params:', params.toString());
+      const data = await shipmentApi.getRouteData(trackerId, shipDate, arrivalDate, userTimezone);
+      console.log('Sensor data fetched successfully');
         
         // Process sensor data - timestamps are now in local time
         setTemperatureData(
@@ -491,16 +470,13 @@ const Shipments = () => {
             Math.abs(item.longitude) <= 180
           )
         );
-      } else {
-        console.error('Failed to fetch sensor data');
-      }
     } catch (error) {
       console.error('Error fetching sensor data:', error);
     } finally {
       setIsLoadingSensorData(false);
     }
 
-    fetchAlertsForShipment(shipment._id, trackerId);
+    fetchAlertsForShipment(shipment._id, trackerId, { shipment });
     fetchAlertEvents(shipment._id, trackerId, { start: shipDate, end: arrivalDate });
   };
 
@@ -546,24 +522,87 @@ const Shipments = () => {
   };
 
   const fetchAlertsForShipment = async (shipmentId, trackerId, options = {}) => {
-    const { skipLoading = false } = options;
+    const { skipLoading = false, shipment } = options;
     if (!skipLoading) setIsLoadingAlerts(true);
     try {
-      const params = new URLSearchParams({ timezone: userTimezone });
-      if (shipmentId) params.append("shipment_id", shipmentId);
-      if (trackerId) params.append("tracker_id", trackerId);
-      const response = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alerts?${params.toString()}`);
-      if (!response.ok) {
-        console.error("Failed to fetch shipment alerts");
-        return;
+      const data = await shipmentApi.getAlerts(shipmentId, trackerId);
+      // Filter data based on parameters since the API doesn't support query params
+      const filteredData = data.filter(alert => {
+        if (shipmentId && alert.shipmentId !== shipmentId) return false;
+        if (trackerId && alert.trackerId !== trackerId) return false;
+        return true;
+      });
+
+      // Also include configured alerts from the current shipment metadata
+      let configuredAlerts = [];
+      const currentShipment = shipment || selectedShipmentDetail;
+      if (currentShipment && currentShipment.legs && currentShipment.legs[0]?.alertPresets) {
+        console.log('Found alert presets:', currentShipment.legs[0].alertPresets);
+        configuredAlerts = currentShipment.legs[0].alertPresets.map((preset, index) => ({
+          alertId: `config-${currentShipment._id}-${index}`,
+          shipmentId: currentShipment._id,
+          trackerId: currentShipment.trackerId,
+          alertDate: preset.createdAt || new Date().toISOString(),
+          alertType: preset.type,
+          alertName: preset.name || `${preset.type} Alert`,
+          severity: "info",
+          sensorValue: null,
+          minThreshold: preset.minValue,
+          maxThreshold: preset.maxValue,
+          unit: preset.unit || (preset.type === 'temperature' ? '°C' : '%'),
+          timestamp: preset.createdAt ? new Date(preset.createdAt).toLocaleString() : 'Recently configured',
+          timestampRaw: preset.createdAt || new Date().toISOString(),
+          lastTriggeredAt: 'Not triggered yet',
+          lastTriggeredAtRaw: null,
+          occurrenceCount: 0,
+          message: `${preset.type?.toUpperCase()} alert configured (${preset.minValue}-${preset.maxValue}${preset.unit || ''})`,
+          location: {},
+          isConfigured: true // Flag to distinguish from triggered alerts
+        }));
+      } else {
+        console.log('No alert presets found. Current shipment:', currentShipment);
       }
-      const data = await response.json();
+
+      // Fetch historical alert events from database
+      let alertEventData = [];
+      try {
+        console.log('Fetching historical alert events for shipment:', shipmentId);
+        const eventData = await shipmentApi.getAlertEvents(shipmentId, trackerId);
+        console.log('Historical alert events:', eventData);
+        alertEventData = eventData.map((event) => ({
+          alertId: event._id || `${event.alertId}-${event.timestamp}`,
+          shipmentId: event.shipmentId,
+          trackerId: event.trackerId,
+          alertDate: event.timestamp ? new Date(event.timestamp).toISOString().slice(0, 10) : '',
+          alertType: event.alertType,
+          alertName: event.alertName || event.alertType || "Alert",
+          severity: event.severity || "warning",
+          sensorValue: event.sensorValue,
+          minThreshold: event.minThreshold,
+          maxThreshold: event.maxThreshold,
+          unit: event.unit || "",
+          timestamp: event.timestampLocal || formatTimestamp(event.timestamp),
+          timestampRaw: event.timestamp,
+          lastTriggeredAt: event.timestampLocal || formatTimestamp(event.timestamp),
+          lastTriggeredAtRaw: event.timestamp,
+          occurrenceCount: 1,
+          message: event.message || `${event.alertType} alert triggered`,
+          location: event.location || {},
+          isConfigured: false
+        }));
+      } catch (error) {
+        console.error('Error fetching alert events:', error);
+      }
+
+      // Combine triggered alerts, alert events, and configured alerts
+      const allAlerts = [...filteredData, ...alertEventData, ...configuredAlerts];
 
       const aggregateMap = new Map();
-      data.forEach((alert) => {
-        const firstTriggeredLocal = alert.timestampLocal || (alert.timestamp ? formatTimestamp(alert.timestamp) : 'N/A');
-        const lastTriggeredRaw = alert.lastTriggeredAt || alert.timestamp;
-        const lastTriggeredLocal = alert.lastTriggeredAtLocal || (lastTriggeredRaw ? formatTimestamp(lastTriggeredRaw) : firstTriggeredLocal);
+      allAlerts.forEach((alert) => {
+        const firstTriggeredLocal = alert.timestampLocal || (alert.timestamp ? formatTimestamp(alert.timestamp) : alert.timestamp);
+        const lastTriggeredRaw = alert.lastTriggeredAt === 'Not triggered yet' ? null : (alert.lastTriggeredAt || alert.timestamp);
+        const lastTriggeredLocal = alert.lastTriggeredAt === 'Not triggered yet' ? 'Not triggered yet' : 
+          (alert.lastTriggeredAtLocal || (lastTriggeredRaw ? formatTimestamp(lastTriggeredRaw) : firstTriggeredLocal));
 
         const normalized = {
           alertId: alert.alertId || alert._id || `${alert.trackerId || ""}-${alert.alertType || ""}-${alert.timestamp || ""}`,
@@ -578,19 +617,21 @@ const Shipments = () => {
           maxThreshold: alert.maxThreshold,
           unit: alert.unit || "",
           timestamp: firstTriggeredLocal,
-          timestampRaw: alert.timestamp,
+          timestampRaw: alert.timestampRaw,
           lastTriggeredAt: lastTriggeredLocal,
           lastTriggeredAtRaw: lastTriggeredRaw,
-          occurrenceCount: alert.occurrenceCount || 1,
+          occurrenceCount: alert.occurrenceCount || (alert.isConfigured ? 0 : 1),
           message: alert.message,
-          location: alert.location || {}
+          location: alert.location || {},
+          isConfigured: alert.isConfigured || false
         };
 
         const key = buildAlertKey(normalized);
         normalized.alertKey = key;
 
         const existing = aggregateMap.get(key);
-        if (existing) {
+        if (existing && !alert.isConfigured) {
+          // Only merge if it's not a configured alert (avoid duplicating configured alerts)
           existing.occurrenceCount += normalized.occurrenceCount;
           if (normalized.timestampRaw && (!existing.timestampRaw || normalized.timestampRaw < existing.timestampRaw)) {
             existing.timestampRaw = normalized.timestampRaw;
@@ -610,11 +651,15 @@ const Shipments = () => {
         }
       });
 
-      const normalizedList = Array.from(aggregateMap.values()).sort(
-        (a, b) => new Date(b.lastTriggeredAtRaw || 0) - new Date(a.lastTriggeredAtRaw || 0)
-      );
+      const normalizedList = Array.from(aggregateMap.values()).sort((a, b) => {
+        // Sort configured alerts first, then by timestamp
+        if (a.isConfigured && !b.isConfigured) return -1;
+        if (!a.isConfigured && b.isConfigured) return 1;
+        return new Date(b.lastTriggeredAtRaw || b.timestampRaw || 0) - new Date(a.lastTriggeredAtRaw || a.timestampRaw || 0);
+      });
 
       receivedAlertIdsRef.current = new Set(aggregateMap.keys());
+      console.log('Setting alerts data:', normalizedList);
       setAlertsData(normalizedList);
     } catch (error) {
       console.error("Error fetching alerts:", error);
@@ -627,18 +672,16 @@ const Shipments = () => {
     const { start, end, skipLoading = false } = options;
     if (!shipmentId && !trackerId) return;
     try {
-      const params = new URLSearchParams({ timezone: userTimezone });
-      if (shipmentId) params.append("shipment_id", shipmentId);
-      if (trackerId) params.append("tracker_id", trackerId);
-      if (start) params.append("start", start);
-      if (end) params.append("end", end);
-      const response = await fetch(`https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_alert_events?${params.toString()}`);
-      if (!response.ok) {
-        console.error("Failed to fetch alert events");
-        return;
-      }
-      const data = await response.json();
-      const normalized = data
+      const data = await shipmentApi.getAlertEvents(shipmentId, trackerId);
+      // Filter data based on parameters since the API doesn't support query params
+      const filteredData = data.filter(event => {
+        if (shipmentId && event.shipmentId !== shipmentId) return false;
+        if (trackerId && event.trackerId !== trackerId) return false;
+        if (start && event.timestamp && new Date(event.timestamp) < new Date(start)) return false;
+        if (end && event.timestamp && new Date(event.timestamp) > new Date(end)) return false;
+        return true;
+      });
+      const normalized = filteredData
         .map((event) => {
           const eventId = event._id || `${event.alertId}-${event.timestamp}`;
           const lat = event.location?.latitude;
@@ -674,6 +717,9 @@ const Shipments = () => {
   };
 
   const handleBackToList = () => {
+    // Clear localStorage when explicitly going back to list
+    localStorage.removeItem(SELECTED_SHIPMENT_KEY);
+    
     setSelectedShipmentDetail(null);
     // Clear sensor data when going back
     setTemperatureData([]);
@@ -801,9 +847,10 @@ const Shipments = () => {
         e.currentTarget.appendChild(verticalLine);
       }
       
-      verticalLine.setAttribute('x1', closestPoint.x);
+      const xPos = isNaN(closestPoint.x) ? 0 : closestPoint.x;
+      verticalLine.setAttribute('x1', xPos);
       verticalLine.setAttribute('y1', '0');
-      verticalLine.setAttribute('x2', closestPoint.x);
+      verticalLine.setAttribute('x2', xPos);
       verticalLine.setAttribute('y2', '60');
       verticalLine.style.display = 'block';
       
@@ -894,9 +941,10 @@ const Shipments = () => {
         e.currentTarget.appendChild(verticalLine);
       }
       
-      verticalLine.setAttribute('x1', closestPoint.x);
+      const xPos = isNaN(closestPoint.x) ? 0 : closestPoint.x;
+      verticalLine.setAttribute('x1', xPos);
       verticalLine.setAttribute('y1', '0');
-      verticalLine.setAttribute('x2', closestPoint.x);
+      verticalLine.setAttribute('x2', xPos);
       verticalLine.setAttribute('y2', '60');
       verticalLine.style.display = 'block';
       
@@ -1414,6 +1462,32 @@ const Shipments = () => {
     return Array.from(markers.values());
   }, [alertEvents, alertsData]);
 
+  // Handle authentication state - only show loading, ProtectedRoute handles auth redirects
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        background: '#f5f5f5'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            border: '4px solid #ddd',
+            borderTop: '4px solid #007bff',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 20px'
+          }}></div>
+          <p style={{ color: '#666', fontSize: '16px' }}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="shipments-container">
       {/* WebSocket status indicator */}
@@ -1678,48 +1752,97 @@ const Shipments = () => {
 
                     {activeTab === 'alerts' && (
                       <div className="alerts-content">
-                        {isLoadingAlerts ? (
-                          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-                            <div style={{
-                              width: '32px',
-                              height: '32px',
-                              border: '3px solid #ddd',
-                              borderTop: '3px solid #f97316',
-                              borderRadius: '50%',
-                              animation: 'spin 1s linear infinite',
-                              margin: '0 auto 15px'
-                            }}></div>
-                            Loading alerts...
+                        {console.log('Alerts tab rendering, alertsData:', alertsData, 'length:', alertsData.length, 'isLoadingAlerts:', isLoadingAlerts)}
+                        {/* Alert Configurations Section */}
+                        {selectedShipmentDetail && selectedShipmentDetail.legs && selectedShipmentDetail.legs.length > 0 && 
+                         selectedShipmentDetail.legs[0].alertPresets && selectedShipmentDetail.legs[0].alertPresets.length > 0 && (
+                          <div style={{ marginBottom: '20px' }}>
+                            <h4 style={{ marginBottom: '10px', color: '#374151', fontSize: '14px' }}>Alert Configurations</h4>
+                            {selectedShipmentDetail.legs[0].alertPresets.map((preset, index) => (
+                              <div key={index} className="alert alert-config" style={{ 
+                                backgroundColor: '#f8fafc', 
+                                border: '1px solid #e2e8f0',
+                                marginBottom: '8px'
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
+                                  <span>{preset.name}</span>
+                                  <span style={{ fontSize: '12px', opacity: 0.8, color: '#10b981' }}>Configured</span>
+                                </div>
+                                <p style={{ marginBottom: '8px', fontSize: '13px' }}>
+                                  {preset.type?.toUpperCase()} alert configured
+                                </p>
+                                <div style={{ fontSize: '12px', color: '#374151', display: 'grid', rowGap: '4px' }}>
+                                  <span>Type: {preset.type}</span>
+                                  <span>Range: {preset.minValue}{preset.unit} - {preset.maxValue}{preset.unit}</span>
+                                  <span>Created: {preset.createdAt ? new Date(preset.createdAt).toLocaleString() : 'N/A'}</span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ) : alertsData.length === 0 ? (
-                          <div className="no-messages">No alerts triggered for this shipment.</div>
-                        ) : (
-                          alertsData.map((alert) => (
-                            <div
-                              key={alert.alertId}
-                              className={`alert ${alert.severity === 'critical' ? 'alert-error' : 'alert-info'}`}
-                            >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
-                                <span>{alert.alertName}</span>
-                                <span style={{ fontSize: '12px', opacity: 0.8 }}>{alert.lastTriggeredAt}</span>
-                              </div>
-                              <p style={{ marginBottom: '8px' }}>
-                                {alert.message || `${(alert.alertType || 'Alert').toUpperCase()} detected.`}
-                              </p>
-                              <div style={{ fontSize: '12px', color: '#374151', display: 'grid', rowGap: '4px' }}>
-                                <span>First triggered: {alert.timestamp}</span>
-                                <span>Occurrences: {alert.occurrenceCount}</span>
-                                <span>Sensor value: {alert.sensorValue}{alert.unit}</span>
-                                <span>Allowed range: {alert.minThreshold}{alert.unit} - {alert.maxThreshold}{alert.unit}</span>
-                                {alert.location?.latitude != null && alert.location?.longitude != null && (
-                                  <span>
-                                    Location: {Number(alert.location.latitude).toFixed(4)}, {Number(alert.location.longitude).toFixed(4)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))
                         )}
+                        
+                        {/* All Alerts Section (Combined) */}
+                        <div>
+                          <h4 style={{ marginBottom: '10px', color: '#374151', fontSize: '14px' }}>All Alerts</h4>
+                          {isLoadingAlerts ? (
+                            <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                              <div style={{
+                                width: '32px',
+                                height: '32px',
+                                border: '3px solid #ddd',
+                                borderTop: '3px solid #f97316',
+                                borderRadius: '50%',
+                                animation: 'spin 1s linear infinite',
+                                margin: '0 auto 15px'
+                              }}></div>
+                              Loading alerts...
+                            </div>
+                          ) : alertsData.length === 0 ? (
+                            <div className="no-messages">No alerts configured or triggered for this shipment.</div>
+                          ) : (
+                            alertsData.map((alert) => (
+                              <div
+                                key={alert.alertId}
+                                className={`alert ${alert.isConfigured ? 'alert-config' : 
+                                  (alert.severity === 'critical' ? 'alert-error' : 'alert-info')}`}
+                                style={{ 
+                                  backgroundColor: alert.isConfigured ? '#f0f9ff' : undefined,
+                                  border: alert.isConfigured ? '1px solid #0ea5e9' : undefined,
+                                  marginBottom: '8px'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
+                                  <span>{alert.alertName}</span>
+                                  <span style={{ 
+                                    fontSize: '12px', 
+                                    opacity: 0.8,
+                                    color: alert.isConfigured ? '#0ea5e9' : undefined
+                                  }}>
+                                    {alert.isConfigured ? 'Configured' : alert.lastTriggeredAt}
+                                  </span>
+                                </div>
+                                <p style={{ marginBottom: '8px' }}>
+                                  {alert.message || `${(alert.alertType || 'Alert').toUpperCase()} ${alert.isConfigured ? 'configured' : 'detected'}.`}
+                                </p>
+                                <div style={{ fontSize: '12px', color: '#374151', display: 'grid', rowGap: '4px' }}>
+                                  {!alert.isConfigured && <span>First triggered: {alert.timestamp}</span>}
+                                  <span>
+                                    {alert.isConfigured ? 'Status: Active configuration' : `Occurrences: ${alert.occurrenceCount}`}
+                                  </span>
+                                  {!alert.isConfigured && alert.sensorValue != null && (
+                                    <span>Sensor value: {alert.sensorValue}{alert.unit}</span>
+                                  )}
+                                  <span>Allowed range: {alert.minThreshold}{alert.unit} - {alert.maxThreshold}{alert.unit}</span>
+                                  {!alert.isConfigured && alert.location?.latitude != null && alert.location?.longitude != null && (
+                                    <span>
+                                      Location: {Number(alert.location.latitude).toFixed(4)}, {Number(alert.location.longitude).toFixed(4)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
                     )}
 

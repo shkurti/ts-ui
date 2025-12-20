@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { shipmentApi } from '../services/apiService';
+import apiService from '../services/apiService';
 import './AddAlerts.css';
 
 const AddAlerts = () => {
@@ -16,13 +18,8 @@ const AddAlerts = () => {
     const fetchShipments = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch('https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta');
-        if (response.ok) {
-          const data = await response.json();
-          setShipments(data);
-        } else {
-          console.error('Failed to fetch shipments');
-        }
+        const data = await shipmentApi.getAll();
+        setShipments(data);
       } catch (error) {
         console.error('Error fetching shipments:', error);
       } finally {
@@ -71,43 +68,35 @@ const AddAlerts = () => {
       const updatedAlerts = [...existingAlerts, newAlert];
 
       // Send to backend
-      const response = await fetch(
-        `https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta/${selectedShipment}/alerts`,
+      await apiService.put(
+        `/shipment_meta/${selectedShipment}/alerts`,
         {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            alertPresets: updatedAlerts,
-            legNumber: 1
-          }),
+          alertPresets: updatedAlerts,
+          legNumber: 1
         }
       );
+      
+      // Update local shipments state
+      setShipments(prev => prev.map(ship => 
+        ship._id === selectedShipment 
+          ? {
+              ...ship,
+              legs: ship.legs.map((leg, index) => 
+                index === 0 
+                  ? { ...leg, alertPresets: updatedAlerts }
+                  : leg
+              )
+            }
+          : ship
+      ));
 
-      if (response.ok) {
-        // Update local shipments state
-        setShipments(prev => prev.map(ship => 
-          ship._id === selectedShipment 
-            ? {
-                ...ship,
-                legs: ship.legs.map((leg, index) => 
-                  index === 0 
-                    ? { ...leg, alertPresets: updatedAlerts }
-                    : leg
-                )
-              }
-            : ship
-        ));
-
-        // Reset form
-        setAlertName('');
-        setMinValue(alertType === 'temperature' ? -10 : 20);
-        setMaxValue(alertType === 'temperature' ? 40 : 80);
-        setSelectedShipment('');
-        
-        alert(`${alertType} alert "${alertName}" created successfully for shipment!`);
-      } else {
-        throw new Error('Failed to create alert');
-      }
+      // Reset form
+      setAlertName('');
+      setMinValue(alertType === 'temperature' ? -10 : 20);
+      setMaxValue(alertType === 'temperature' ? 40 : 80);
+      setSelectedShipment('');
+      
+      alert(`${alertType} alert "${alertName}" created successfully for shipment!`);
     } catch (error) {
       console.error('Error creating alert:', error);
       alert(`Failed to create alert: ${error.message}`);
@@ -150,37 +139,28 @@ const AddAlerts = () => {
     const updatedAlerts = existingAlerts.filter((_, index) => index !== alertIndex);
 
     try {
-      const response = await fetch(
-        `https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/shipment_meta/${selectedShipment}/alerts`,
+      await apiService.put(
+        `/shipment_meta/${selectedShipment}/alerts`,
         {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            alertPresets: updatedAlerts,
-            legNumber: 1
-          }),
+          alertPresets: updatedAlerts,
+          legNumber: 1
         }
       );
-
-      if (response.ok) {
-        // Update local shipments state
-        setShipments(prev => prev.map(ship => 
-          ship._id === selectedShipment 
-            ? {
-                ...ship,
-                legs: ship.legs.map((leg, index) => 
-                  index === 0 
-                    ? { ...leg, alertPresets: updatedAlerts }
-                    : leg
-                )
-              }
-            : ship
-        ));
-        
-        alert('Alert removed successfully!');
-      } else {
-        throw new Error('Failed to remove alert');
-      }
+      // Update local shipments state
+      setShipments(prev => prev.map(ship => 
+        ship._id === selectedShipment 
+          ? {
+              ...ship,
+              legs: ship.legs.map((leg, index) => 
+                index === 0 
+                  ? { ...leg, alertPresets: updatedAlerts }
+                  : leg
+              )
+            }
+          : ship
+      ));
+      
+      alert('Alert removed successfully!');
     } catch (error) {
       console.error('Error removing alert:', error);
       alert(`Failed to remove alert: ${error.message}`);
