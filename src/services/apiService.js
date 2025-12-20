@@ -117,6 +117,7 @@ export const analysisApi = {
   },
   getShipmentLegDuration: () => apiService.get('/shipment_leg_duration'),
   getShipmentTemperatureData: () => apiService.get('/shipment_temperature_data'),
+  getShipmentHumidityData: () => apiService.get('/shipment_humidity_data'),
   getCarrierTemperatureData: () => apiService.get('/carrier_temperature_data'),
 };
 

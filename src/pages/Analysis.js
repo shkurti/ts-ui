@@ -52,6 +52,16 @@ const Analysis = () => {
       totalReadings: 0
     }
   });
+  const [humidityData, setHumidityData] = useState({
+    humidityTrendData: [],
+    humidityStats: {
+      overallAverage: 0,
+      overallMin: 0,
+      overallMax: 0,
+      totalDays: 0,
+      totalReadings: 0
+    }
+  });
   const [carrierTemperatureData, setCarrierTemperatureData] = useState({
     carrierTemperatureData: [],
     carrierTemperatureStats: {
@@ -112,6 +122,12 @@ const Analysis = () => {
       const tempData = await analysisApi.getShipmentTemperatureData();
       console.log('Temperature data received:', tempData);
       setTemperatureData(tempData);
+
+      // Fetch humidity data separately
+      console.log('Fetching humidity data with params:', JSON.stringify(params));
+      const humidityDataResult = await analysisApi.getShipmentHumidityData();
+      console.log('Humidity data received:', humidityDataResult);
+      setHumidityData(humidityDataResult);
 
       // Fetch carrier temperature data separately
       console.log('Fetching carrier temperature data with params:', JSON.stringify(params));
@@ -685,14 +701,132 @@ const Analysis = () => {
           </div>
         </div>
 
+      </div>
+    );
+  };
+
+  // Custom tooltip for humidity chart
+  const HumidityTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="custom-tooltip">
+          <p className="tooltip-label">{`Date: ${label}`}</p>
+          {payload.map((entry, index) => (
+            <p key={index} style={{ color: entry.color }}>
+              {entry.dataKey === 'averageHumidity' && `Average: ${entry.value}%`}
+              {entry.dataKey === 'minHumidity' && `Min: ${entry.value}%`}
+              {entry.dataKey === 'maxHumidity' && `Max: ${entry.value}%`}
+            </p>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Humidity Chart Component
+  const HumidityChart = () => {
+    const { humidityTrendData, humidityStats } = humidityData;
+    
+    if (!humidityTrendData || humidityTrendData.length === 0) {
+      return (
+        <div className="no-data">
+          <div>No humidity data available</div>
+          <div style={{ fontSize: '0.8rem', color: '#999', marginTop: '0.5rem' }}>
+            Total readings processed: {humidityStats?.totalReadings || 0}
+          </div>
+        </div>
+      );
+    }
+
+    // Process data for chart
+    const chartData = humidityTrendData.map(item => ({
+      ...item,
+      date: formatDate(item.date)
+    }));
+
+    return (
+      <div className="chart-container">
+        <h4 className="chart-title">💧 Average Shipment Humidity Over Time</h4>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
+            <XAxis 
+              dataKey="date" 
+              fontSize={12}
+              stroke="#666"
+            />
+            <YAxis 
+              label={{ 
+                value: 'Humidity (%)', 
+                angle: -90, 
+                position: 'insideLeft' 
+              }}
+              fontSize={12}
+              stroke="#666"
+              domain={['dataMin - 2', 'dataMax + 2']}
+            />
+            <Tooltip content={<HumidityTooltip />} />
+            <Legend />
+            <Line 
+              type="monotone" 
+              dataKey="averageHumidity" 
+              stroke="#4fc3f7" 
+              strokeWidth={3}
+              dot={{ fill: '#4fc3f7', strokeWidth: 2, r: 4 }}
+              name="Average Humidity"
+            />
+            <Line 
+              type="monotone" 
+              dataKey="minHumidity" 
+              stroke="#81c784" 
+              strokeWidth={2}
+              strokeDasharray="5,5"
+              dot={{ fill: '#81c784', strokeWidth: 1, r: 3 }}
+              name="Min Humidity"
+            />
+            <Line 
+              type="monotone" 
+              dataKey="maxHumidity" 
+              stroke="#64b5f6" 
+              strokeWidth={2}
+              strokeDasharray="5,5"
+              dot={{ fill: '#64b5f6', strokeWidth: 1, r: 3 }}
+              name="Max Humidity"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+        
+        {/* Humidity Summary */}
+        <div className="performance-summary">
+          <div className="performance-item">
+            <span className="performance-label">Overall Avg:</span>
+            <span className="performance-value" style={{ color: '#4fc3f7' }}>
+              {humidityStats.overallAverage}%
+            </span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Min Recorded:</span>
+            <span className="performance-value" style={{ color: '#81c784' }}>
+              {humidityStats.overallMin}%
+            </span>
+          </div>
+          <div className="performance-item">
+            <span className="performance-label">Max Recorded:</span>
+            <span className="performance-value" style={{ color: '#64b5f6' }}>
+              {humidityStats.overallMax}%
+            </span>
+          </div>
+        </div>
+
         <div className="chart-summary">
-          <span>Total days: {temperatureStats.totalDays}</span>
+          <span>Total days: {humidityStats.totalDays}</span>
           <span>•</span>
-          <span>Total readings: {temperatureStats.totalReadings}</span>
+          <span>Total readings: {humidityStats.totalReadings}</span>
           <span>•</span>
-          <span>{temperatureTrendData.length} daily data points</span>
+          <span>{humidityTrendData.length} daily data points</span>
           <span>•</span>
-          <span>Temperature range: {(temperatureStats.overallMax - temperatureStats.overallMin).toFixed(1)}°C</span>
+          <span>Humidity range: {(humidityStats.overallMax - humidityStats.overallMin).toFixed(1)}%</span>
         </div>
       </div>
     );
@@ -1015,6 +1149,11 @@ const Analysis = () => {
             {/* Add Temperature Chart */}
             <div className="chart-section">
               <TemperatureChart />
+            </div>
+
+            {/* Add Humidity Chart */}
+            <div className="chart-section">
+              <HumidityChart />
             </div>
           </div>
 
