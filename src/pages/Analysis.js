@@ -819,9 +819,6 @@ const Analysis = () => {
         backgroundColor: '#fff'
       }}>
         <h4 className="chart-title">💧 Average Shipment Humidity Over Time</h4>
-        <div style={{ backgroundColor: '#f0f0f0', padding: '0.5rem', fontSize: '0.8rem', marginBottom: '1rem' }}>
-          Rendering {humidityTrendData.length} data points | Sample: {JSON.stringify(chartData[0] || {})}
-        </div>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
@@ -1115,9 +1112,6 @@ const Analysis = () => {
         backgroundColor: '#fff'
       }}>
         <h4 className="chart-title">💧 Average Leg Humidity by Carrier</h4>
-        <div style={{ backgroundColor: '#e3f2fd', padding: '0.5rem', fontSize: '0.8rem', marginBottom: '1rem' }}>
-          Rendering {sortedChartData.length} carriers | Sample: {JSON.stringify(sortedChartData[0] || {})}
-        </div>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={sortedChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
