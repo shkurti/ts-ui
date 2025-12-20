@@ -352,7 +352,7 @@ const Trackers = () => {
               ) : (
                 filteredTrackers.map((tracker) => {
                   const trackerData = getTrackerData(tracker.tracker_id);
-                  const isActive = trackerData.battery > 0;
+                  const isActive = trackerData.battery !== null && trackerData.battery > 0;
                   
                   return (
                     <tr key={tracker.tracker_id} className="tracker-row">
@@ -407,53 +407,79 @@ const Trackers = () => {
       {/* Right Panel - Map */}
       <div className="map-panel">
         <div className="map-content">
-          {Object.keys(trackerLocations).length > 0 ? (
-            <MapContainer
-              center={[42.3601, -71.0589]} // Default center (Boston)
-              zoom={10}
-              style={{ height: '100%', width: '100%' }}
-            >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              />
-              {Object.values(trackerLocations).map((location) => {
-                if (location.latitude && location.longitude) {
-                  return (
-                    <Marker
-                      key={location.tracker_id}
-                      position={[location.latitude, location.longitude]}
-                    >
-                      <Popup>
-                        <div className="marker-popup">
-                          <h4>Tracker: {location.tracker_id}</h4>
-                          <p><strong>Last Update:</strong> {new Date(location.timestamp).toLocaleString()}</p>
-                          {location.battery && <p><strong>Battery:</strong> {location.battery}%</p>}
-                          {location.temperature && <p><strong>Temperature:</strong> {location.temperature}°C</p>}
-                          {location.speed && <p><strong>Speed:</strong> {location.speed} km/h</p>}
-                          <p><strong>Coordinates:</strong> {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}</p>
+          {(() => {
+            console.log('Tracker Locations Debug:', trackerLocations);
+            console.log('Number of tracker locations:', Object.keys(trackerLocations).length);
+            
+            const validLocations = Object.values(trackerLocations).filter(
+              location => location.latitude && location.longitude && 
+                         !isNaN(location.latitude) && !isNaN(location.longitude)
+            );
+            
+            console.log('Valid locations:', validLocations);
+            
+            if (validLocations.length > 0) {
+              // Calculate map center based on tracker locations
+              const avgLat = validLocations.reduce((sum, loc) => sum + loc.latitude, 0) / validLocations.length;
+              const avgLng = validLocations.reduce((sum, loc) => sum + loc.longitude, 0) / validLocations.length;
+              
+              console.log('Map center calculated:', [avgLat, avgLng]);
+              
+              return (
+                <MapContainer
+                  center={[avgLat, avgLng]}
+                  zoom={13}
+                  style={{ height: '100%', width: '100%' }}
+                  key={`map-${validLocations.length}`} // Force remount when locations change
+                >
+                  <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  />
+                  {validLocations.map((location) => {
+                    console.log('Rendering marker for:', location.tracker_id, [location.latitude, location.longitude]);
+                    return (
+                      <Marker
+                        key={location.tracker_id}
+                        position={[parseFloat(location.latitude), parseFloat(location.longitude)]}
+                      >
+                        <Popup>
+                          <div className="marker-popup">
+                            <h4>Tracker: {location.tracker_id}</h4>
+                            <p><strong>Last Update:</strong> {new Date(location.timestamp).toLocaleString()}</p>
+                            {location.battery && <p><strong>Battery:</strong> {location.battery}%</p>}
+                            {location.temperature && <p><strong>Temperature:</strong> {location.temperature}°C</p>}
+                            {location.speed && <p><strong>Speed:</strong> {location.speed} km/h</p>}
+                            <p><strong>Coordinates:</strong> {parseFloat(location.latitude).toFixed(6)}, {parseFloat(location.longitude).toFixed(6)}</p>
+                          </div>
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
+                </MapContainer>
+              );
+            }
+            
+            return (
+              <div className="map-placeholder">
+                <div className="map-loading">
+                  {loading ? (
+                    <div className="loading-spinner">Loading map data...</div>
+                  ) : (
+                    <div className="no-data">
+                      <h3>No tracker locations available</h3>
+                      <p>Tracker location data will appear here when available</p>
+                      {Object.keys(trackerLocations).length > 0 && (
+                        <div style={{marginTop: '10px', fontSize: '12px', color: 'rgba(255,255,255,0.7)'}}>
+                          Debug: {Object.keys(trackerLocations).length} locations found, but coordinates invalid
                         </div>
-                      </Popup>
-                    </Marker>
-                  );
-                }
-                return null;
-              })}
-            </MapContainer>
-          ) : (
-            <div className="map-placeholder">
-              <div className="map-loading">
-                {loading ? (
-                  <div className="loading-spinner">Loading map data...</div>
-                ) : (
-                  <div className="no-data">
-                    <h3>No tracker locations available</h3>
-                    <p>Tracker location data will appear here when available</p>
-                  </div>
-                )}
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
 
