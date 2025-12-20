@@ -115,11 +115,11 @@ export const analysisApi = {
     const queryString = searchParams.toString();
     return apiService.get(`/analytics${queryString ? `?${queryString}` : ''}`);
   },
-  getShipmentLegDuration: () => apiService.get('/shipment_leg_duration'),
-  getShipmentTemperatureData: () => apiService.get('/shipment_temperature_data'),
-  getShipmentHumidityData: () => apiService.get('/shipment_humidity_data'),
-  getCarrierTemperatureData: () => apiService.get('/carrier_temperature_data'),
-  getCarrierHumidityData: () => apiService.get('/carrier_humidity_data'),
+  getShipmentLegDuration: () => apiService.get('/analytics/shipment_leg_duration'),
+  getShipmentTemperatureData: () => apiService.get('/analytics/shipment_temperature_data'),
+  getShipmentHumidityData: () => apiService.get('/analytics/shipment_humidity_data'),
+  getCarrierTemperatureData: () => apiService.get('/analytics/carrier_temperature_data'),
+  getCarrierHumidityData: () => apiService.get('/analytics/carrier_humidity_data'),
 };
 
 export default apiService;
