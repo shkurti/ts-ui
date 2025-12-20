@@ -176,7 +176,9 @@ const Analysis = () => {
       console.error('Error details:', {
         message: err.message,
         stack: err.stack,
-        params: params
+        carrier: carrier || selectedCarrier,
+        startDate: start || startDate,
+        endDate: end || endDate
       });
     }
   };
