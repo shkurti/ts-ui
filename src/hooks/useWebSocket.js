@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const WS_BASE_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
+const WS_BASE_URL = process.env.REACT_APP_WS_URL || 'wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
 export const useWebSocket = () => {
   const [connected, setConnected] = useState(false);
