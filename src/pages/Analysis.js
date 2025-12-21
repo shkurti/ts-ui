@@ -90,6 +90,9 @@ const Analysis = () => {
   // Function to fetch analytics data with filters
   const fetchFilteredAnalytics = async (carrier = selectedCarrier, start = startDate, end = endDate) => {
     try {
+      console.log('Fetching analytics data with filters - starting parallel requests...');
+      const startTime = Date.now();
+      
       const params = {};
       if (carrier && carrier !== 'All') {
         params.carrier = carrier;
@@ -101,75 +104,90 @@ const Analysis = () => {
         params.end_date = `${end}T23:59:59Z`;
       }
 
-      const newAnalyticsData = await analysisApi.getAnalytics(params);
+      // Execute all API calls in parallel for much faster loading
+      const [
+        newAnalyticsData,
+        durationData,
+        tempData,
+        humidityDataResult,
+        carrierTempData,
+        carrierHumidityDataResult
+      ] = await Promise.allSettled([
+        analysisApi.getAnalytics(params),
+        analysisApi.getShipmentLegDuration(),
+        analysisApi.getShipmentTemperatureData(),
+        analysisApi.getShipmentHumidityData(),
+        analysisApi.getCarrierTemperatureData(),
+        analysisApi.getCarrierHumidityData()
+      ]);
+
+      const endTime = Date.now();
+      console.log(`All API calls completed in ${endTime - startTime}ms`);
+
+      // Process analytics data
+      if (newAnalyticsData.status === 'fulfilled') {
         setAnalyticsData(prev => ({
           ...prev,
-          ...newAnalyticsData
+          ...newAnalyticsData.value
         }));
         
         // Update carrier performance data
-        if (newAnalyticsData.carrierPerformance) {
-          setCarrierPerformanceData(newAnalyticsData.carrierPerformance);
+        if (newAnalyticsData.value.carrierPerformance) {
+          setCarrierPerformanceData(newAnalyticsData.value.carrierPerformance);
         }
-        
-        console.log('Updated analytics data:', newAnalyticsData);
-
-      // Fetch shipment duration data separately
-      const durationParams = new URLSearchParams();
-      if (start) {
-        durationParams.append('start_date', `${start}T00:00:00Z`);
-      }
-      if (end) {
-        durationParams.append('end_date', `${end}T23:59:59Z`);
+        console.log('Updated analytics data:', newAnalyticsData.value);
+      } else {
+        console.error('Error fetching analytics data:', newAnalyticsData.reason);
       }
 
-      console.log('Fetching duration data with params:', JSON.stringify(params));
-      const durationData = await analysisApi.getShipmentLegDuration();
-      console.log('Duration data received:', durationData);
-      setShipmentDurationData(durationData);
+      // Process duration data
+      if (durationData.status === 'fulfilled') {
+        setShipmentDurationData(durationData.value);
+        console.log('Duration data received:', durationData.value);
+      } else {
+        console.error('Error fetching duration data:', durationData.reason);
+      }
 
-      // Fetch temperature data separately
-      console.log('Fetching temperature data with params:', JSON.stringify(params));
-      const tempData = await analysisApi.getShipmentTemperatureData();
-      console.log('Temperature data received:', tempData);
-      setTemperatureData(tempData);
+      // Process temperature data
+      if (tempData.status === 'fulfilled') {
+        setTemperatureData(tempData.value);
+        console.log('Temperature data received:', tempData.value);
+      } else {
+        console.error('Error fetching temperature data:', tempData.reason);
+      }
 
-      // Fetch humidity data separately
-      console.log('Fetching humidity data with params:', JSON.stringify(params));
-      try {
-        const humidityDataResult = await analysisApi.getShipmentHumidityData();
-        console.log('Humidity data received:', humidityDataResult);
-        console.log('Humidity trend data:', humidityDataResult?.humidityTrendData);
-        console.log('Humidity stats:', humidityDataResult?.humidityStats);
-        if (humidityDataResult && typeof humidityDataResult === 'object') {
-          setHumidityData(humidityDataResult);
+      // Process humidity data
+      if (humidityDataResult.status === 'fulfilled') {
+        const humidityData = humidityDataResult.value;
+        console.log('Humidity data received:', humidityData);
+        if (humidityData && typeof humidityData === 'object') {
+          setHumidityData(humidityData);
         } else {
-          console.warn('Invalid humidity data received:', humidityDataResult);
+          console.warn('Invalid humidity data received:', humidityData);
         }
-      } catch (humidityError) {
-        console.error('Error fetching humidity data:', humidityError);
+      } else {
+        console.error('Error fetching humidity data:', humidityDataResult.reason);
       }
 
-      // Fetch carrier temperature data separately
-      console.log('Fetching carrier temperature data with params:', JSON.stringify(params));
-      const carrierTempData = await analysisApi.getCarrierTemperatureData();
-      console.log('Carrier temperature data received:', carrierTempData);
-      setCarrierTemperatureData(carrierTempData);
+      // Process carrier temperature data
+      if (carrierTempData.status === 'fulfilled') {
+        setCarrierTemperatureData(carrierTempData.value);
+        console.log('Carrier temperature data received:', carrierTempData.value);
+      } else {
+        console.error('Error fetching carrier temperature data:', carrierTempData.reason);
+      }
 
-      // Fetch carrier humidity data separately
-      console.log('Fetching carrier humidity data with params:', JSON.stringify(params));
-      try {
-        const carrierHumidityDataResult = await analysisApi.getCarrierHumidityData();
-        console.log('Carrier humidity data received:', carrierHumidityDataResult);
-        console.log('Carrier humidity chart data:', carrierHumidityDataResult?.carrierHumidityData);
-        console.log('Carrier humidity stats:', carrierHumidityDataResult?.carrierHumidityStats);
-        if (carrierHumidityDataResult && typeof carrierHumidityDataResult === 'object') {
-          setCarrierHumidityData(carrierHumidityDataResult);
+      // Process carrier humidity data
+      if (carrierHumidityDataResult.status === 'fulfilled') {
+        const carrierHumidity = carrierHumidityDataResult.value;
+        console.log('Carrier humidity data received:', carrierHumidity);
+        if (carrierHumidity && typeof carrierHumidity === 'object') {
+          setCarrierHumidityData(carrierHumidity);
         } else {
-          console.warn('Invalid carrier humidity data received:', carrierHumidityDataResult);
+          console.warn('Invalid carrier humidity data received:', carrierHumidity);
         }
-      } catch (carrierHumidityError) {
-        console.error('Error fetching carrier humidity data:', carrierHumidityError);
+      } else {
+        console.error('Error fetching carrier humidity data:', carrierHumidityDataResult.reason);
       }
     } catch (err) {
       console.error('Error fetching filtered analytics:', err);
