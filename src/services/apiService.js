@@ -115,11 +115,46 @@ export const analysisApi = {
     const queryString = searchParams.toString();
     return apiService.get(`/analytics${queryString ? `?${queryString}` : ''}`);
   },
-  getShipmentLegDuration: () => apiService.get('/shipment_leg_duration'),
-  getShipmentTemperatureData: () => apiService.get('/shipment_temperature_data'),
-  getShipmentHumidityData: () => apiService.get('/shipment_humidity_data'),
-  getCarrierTemperatureData: () => apiService.get('/carrier_temperature_data'),
-  getCarrierHumidityData: () => apiService.get('/carrier_humidity_data'),
+  getShipmentLegDuration: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) searchParams.append(key, value);
+    });
+    const queryString = searchParams.toString();
+    return apiService.get(`/shipment_leg_duration${queryString ? `?${queryString}` : ''}`);
+  },
+  getShipmentTemperatureData: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) searchParams.append(key, value);
+    });
+    const queryString = searchParams.toString();
+    return apiService.get(`/shipment_temperature_data${queryString ? `?${queryString}` : ''}`);
+  },
+  getShipmentHumidityData: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) searchParams.append(key, value);
+    });
+    const queryString = searchParams.toString();
+    return apiService.get(`/shipment_humidity_data${queryString ? `?${queryString}` : ''}`);
+  },
+  getCarrierTemperatureData: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) searchParams.append(key, value);
+    });
+    const queryString = searchParams.toString();
+    return apiService.get(`/carrier_temperature_data${queryString ? `?${queryString}` : ''}`);
+  },
+  getCarrierHumidityData: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) searchParams.append(key, value);
+    });
+    const queryString = searchParams.toString();
+    return apiService.get(`/carrier_humidity_data${queryString ? `?${queryString}` : ''}`);
+  },
 };
 
 export default apiService;

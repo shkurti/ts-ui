@@ -114,11 +114,11 @@ const Analysis = () => {
         carrierHumidityDataResult
       ] = await Promise.allSettled([
         analysisApi.getAnalytics(params),
-        analysisApi.getShipmentLegDuration(),
-        analysisApi.getShipmentTemperatureData(),
-        analysisApi.getShipmentHumidityData(),
-        analysisApi.getCarrierTemperatureData(),
-        analysisApi.getCarrierHumidityData()
+        analysisApi.getShipmentLegDuration(params),
+        analysisApi.getShipmentTemperatureData(params),
+        analysisApi.getShipmentHumidityData(params),
+        analysisApi.getCarrierTemperatureData(params),
+        analysisApi.getCarrierHumidityData(params)
       ]);
 
       const endTime = Date.now();
