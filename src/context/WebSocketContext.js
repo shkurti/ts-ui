@@ -1,0 +1,156 @@
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import useWebSocket from '../hooks/useWebSocket';
+import { useAuth } from './AuthContext';
+
+const WebSocketContext = createContext();
+
+export const useWebSocketContext = () => {
+  const context = useContext(WebSocketContext);
+  if (!context) {
+    throw new Error('useWebSocketContext must be used within a WebSocketProvider');
+  }
+  return context;
+};
+
+export const WebSocketProvider = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  const { connected, lastMessage, error, connect, disconnect, sendMessage } = useWebSocket();
+  
+  // State for different types of real-time data
+  const [alerts, setAlerts] = useState([]);
+  const [sensorData, setSensorData] = useState({});
+  const [trackerLocations, setTrackerLocations] = useState({});
+
+  // Handle incoming WebSocket messages
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    console.log('Processing WebSocket message:', lastMessage);
+
+    switch (lastMessage.type) {
+      case 'alert':
+        handleAlertMessage(lastMessage.data);
+        break;
+      case 'sensor_data':
+        handleSensorDataMessage(lastMessage.data);
+        break;
+      default:
+        console.log('Unknown message type:', lastMessage.type);
+    }
+  }, [lastMessage]);
+
+  const handleAlertMessage = useCallback((alertData) => {
+    console.log('New alert received:', alertData);
+    
+    // Add alert to state (keep last 50 alerts)
+    setAlerts(prevAlerts => {
+      const newAlerts = [alertData, ...prevAlerts].slice(0, 50);
+      return newAlerts;
+    });
+
+    // Show notification (you can customize this)
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(`${alertData.alertType} Alert`, {
+        body: alertData.message,
+        icon: '/favicon.ico'
+      });
+    }
+  }, []);
+
+  const handleSensorDataMessage = useCallback((sensorMessage) => {
+    const fullDoc = sensorMessage.data?.fullDocument;
+    if (!fullDoc) return;
+
+    const trackerId = fullDoc.trackerID || fullDoc.trackerId;
+    if (!trackerId) return;
+
+    console.log('New sensor data for tracker:', trackerId, fullDoc);
+
+    // Update sensor data state
+    setSensorData(prev => ({
+      ...prev,
+      [trackerId]: fullDoc
+    }));
+
+    // Extract latest location from sensor data
+    const sensorArray = fullDoc.data;
+    if (Array.isArray(sensorArray) && sensorArray.length > 0) {
+      const latestReading = sensorArray[sensorArray.length - 1];
+      const lat = latestReading.Lat || latestReading.latitude;
+      const lng = latestReading.Lng || latestReading.longitude;
+      
+      if (lat !== undefined && lng !== undefined) {
+        setTrackerLocations(prev => ({
+          ...prev,
+          [trackerId]: {
+            tracker_id: trackerId,
+            latitude: parseFloat(lat),
+            longitude: parseFloat(lng),
+            timestamp: latestReading.DT || latestReading.timestamp,
+            battery: latestReading.Batt,
+            temperature: latestReading.Temp,
+            humidity: latestReading.Hum,
+            speed: latestReading.Speed
+          }
+        }));
+      }
+    }
+  }, []);
+
+  // Request notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().then(permission => {
+        console.log('Notification permission:', permission);
+      });
+    }
+  }, []);
+
+  // Auto-connect when authenticated
+  useEffect(() => {
+    if (isAuthenticated && !connected) {
+      console.log('User authenticated, connecting WebSocket...');
+      connect();
+    } else if (!isAuthenticated && connected) {
+      console.log('User unauthenticated, disconnecting WebSocket...');
+      disconnect();
+    }
+  }, [isAuthenticated, connected, connect, disconnect]);
+
+  // Clear data when disconnected
+  useEffect(() => {
+    if (!connected) {
+      // Keep historical data but mark as stale
+      console.log('WebSocket disconnected, data may be stale');
+    }
+  }, [connected]);
+
+  const value = {
+    // Connection state
+    connected,
+    error,
+    
+    // Real-time data
+    alerts,
+    sensorData,
+    trackerLocations,
+    
+    // Methods
+    sendMessage,
+    connect,
+    disconnect,
+    
+    // Data management
+    clearAlerts: () => setAlerts([]),
+    clearSensorData: () => setSensorData({}),
+    clearTrackerLocations: () => setTrackerLocations({})
+  };
+
+  return (
+    <WebSocketContext.Provider value={value}>
+      {children}
+    </WebSocketContext.Provider>
+  );
+};
+
+export default WebSocketProvider;

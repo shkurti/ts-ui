@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import UserMenu from './UserMenu';
+import { useWebSocketContext } from '../context/WebSocketContext';
 import './Navbar.css';
 
 const Navbar = () => {
+  const { connected: wsConnected } = useWebSocketContext();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [configureDropdownOpen, setConfigureDropdownOpen] = useState(false);
@@ -115,6 +117,12 @@ const Navbar = () => {
             </ul>
           </li>
         </ul>
+        
+        {/* WebSocket Status Indicator */}
+        <div className="ws-status" title={`Real-time updates: ${wsConnected ? 'Connected' : 'Disconnected'}`}>
+          <span className={`status-dot ${wsConnected ? 'connected' : 'disconnected'}`}></span>
+          <span className="status-text">{wsConnected ? 'Live' : 'Offline'}</span>
+        </div>
         
         {/* User Menu */}
         <UserMenu />

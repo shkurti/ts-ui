@@ -255,3 +255,64 @@
     color: rgba(255, 255, 255, 0.7);
   }
 }
+
+/* WebSocket Status Indicator */
+.ws-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  font-size: 0.875rem;
+  color: white;
+  cursor: help;
+  transition: background 0.3s ease;
+}
+
+.ws-status:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulse 2s infinite;
+}
+
+.status-dot.connected {
+  background: #4ade80; /* Green */
+}
+
+.status-dot.disconnected {
+  background: #f87171; /* Red */
+  animation: none; /* No pulse for disconnected state */
+}
+
+.status-text {
+  font-weight: 500;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Hide status on very small screens to save space */
+@media (max-width: 480px) {
+  .ws-status {
+    display: none;
+  }
+}

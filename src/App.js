@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { WebSocketProvider } from './context/WebSocketContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import Login from './pages/Login';
@@ -16,7 +17,8 @@ function App() {
   return (
     <div className="App">
       <AuthProvider>
-        <Router>
+        <WebSocketProvider>
+          <Router>
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Login />} />
@@ -82,9 +84,10 @@ function App() {
             } />
           </Routes>
         </Router>
-      </AuthProvider>
-    </div>
-  );
+      </WebSocketProvider>
+    </AuthProvider>
+  </div>
+);
 }
 
 export default App;

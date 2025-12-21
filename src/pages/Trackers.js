@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { trackerApi } from '../services/apiService';
+import { useWebSocketContext } from '../context/WebSocketContext';
 import './Trackers.css';
 import 'leaflet/dist/leaflet.css';
 
@@ -14,6 +15,8 @@ L.Icon.Default.mergeOptions({
 });
 
 const Trackers = () => {
+  const { trackerLocations: realTimeLocations, connected: wsConnected } = useWebSocketContext();
+  
   const [trackers, setTrackers] = useState([]);
   const [trackerLocations, setTrackerLocations] = useState({});
   const [loading, setLoading] = useState(true);
@@ -33,6 +36,12 @@ const Trackers = () => {
   const [statusFilter, setStatusFilter] = useState('All Trackers');
   
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
+
+  // Merge real-time locations with cached locations
+  const mergedTrackerLocations = {
+    ...trackerLocations,
+    ...realTimeLocations
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -194,15 +203,16 @@ const Trackers = () => {
     };
     
     const defaultData = mockData[trackerId] || { battery: null, lastConnected: 'Unknown', location: '' };
-    const locationData = trackerLocations[trackerId];
+    const locationData = mergedTrackerLocations[trackerId];
     
     // Use real data when available
     if (locationData) {
+      const isRealTime = realTimeLocations[trackerId] ? ' (Real-time)' : ' (Cached)';
       return {
         ...defaultData,
         battery: locationData.battery || defaultData.battery,
         lastConnected: locationData.timestamp ? 
-          new Date(locationData.timestamp).toLocaleString() + ' (Live Data)' : 
+          new Date(locationData.timestamp).toLocaleString() + isRealTime : 
           defaultData.lastConnected,
         location: locationData.latitude && locationData.longitude ? 
           `${locationData.latitude.toFixed(4)}, ${locationData.longitude.toFixed(4)}` : 
@@ -408,10 +418,10 @@ const Trackers = () => {
       <div className="map-panel">
         <div className="map-content">
           {(() => {
-            console.log('Tracker Locations Debug:', trackerLocations);
-            console.log('Number of tracker locations:', Object.keys(trackerLocations).length);
+            console.log('Tracker Locations Debug:', mergedTrackerLocations);
+            console.log('Number of tracker locations:', Object.keys(mergedTrackerLocations).length);
             
-            const validLocations = Object.values(trackerLocations).filter(
+            const validLocations = Object.values(mergedTrackerLocations).filter(
               location => location.latitude && location.longitude && 
                          !isNaN(location.latitude) && !isNaN(location.longitude)
             );
@@ -469,9 +479,10 @@ const Trackers = () => {
                     <div className="no-data">
                       <h3>No tracker locations available</h3>
                       <p>Tracker location data will appear here when available</p>
-                      {Object.keys(trackerLocations).length > 0 && (
+                      {Object.keys(mergedTrackerLocations).length > 0 && (
                         <div style={{marginTop: '10px', fontSize: '12px', color: 'rgba(255,255,255,0.7)'}}>
-                          Debug: {Object.keys(trackerLocations).length} locations found, but coordinates invalid
+                          Debug: {Object.keys(mergedTrackerLocations).length} locations found, but coordinates invalid
+                          <br />WebSocket: {wsConnected ? 'Connected ✅' : 'Disconnected ❌'}
                         </div>
                       )}
                     </div>
