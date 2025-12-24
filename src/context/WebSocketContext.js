@@ -58,11 +58,19 @@ export const WebSocketProvider = ({ children }) => {
   }, []);
 
   const handleSensorDataMessage = useCallback((sensorMessage) => {
-    const fullDoc = sensorMessage.data?.fullDocument;
-    if (!fullDoc) return;
+    console.log('Processing sensor data message:', sensorMessage);
+    
+    const fullDoc = sensorMessage?.fullDocument;
+    if (!fullDoc) {
+      console.log('No fullDocument found in sensor message');
+      return;
+    }
 
     const trackerId = fullDoc.trackerID || fullDoc.trackerId;
-    if (!trackerId) return;
+    if (!trackerId) {
+      console.log('No tracker ID found in fullDocument');
+      return;
+    }
 
     console.log('New sensor data for tracker:', trackerId, fullDoc);
 
