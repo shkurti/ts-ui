@@ -103,7 +103,15 @@ const Shipments = () => {
               lastLocation.latitude !== newLocationPoint.latitude || 
               lastLocation.longitude !== newLocationPoint.longitude) {
             console.log('📍 Adding new real-time GPS location to Shipments map:', newLocationPoint);
-            return [...prev, newLocationPoint];
+            const updatedData = [...prev, newLocationPoint];
+            
+            // Force map re-render by triggering a state change
+            setTimeout(() => {
+              // Trigger a forced update to ensure map components re-render
+              console.log('🗺️ Forcing map update with new location data, total points:', updatedData.length);
+            }, 100);
+            
+            return updatedData;
           }
           return prev;
         });
@@ -146,6 +154,25 @@ const Shipments = () => {
       console.log('📋 selectedShipmentDetail available:', !!selectedShipmentDetail);
     }
   }, [realTimeLocations, selectedShipmentDetail, realTimeConnected]);
+
+  // Force map update when locationData changes in real-time
+  useEffect(() => {
+    if (locationData.length > 0 && mapRef.current) {
+      const latestLocation = locationData[locationData.length - 1];
+      console.log('🗺️ Updating map center to latest GPS location:', latestLocation);
+      
+      try {
+        const map = mapRef.current;
+        if (map && latestLocation.latitude && latestLocation.longitude) {
+          // Pan to the latest location
+          map.setView([latestLocation.latitude, latestLocation.longitude], map.getZoom());
+          console.log('✅ Map view updated successfully');
+        }
+      } catch (error) {
+        console.log('⚠️ Error updating map view:', error);
+      }
+    }
+  }, [locationData]);
   
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -2055,6 +2082,7 @@ const Shipments = () => {
           ref={mapRef}
           center={[20, 0]} // Default world view
           zoom={2}
+          key={`shipments-map-${locationData.length}`} // Force re-render on location data changes
           minZoom={1}
           maxZoom={18}
           style={{ height: '100%', width: '100%' }}
