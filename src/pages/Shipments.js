@@ -19,7 +19,7 @@ L.Icon.Default.mergeOptions({
 
 const Shipments = () => {
   const { user, isAuthenticated, loading } = useAuth();
-  const { trackerLocations: realTimeLocations, connected: wsConnected } = useWebSocketContext();
+  const { trackerLocations: realTimeLocations, connected: realTimeConnected } = useWebSocketContext();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
   const [selectedShipments, setSelectedShipments] = useState([]);
@@ -70,7 +70,7 @@ const Shipments = () => {
       
       console.log('🔄 RealTime Locations Updated in Shipments:', realTimeLocations);
       console.log('📍 Selected shipment tracker ID:', trackerId);
-      console.log('🔗 WebSocket Connected:', wsConnected);
+      console.log('🔗 WebSocket Connected:', realTimeConnected);
       
       // Check if we have real-time data for the selected shipment's tracker
       if (realTimeLocations[trackerId]) {
@@ -130,7 +130,7 @@ const Shipments = () => {
         }
       }
     }
-  }, [realTimeLocations, selectedShipmentDetail, wsConnected]);
+  }, [realTimeLocations, selectedShipmentDetail, realTimeConnected]);
   
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
