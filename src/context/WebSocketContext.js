@@ -107,19 +107,30 @@ export const WebSocketProvider = ({ children }) => {
     }
     
     if (lat !== undefined && lng !== undefined) {
-      setTrackerLocations(prev => ({
-        ...prev,
-        [trackerId]: {
-          tracker_id: trackerId,
-          latitude: parseFloat(lat),
-          longitude: parseFloat(lng),
-          timestamp: timestamp,
-          battery: battery,
-          temperature: temperature,
-          humidity: humidity,
-          speed: speed
-        }
-      }));
+      const newLocationData = {
+        tracker_id: trackerId,
+        latitude: parseFloat(lat),
+        longitude: parseFloat(lng),
+        timestamp: timestamp,
+        battery: battery,
+        temperature: temperature,
+        humidity: humidity,
+        speed: speed
+      };
+      
+      console.log('🎯 Setting tracker location in WebSocket context:', {
+        trackerId,
+        locationData: newLocationData
+      });
+      
+      setTrackerLocations(prev => {
+        const updated = {
+          ...prev,
+          [trackerId]: newLocationData
+        };
+        console.log('📡 Updated tracker locations state:', updated);
+        return updated;
+      });
     }
   }, []);
 
