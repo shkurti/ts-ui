@@ -1308,7 +1308,7 @@ const Shipments = () => {
 
         if (!msg || msg.type === 'alert') return;
 
-        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || null;
+        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || msg.data?.fullDocument || null;
         if (!full) return;
 
         const activeTrackerId = currentTrackerIdRef.current;
