@@ -145,7 +145,6 @@ const Shipments = () => {
       console.log('📡 realTimeLocations available:', !!realTimeLocations);
       console.log('📋 selectedShipmentDetail available:', !!selectedShipmentDetail);
     }
-    }
   }, [realTimeLocations, selectedShipmentDetail, realTimeConnected]);
   
   // User timezone (you can make this configurable)
