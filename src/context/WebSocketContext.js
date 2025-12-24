@@ -73,27 +73,45 @@ export const WebSocketProvider = ({ children }) => {
     }));
 
     // Extract latest location from sensor data
+    let lat, lng, timestamp, battery, temperature, humidity, speed;
+    
+    // Handle data array format (legacy)
     const sensorArray = fullDoc.data;
     if (Array.isArray(sensorArray) && sensorArray.length > 0) {
       const latestReading = sensorArray[sensorArray.length - 1];
-      const lat = latestReading.Lat || latestReading.latitude;
-      const lng = latestReading.Lng || latestReading.longitude;
-      
-      if (lat !== undefined && lng !== undefined) {
-        setTrackerLocations(prev => ({
-          ...prev,
-          [trackerId]: {
-            tracker_id: trackerId,
-            latitude: parseFloat(lat),
-            longitude: parseFloat(lng),
-            timestamp: latestReading.DT || latestReading.timestamp,
-            battery: latestReading.Batt,
-            temperature: latestReading.Temp,
-            humidity: latestReading.Hum,
-            speed: latestReading.Speed
-          }
-        }));
-      }
+      lat = latestReading.Lat || latestReading.latitude;
+      lng = latestReading.Lng || latestReading.longitude;
+      timestamp = latestReading.DT || latestReading.timestamp;
+      battery = latestReading.Batt;
+      temperature = latestReading.Temp;
+      humidity = latestReading.Hum;
+      speed = latestReading.Speed;
+    } 
+    // Handle direct field format (new)
+    else if (fullDoc.Lat !== undefined || fullDoc.Lng !== undefined) {
+      lat = fullDoc.Lat || fullDoc.latitude;
+      lng = fullDoc.Lng || fullDoc.longitude;
+      timestamp = fullDoc.DT || fullDoc.Timestamp || fullDoc.timestamp;
+      battery = fullDoc.Batt;
+      temperature = fullDoc.Temp;
+      humidity = fullDoc.Hum;
+      speed = fullDoc.Speed;
+    }
+    
+    if (lat !== undefined && lng !== undefined) {
+      setTrackerLocations(prev => ({
+        ...prev,
+        [trackerId]: {
+          tracker_id: trackerId,
+          latitude: parseFloat(lat),
+          longitude: parseFloat(lng),
+          timestamp: timestamp,
+          battery: battery,
+          temperature: temperature,
+          humidity: humidity,
+          speed: speed
+        }
+      }));
     }
   }, []);
 
