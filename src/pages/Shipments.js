@@ -7,6 +7,7 @@ import { TriangleAlert } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
+import { useWebSocketContext } from '../context/WebSocketContext';
 
 // Fix for default markers
 delete L.Icon.Default.prototype._getIconUrl;
@@ -18,6 +19,7 @@ L.Icon.Default.mergeOptions({
 
 const Shipments = () => {
   const { user, isAuthenticated, loading } = useAuth();
+  const { trackerLocations: realTimeLocations, connected: wsConnected } = useWebSocketContext();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
   const [selectedShipments, setSelectedShipments] = useState([]);
@@ -60,6 +62,75 @@ const Shipments = () => {
   // Add state for geocoded leg coordinates and geofence radii
   const [legCoordinates, setLegCoordinates] = useState({});
   const [geofenceRadii, setGeofenceRadii] = useState({});
+
+  // Real-time GPS location updates from WebSocket
+  useEffect(() => {
+    if (realTimeLocations && selectedShipmentDetail) {
+      const trackerId = selectedShipmentDetail.trackerId;
+      
+      console.log('🔄 RealTime Locations Updated in Shipments:', realTimeLocations);
+      console.log('📍 Selected shipment tracker ID:', trackerId);
+      console.log('🔗 WebSocket Connected:', wsConnected);
+      
+      // Check if we have real-time data for the selected shipment's tracker
+      if (realTimeLocations[trackerId]) {
+        const realtimeLocation = realTimeLocations[trackerId];
+        console.log('🎯 Real-time location for tracker', trackerId, ':', realtimeLocation);
+        
+        // Add real-time location to existing locationData if it's newer
+        setLocationData(prev => {
+          const newLocationPoint = {
+            latitude: realtimeLocation.latitude,
+            longitude: realtimeLocation.longitude,
+            timestamp: realtimeLocation.timestamp || new Date().toISOString(),
+            battery: realtimeLocation.battery,
+            temperature: realtimeLocation.temperature,
+            humidity: realtimeLocation.humidity,
+            speed: realtimeLocation.speed
+          };
+          
+          // Check if this is a new location (different from the last one)
+          const lastLocation = prev[prev.length - 1];
+          if (!lastLocation || 
+              lastLocation.latitude !== newLocationPoint.latitude || 
+              lastLocation.longitude !== newLocationPoint.longitude) {
+            console.log('📍 Adding new real-time GPS location to Shipments map:', newLocationPoint);
+            return [...prev, newLocationPoint];
+          }
+          return prev;
+        });
+        
+        // Update sensor data arrays for charts
+        if (realtimeLocation.battery !== undefined) {
+          setBatteryData(prev => [...prev, { 
+            timestamp: realtimeLocation.timestamp || new Date().toISOString(),
+            value: realtimeLocation.battery 
+          }]);
+        }
+        
+        if (realtimeLocation.temperature !== undefined) {
+          setTemperatureData(prev => [...prev, { 
+            timestamp: realtimeLocation.timestamp || new Date().toISOString(),
+            value: realtimeLocation.temperature 
+          }]);
+        }
+        
+        if (realtimeLocation.humidity !== undefined) {
+          setHumidityData(prev => [...prev, { 
+            timestamp: realtimeLocation.timestamp || new Date().toISOString(),
+            value: realtimeLocation.humidity 
+          }]);
+        }
+        
+        if (realtimeLocation.speed !== undefined) {
+          setSpeedData(prev => [...prev, { 
+            timestamp: realtimeLocation.timestamp || new Date().toISOString(),
+            value: realtimeLocation.speed 
+          }]);
+        }
+      }
+    }
+  }, [realTimeLocations, selectedShipmentDetail, wsConnected]);
   
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
