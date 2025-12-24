@@ -65,16 +65,24 @@ const Shipments = () => {
 
   // Real-time GPS location updates from WebSocket
   useEffect(() => {
+    console.log('🔄 Shipments Real-time useEffect triggered');
+    console.log('📡 realTimeLocations:', realTimeLocations);
+    console.log('📋 selectedShipmentDetail:', selectedShipmentDetail);
+    console.log('🔗 realTimeConnected:', realTimeConnected);
+    
     if (realTimeLocations && selectedShipmentDetail) {
       const trackerId = selectedShipmentDetail.trackerId;
       
       console.log('🔄 RealTime Locations Updated in Shipments:', realTimeLocations);
-      console.log('📍 Selected shipment tracker ID:', trackerId);
+      console.log('📍 Selected shipment tracker ID:', trackerId, '(type:', typeof trackerId, ')');
       console.log('🔗 WebSocket Connected:', realTimeConnected);
+      console.log('📊 Available tracker IDs in realTimeLocations:', Object.keys(realTimeLocations));
       
       // Check if we have real-time data for the selected shipment's tracker
-      if (realTimeLocations[trackerId]) {
-        const realtimeLocation = realTimeLocations[trackerId];
+      // Handle both string and numeric trackerId formats
+      const realtimeLocation = realTimeLocations[trackerId] || realTimeLocations[String(trackerId)] || realTimeLocations[Number(trackerId)];
+      
+      if (realtimeLocation) {
         console.log('🎯 Real-time location for tracker', trackerId, ':', realtimeLocation);
         
         // Add real-time location to existing locationData if it's newer
@@ -128,7 +136,15 @@ const Shipments = () => {
             value: realtimeLocation.speed 
           }]);
         }
+      } else {
+        console.log('❌ No real-time location found for tracker', trackerId);
+        console.log('📋 Available real-time trackers:', Object.keys(realTimeLocations));
       }
+    } else {
+      console.log('⏸️ No realTimeLocations or selectedShipmentDetail');
+      console.log('📡 realTimeLocations available:', !!realTimeLocations);
+      console.log('📋 selectedShipmentDetail available:', !!selectedShipmentDetail);
+    }
     }
   }, [realTimeLocations, selectedShipmentDetail, realTimeConnected]);
   
