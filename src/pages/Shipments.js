@@ -54,6 +54,7 @@ const Shipments = () => {
   const [alertsData, setAlertsData] = useState([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [alertEvents, setAlertEvents] = useState([]);
+  const [mapUpdateTrigger, setMapUpdateTrigger] = useState(0); // Force map re-renders
   
   // Add state for hover marker on polyline
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
@@ -107,8 +108,8 @@ const Shipments = () => {
             
             // Force map re-render by triggering a state change
             setTimeout(() => {
-              // Trigger a forced update to ensure map components re-render
               console.log('🗺️ Forcing map update with new location data, total points:', updatedData.length);
+              setMapUpdateTrigger(Date.now()); // Force complete map re-render
             }, 100);
             
             return updatedData;
@@ -165,14 +166,14 @@ const Shipments = () => {
         const map = mapRef.current;
         if (map && latestLocation.latitude && latestLocation.longitude) {
           // Pan to the latest location
-          map.setView([latestLocation.latitude, latestLocation.longitude], map.getZoom());
-          console.log('✅ Map view updated successfully');
+          map.setView([latestLocation.latitude, latestLocation.longitude], Math.max(map.getZoom(), 15));
+          console.log('✅ Map view updated successfully to:', [latestLocation.latitude, latestLocation.longitude]);
         }
       } catch (error) {
         console.log('⚠️ Error updating map view:', error);
       }
     }
-  }, [locationData]);
+  }, [locationData, mapUpdateTrigger]);
   
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -2082,7 +2083,7 @@ const Shipments = () => {
           ref={mapRef}
           center={[20, 0]} // Default world view
           zoom={2}
-          key={`shipments-map-${locationData.length}`} // Force re-render on location data changes
+          key={`shipments-map-${locationData.length}-${mapUpdateTrigger}`} // Force re-render on location data changes
           minZoom={1}
           maxZoom={18}
           style={{ height: '100%', width: '100%' }}
