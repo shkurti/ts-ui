@@ -1138,14 +1138,14 @@ const Shipments = () => {
       ) {
         wsRef.current.close();
       }
-      // Always use the full backend URL
-      const websocket = new window.WebSocket('wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
+      // Always use the full backend URL - match the tracker page URL
+      const websocket = new window.WebSocket('wss://backend-ts-68222fd8cfc0.herokuapp.com/ws');
       
       wsRef.current = websocket;
 
       websocket.onopen = () => {
         setWsConnected(true);
-        console.log('WebSocket connected');
+        console.log('🔗 Shipment page WebSocket connected to:', 'wss://backend-ts-68222fd8cfc0.herokuapp.com/ws');
       };
 
       // DO NOT set websocket.onmessage here — we add a single, managed listener below
@@ -1153,7 +1153,7 @@ const Shipments = () => {
 
       websocket.onclose = () => {
         setWsConnected(false);
-        console.log('WebSocket disconnected');
+        console.log('🔗 Shipment page WebSocket disconnected');
         if (!isUnmounted) {
           reconnectTimeout = setTimeout(connectWebSocket, 3000);
         }
@@ -1183,6 +1183,7 @@ const Shipments = () => {
   // Handle incoming WebSocket messages (single centralized listener)
   useEffect(() => {
     currentTrackerIdRef.current = selectedShipmentDetail?.trackerId ?? null;
+    console.log('🎯 Selected shipment tracker ID updated:', currentTrackerIdRef.current);
     processedMessagesRef.current = new Set();
     receivedAlertIdsRef.current = new Set();
   }, [selectedShipmentDetail?.trackerId]);
@@ -1198,7 +1199,62 @@ const Shipments = () => {
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
 
+        console.log('🔔 Shipment WebSocket message received:', msg); // Debug log
+
+        // Add simple tracker-style message handling for real-time sensor updates
+        if (msg.operationType === 'insert' && msg.new_record) {
+          const activeTrackerId = currentTrackerIdRef.current;
+          if (activeTrackerId && msg.tracker_id && String(msg.tracker_id) === String(activeTrackerId)) {
+            console.log('📊 Processing real-time sensor data for trackerId:', msg.tracker_id);
+            
+            const record = msg.new_record;
+            const timestamp = record.timestamp_local || record.DT || record.timestamp || new Date().toISOString();
+            
+            // Update location data
+            if (record.Lat && record.Lng && !isNaN(parseFloat(record.Lat)) && !isNaN(parseFloat(record.Lng))) {
+              setLocationData((prev) => [...prev, { 
+                latitude: parseFloat(record.Lat), 
+                longitude: parseFloat(record.Lng), 
+                timestamp 
+              }]);
+            }
+            
+            // Update sensor data
+            if (record.Temp !== undefined && record.Temp !== null) {
+              setTemperatureData((prev) => [...prev, { 
+                timestamp, 
+                temperature: parseFloat(record.Temp) 
+              }]);
+            }
+            
+            if (record.Hum !== undefined && record.Hum !== null) {
+              setHumidityData((prev) => [...prev, { 
+                timestamp, 
+                humidity: parseFloat(record.Hum) 
+              }]);
+            }
+            
+            if (record.Batt !== undefined && record.Batt !== null) {
+              setBatteryData((prev) => [...prev, { 
+                timestamp, 
+                battery: parseFloat(record.Batt) 
+              }]);
+            }
+            
+            if (record.Speed !== undefined && record.Speed !== null) {
+              setSpeedData((prev) => [...prev, { 
+                timestamp, 
+                speed: parseFloat(record.Speed) 
+              }]);
+            }
+            
+            console.log('✅ Successfully updated real-time sensor data');
+            return; // Exit early since we processed the message
+          }
+        }
+
         if (msg?.type === 'alert' && msg.data) {
+          console.log('📢 Processing alert message:', msg.data);
           const alertPayload = msg.data;
           const activeShipment = selectedShipmentDetail;
           if (!activeShipment) return;
@@ -1308,14 +1364,27 @@ const Shipments = () => {
 
         if (!msg || msg.type === 'alert') return;
 
+        console.log('🔍 Processing complex sensor data message:', msg);
+
         const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || msg.data?.fullDocument || null;
-        if (!full) return;
+        if (!full) {
+          console.log('⚠️ No fullDocument found in message');
+          return;
+        }
 
         const activeTrackerId = currentTrackerIdRef.current;
-        if (!activeTrackerId) return;
+        if (!activeTrackerId) {
+          console.log('⚠️ No active tracker ID set');
+          return;
+        }
 
         const msgTrackerId = full.trackerID ?? full.trackerId;
-        if (String(msgTrackerId) !== String(activeTrackerId)) return;
+        if (String(msgTrackerId) !== String(activeTrackerId)) {
+          console.log(`⚠️ Tracker ID mismatch: message=${msgTrackerId}, active=${activeTrackerId}`);
+          return;
+        }
+
+        console.log('✅ Tracker ID matches, processing sensor data...');
 
         const msgId =
           msg._id?._data ||
