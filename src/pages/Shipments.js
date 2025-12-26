@@ -1136,7 +1136,15 @@ const Shipments = () => {
   // Process real-time sensor data from WebSocketContext
   useEffect(() => {
     const currentTrackerId = selectedShipmentDetail?.trackerId;
+    console.log('🔄 WebSocketContext sensor data changed:', {
+      currentTrackerId,
+      availableTrackers: Object.keys(sensorData),
+      wsConnected,
+      sensorDataForCurrentTracker: sensorData[currentTrackerId]
+    });
+    
     if (!currentTrackerId || !sensorData[currentTrackerId]) {
+      console.log('⚠️ No sensor data available for current tracker:', currentTrackerId);
       return;
     }
 
