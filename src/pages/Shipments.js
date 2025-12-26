@@ -7,7 +7,6 @@ import { TriangleAlert } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
-import { useWebSocketContext } from '../context/WebSocketContext';
 
 // Fix for default markers
 delete L.Icon.Default.prototype._getIconUrl;
@@ -19,7 +18,6 @@ L.Icon.Default.mergeOptions({
 
 const Shipments = () => {
   const { user, isAuthenticated, loading } = useAuth();
-  const { connected: wsConnected, sensorData, trackerLocations } = useWebSocketContext();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
   const [selectedShipments, setSelectedShipments] = useState([]);
@@ -68,6 +66,9 @@ const Shipments = () => {
 
   // Add ref for map instance
   const mapRef = useRef();
+  const currentTrackerIdRef = useRef(null);
+  const receivedAlertIdsRef = useRef(new Set());
+  const alertEventIdsRef = useRef(new Set());
 
   // LocalStorage key for persisting selected shipment
   const SELECTED_SHIPMENT_KEY = 'selectedShipmentId';
@@ -1121,74 +1122,319 @@ const Shipments = () => {
   // Persisted set of processed message IDs to avoid duplicates
   const processedMessagesRef = useRef(new Set());
 
-  // Track current tracker ID for filtering real-time updates
+  // Add WebSocket connection status state
+  const [wsConnected, setWsConnected] = useState(false);
+  const wsRef = useRef(null);
+
+  useEffect(() => {
+    let reconnectTimeout = null;
+    let isUnmounted = false;
+
+    function connectWebSocket() {
+      // Only close if OPEN or CLOSING (never if CONNECTING)
+      if (
+        wsRef.current &&
+        (wsRef.current.readyState === 1 || wsRef.current.readyState === 2)
+      ) {
+        wsRef.current.close();
+      }
+      // Always use the full backend URL - match the tracker page URL
+      const websocket = new window.WebSocket('wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
+      
+      wsRef.current = websocket;
+
+      websocket.onopen = () => {
+        setWsConnected(true);
+        console.log('🔗 Shipment page WebSocket connected to:', 'wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
+      };
+
+      websocket.onclose = () => {
+        setWsConnected(false);
+        console.log('🔗 Shipment page WebSocket disconnected');
+        if (!isUnmounted) {
+          reconnectTimeout = setTimeout(connectWebSocket, 3000);
+        }
+      };
+
+      websocket.onerror = (err) => {
+        setWsConnected(false);
+        console.error('WebSocket error:', err);
+      };
+    }
+
+    connectWebSocket();
+
+    return () => {
+      isUnmounted = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      // Only close if OPEN or CLOSING (never if CONNECTING)
+      if (
+        wsRef.current &&
+        (wsRef.current.readyState === 1 || wsRef.current.readyState === 2)
+      ) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  // Handle incoming WebSocket messages (single centralized listener)
   useEffect(() => {
     currentTrackerIdRef.current = selectedShipmentDetail?.trackerId ?? null;
     console.log('🎯 Selected shipment tracker ID updated:', currentTrackerIdRef.current);
+    processedMessagesRef.current = new Set();
+    receivedAlertIdsRef.current = new Set();
   }, [selectedShipmentDetail?.trackerId]);
 
-  // Process real-time sensor data from WebSocket context
   useEffect(() => {
-    const currentTrackerId = selectedShipmentDetail?.trackerId;
-    if (!currentTrackerId || !sensorData[currentTrackerId]) {
-      return;
-    }
+    if (!selectedShipmentDetail) return;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== 1) return;
 
-    const latestSensorData = sensorData[currentTrackerId];
-    console.log('📊 Processing new sensor data for tracker:', currentTrackerId, latestSensorData);
+    const handleMessage = (event) => {
+      try {
+        const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
 
-    const timestamp = new Date().toISOString();
+        console.log('🔔 Shipment WebSocket message received:', msg); // Debug log
 
-    // Update location data
-    if (latestSensorData.Lat && latestSensorData.Lng) {
-      const lat = parseFloat(latestSensorData.Lat);
-      const lng = parseFloat(latestSensorData.Lng);
-      if (!isNaN(lat) && !isNaN(lng)) {
-        setLocationData(prev => [...prev, { latitude: lat, longitude: lng, timestamp }]);
+        // Handle alert messages
+        if (msg?.type === 'alert' && msg.data) {
+          console.log('📢 Processing alert message:', msg.data);
+          const alertPayload = msg.data;
+          const activeShipment = selectedShipmentDetail;
+          if (!activeShipment) return;
+
+          const shipmentMatches =
+            alertPayload.shipmentId &&
+            String(alertPayload.shipmentId) === String(activeShipment._id);
+          const trackerMatches =
+            alertPayload.trackerId &&
+            String(alertPayload.trackerId) === String(activeShipment.trackerId);
+
+          if (!shipmentMatches && !trackerMatches) return;
+
+          const alertId =
+            alertPayload.alertId ||
+            alertPayload._id ||
+            `${alertPayload.trackerId || ""}-${alertPayload.alertType || ""}-${alertPayload.timestamp || ""}`;
+
+          const firstTriggeredRaw = alertPayload.timestamp;
+          const lastTriggeredRaw = alertPayload.lastTriggeredAt || alertPayload.timestamp;
+          const normalizedAlert = {
+            alertId,
+            shipmentId: alertPayload.shipmentId,
+            trackerId: alertPayload.trackerId,
+            alertDate: alertPayload.alertDate || (firstTriggeredRaw ? firstTriggeredRaw.slice(0, 10) : ''),
+            alertType: alertPayload.alertType,
+            alertName: alertPayload.alertName || alertPayload.alertType || "Alert",
+            severity: alertPayload.severity || "warning",
+            sensorValue: alertPayload.sensorValue,
+            minThreshold: alertPayload.minThreshold,
+            maxThreshold: alertPayload.maxThreshold,
+            unit: alertPayload.unit || "",
+            timestamp: formatTimestamp(firstTriggeredRaw),
+            timestampRaw: firstTriggeredRaw,
+            lastTriggeredAt: formatTimestamp(lastTriggeredRaw),
+            lastTriggeredAtRaw: lastTriggeredRaw,
+            occurrenceCount: alertPayload.occurrenceCount || 1,
+            message: alertPayload.message,
+            location: alertPayload.location || {}
+          };
+
+          normalizedAlert.alertKey = buildAlertKey(normalizedAlert);
+          receivedAlertIdsRef.current.add(normalizedAlert.alertKey);
+
+          setAlertsData((prev) => {
+            const map = new Map(prev.map((item) => [item.alertKey, { ...item }]));
+            const existing = map.get(normalizedAlert.alertKey);
+            if (existing) {
+              existing.alertId = normalizedAlert.alertId;
+              existing.alertName = normalizedAlert.alertName;
+              existing.severity = normalizedAlert.severity;
+              existing.minThreshold = normalizedAlert.minThreshold;
+              existing.maxThreshold = normalizedAlert.maxThreshold;
+              existing.unit = normalizedAlert.unit;
+              existing.occurrenceCount = alertPayload.occurrenceCount || existing.occurrenceCount;
+              if (normalizedAlert.timestampRaw && (!existing.timestampRaw || normalizedAlert.timestampRaw < existing.timestampRaw)) {
+                existing.timestampRaw = normalizedAlert.timestampRaw;
+                existing.timestamp = normalizedAlert.timestamp;
+              }
+              if (normalizedAlert.lastTriggeredAtRaw && (!existing.lastTriggeredAtRaw || normalizedAlert.lastTriggeredAtRaw > existing.lastTriggeredAtRaw)) {
+                existing.lastTriggeredAtRaw = normalizedAlert.lastTriggeredAtRaw;
+                existing.lastTriggeredAt = normalizedAlert.lastTriggeredAt;
+                existing.sensorValue = normalizedAlert.sensorValue;
+                existing.location = normalizeLocation(normalizedAlert.location) || existing.location;
+              }
+              map.set(normalizedAlert.alertKey, existing);
+            } else {
+              map.set(normalizedAlert.alertKey, normalizedAlert);
+            }
+            return Array.from(map.values())
+              .sort((a, b) => new Date(b.lastTriggeredAtRaw || 0) - new Date(a.lastTriggeredAtRaw || 0))
+              .slice(0, 200);
+          });
+
+          const eventId =
+            alertPayload.eventId || `${alertId}-${alertPayload.eventTimestamp || alertPayload.timestamp}`;
+          const eventLocation = alertPayload.eventLocation || alertPayload.location;
+          const eventLat = eventLocation?.latitude;
+          const eventLng = eventLocation?.longitude;
+          if (
+            eventLat != null &&
+            eventLng != null &&
+            Number.isFinite(parseFloat(eventLat)) &&
+            Number.isFinite(parseFloat(eventLng)) &&
+            !alertEventIdsRef.current.has(eventId)
+          ) {
+            alertEventIdsRef.current.add(eventId);
+            const newEvent = {
+              eventId,
+              alertId,
+              alertType: alertPayload.alertType,
+              alertName: alertPayload.alertName || alertPayload.alertType || "Alert",
+              severity: alertPayload.severity || "warning",
+              timestamp: formatTimestamp(alertPayload.eventTimestamp || alertPayload.timestamp),
+              timestampRaw: alertPayload.eventTimestamp || alertPayload.timestamp,
+              location: {
+                latitude: parseFloat(eventLat),
+                longitude: parseFloat(eventLng)
+              },
+              sensorValue: alertPayload.sensorValue,
+              unit: alertPayload.unit || ""
+            };
+            setAlertEvents((prev) => [newEvent, ...prev].slice(0, 500));
+          }
+          return;
+        }
+
+        // Handle sensor data messages
+        if (!msg || msg.type === 'alert') return;
+
+        console.log('🔍 Processing complex sensor data message:', msg);
+
+        const full = msg.fullDocument || msg.full_document || msg.fullDocumentRaw || msg.data?.fullDocument || null;
+        if (!full) {
+          console.log('⚠️ No fullDocument found in message');
+          return;
+        }
+
+        const activeTrackerId = currentTrackerIdRef.current;
+        if (!activeTrackerId) {
+          console.log('⚠️ No active tracker ID set');
+          return;
+        }
+
+        const msgTrackerId = full.trackerID ?? full.trackerId;
+        if (String(msgTrackerId) !== String(activeTrackerId)) {
+          console.log(`⚠️ Tracker ID mismatch: message=${msgTrackerId}, active=${activeTrackerId}`);
+          return;
+        }
+
+        console.log('✅ Tracker ID matches, processing sensor data...');
+
+        const msgId =
+          msg._id?._data ||
+          msg.fullDocument?._id?.$oid ||
+          (msg.wallTime && (msg.wallTime.$date || JSON.stringify(msg.wallTime))) ||
+          JSON.stringify(msg).slice(0, 200);
+
+        if (processedMessagesRef.current.has(msgId)) return;
+        processedMessagesRef.current.add(msgId);
+
+        const fallbackTimestamp = new Date().toISOString();
+
+        if (Array.isArray(full.data) && full.data.length > 0) {
+          setLocationData((prev) => {
+            const newPoints = full.data
+              .map((r) => {
+                const lat = r.Lat ?? r.latitude ?? r.lat;
+                const lng = r.Lng ?? r.longitude ?? r.lng ?? r.lon;
+                const timestamp = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
+                if (lat == null || lng == null || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) return null;
+                return { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp };
+              })
+              .filter(Boolean);
+            return newPoints.length ? [...prev, ...newPoints] : prev;
+          });
+
+          setTemperatureData((prev) => [
+            ...prev,
+            ...full.data
+              .map((r) => {
+                const t = r.Temp ?? r.temperature;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
+                if (t === undefined || t === null) return null;
+                return { timestamp: ts, temperature: parseFloat(t) };
+              })
+              .filter(Boolean),
+          ]);
+
+          setHumidityData((prev) => [
+            ...prev,
+            ...full.data
+              .map((r) => {
+                const h = r.Hum ?? r.humidity;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
+                if (h === undefined || h === null) return null;
+                return { timestamp: ts, humidity: parseFloat(h) };
+              })
+              .filter(Boolean),
+          ]);
+
+          setBatteryData((prev) => [
+            ...prev,
+            ...full.data
+              .map((r) => {
+                const b = r.Batt ?? r.battery;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
+                if (b === undefined || b === null) return null;
+                return { timestamp: ts, battery: parseFloat(b) };
+              })
+              .filter(Boolean),
+          ]);
+
+          setSpeedData((prev) => [
+            ...prev,
+            ...full.data
+              .map((r) => {
+                const s = r.Speed ?? r.speed;
+                const ts = r.DT ?? r.timestamp ?? r.timestamp_local ?? fallbackTimestamp;
+                if (s === undefined || s === null) return null;
+                return { timestamp: ts, speed: parseFloat(s) };
+              })
+              .filter(Boolean),
+          ]);
+        } else {
+          const lat = full.Lat ?? full.latitude ?? full.lat;
+          const lng = full.Lng ?? full.longitude ?? full.lng ?? full.lon;
+          const ts = full.DT ?? full.timestamp ?? full.timestamp_local ?? fallbackTimestamp;
+
+          if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
+            setLocationData((prev) => [...prev, { latitude: parseFloat(lat), longitude: parseFloat(lng), timestamp: ts }]);
+
+            // Also update temperature, humidity, battery, and speed with the latest values
+            const t = full.Temp ?? full.temperature;
+            if (t !== undefined && t !== null) setTemperatureData((prev) => [...prev, { timestamp: ts, temperature: parseFloat(t) }]);
+
+            const h = full.Hum ?? full.humidity;
+            if (h !== undefined && h !== null) setHumidityData((prev) => [...prev, { timestamp: ts, humidity: parseFloat(h) }]);
+
+            const b = full.Batt ?? full.battery;
+            if (b !== undefined && b !== null) setBatteryData((prev) => [...prev, { timestamp: ts, battery: parseFloat(b) }]);
+
+            const s = full.Speed ?? full.speed;
+            if (s !== undefined && s !== null) setSpeedData((prev) => [...prev, { timestamp: ts, speed: parseFloat(s) }]);
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing WS message', e);
       }
-    }
+    };
 
-    // Update sensor charts data
-    if (latestSensorData.Temp !== undefined && latestSensorData.Temp !== null) {
-      setTemperatureData(prev => [...prev, { timestamp, temperature: parseFloat(latestSensorData.Temp) }]);
-    }
-
-    if (latestSensorData.Hum !== undefined && latestSensorData.Hum !== null) {
-      setHumidityData(prev => [...prev, { timestamp, humidity: parseFloat(latestSensorData.Hum) }]);
-    }
-
-    if (latestSensorData.Batt !== undefined && latestSensorData.Batt !== null) {
-      setBatteryData(prev => [...prev, { timestamp, battery: parseFloat(latestSensorData.Batt) }]);
-    }
-
-    if (latestSensorData.Speed !== undefined && latestSensorData.Speed !== null) {
-      setSpeedData(prev => [...prev, { timestamp, speed: parseFloat(latestSensorData.Speed) }]);
-    }
-
-    console.log('✅ Successfully updated real-time sensor data from WebSocket context');
-  }, [sensorData, selectedShipmentDetail?.trackerId]);
-
-  // Process real-time location updates from WebSocket context
-  useEffect(() => {
-    const currentTrackerId = selectedShipmentDetail?.trackerId;
-    if (!currentTrackerId || !trackerLocations[currentTrackerId]) {
-      return;
-    }
-
-    const locationUpdate = trackerLocations[currentTrackerId];
-    console.log('📍 Processing location update for tracker:', currentTrackerId, locationUpdate);
-
-    if (locationUpdate.latitude && locationUpdate.longitude) {
-      const lat = parseFloat(locationUpdate.latitude);
-      const lng = parseFloat(locationUpdate.longitude);
-      
-      if (!isNaN(lat) && !isNaN(lng)) {
-        const timestamp = locationUpdate.timestamp || new Date().toISOString();
-        setLocationData(prev => [...prev, { latitude: lat, longitude: lng, timestamp }]);
-        console.log('✅ Successfully updated real-time location data');
-      }
-    }
-  }, [trackerLocations, selectedShipmentDetail?.trackerId]);
+    ws.addEventListener('message', handleMessage);
+    return () => {
+      ws.removeEventListener('message', handleMessage);
+    };
+  }, [selectedShipmentDetail?.trackerId, wsConnected]);
 
   const combinedAlertMarkers = useMemo(() => {
     const markers = new Map();
