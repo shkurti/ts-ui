@@ -1138,14 +1138,21 @@ const Shipments = () => {
       ) {
         wsRef.current.close();
       }
-      // Always use the full backend URL - match the tracker page URL
-      const websocket = new window.WebSocket('wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
+      
+      // Get authentication token and add to WebSocket URL
+      const token = localStorage.getItem('token');
+      const wsUrl = token 
+        ? `wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws?token=${token}`
+        : 'wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws';
+      
+      console.log('🔗 Shipments page connecting to WebSocket with auth:', wsUrl.includes('token') ? 'YES' : 'NO');
+      const websocket = new window.WebSocket(wsUrl);
       
       wsRef.current = websocket;
 
       websocket.onopen = () => {
         setWsConnected(true);
-        console.log('🔗 Shipment page WebSocket connected to:', 'wss://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com/ws');
+        console.log('🔗 Shipment page WebSocket connected successfully with auth token');
       };
 
       websocket.onclose = () => {
