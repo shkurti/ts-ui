@@ -43,6 +43,13 @@ const Trackers = () => {
     ...realTimeLocations
   };
 
+  // Debug realtime location updates
+  useEffect(() => {
+    console.log('🔄 RealTime Locations Updated:', realTimeLocations);
+    console.log('📍 Merged Tracker Locations:', mergedTrackerLocations);
+    console.log('🔗 WebSocket Connected:', wsConnected);
+  }, [realTimeLocations, wsConnected]);
+
   useEffect(() => {
     let mounted = true;
     const fetchData = async () => {
