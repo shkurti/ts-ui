@@ -14,7 +14,7 @@
 
 /* Left Panel - Assets List */
 .assets-panel {
-  width: 25%;
+  width: 20%;
   background: white;
   display: flex;
   flex-direction: column;
