@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
-import { assetApi } from '../services/apiService';
+import { assetApi, trackerApi } from '../services/apiService';
 import { useWebSocketContext } from '../context/WebSocketContext';
 import './Assets.css';
 import 'leaflet/dist/leaflet.css';
@@ -53,6 +53,7 @@ const Assets = () => {
   
   const [assets, setAssets] = useState([]);
   const [assetLocations, setAssetLocations] = useState({});
+  const [trackers, setTrackers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
@@ -65,7 +66,8 @@ const Assets = () => {
     asset_id: '',
     asset_type: 'forklift',
     model_number: '',
-    description: ''
+    description: '',
+    tracker_id: ''
   });
   const [submitting, setSubmitting] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState([]);
@@ -94,24 +96,27 @@ const Assets = () => {
       try {
         setLoading(true);
         
-        // Fetch assets and locations from backend
-        const [assetsData, locationsData] = await Promise.all([
+        // Fetch assets, locations, and trackers from backend
+        const [assetsData, locationsData, trackersData] = await Promise.all([
           assetApi.getAll(),
-          assetApi.getLocations()
+          assetApi.getLocations(),
+          trackerApi.getAll()
         ]);
         
         if (mounted) {
           setAssets(assetsData);
           setAssetLocations(locationsData);
+          setTrackers(trackersData);
           setError(null);
         }
       } catch (err) {
-        console.error('Error fetching assets:', err);
+        console.error('Error fetching data:', err);
         if (mounted) {
-          setError(err.message || 'Failed to load assets');
+          setError(err.message || 'Failed to load data');
           // Fallback to empty arrays instead of sample data
           setAssets([]);
           setAssetLocations({});
+          setTrackers([]);
         }
       } finally {
         if (mounted) setLoading(false);
@@ -126,16 +131,18 @@ const Assets = () => {
   const fetchAssets = async () => {
     try {
       setLoading(true);
-      const [assetsData, locationsData] = await Promise.all([
+      const [assetsData, locationsData, trackersData] = await Promise.all([
         assetApi.getAll(),
-        assetApi.getLocations()
+        assetApi.getLocations(),
+        trackerApi.getAll()
       ]);
       setAssets(assetsData);
       setAssetLocations(locationsData);
+      setTrackers(trackersData);
       setError(null);
     } catch (err) {
-      console.error('Error fetching assets:', err);
-      setError(err.message || 'Failed to load assets');
+      console.error('Error fetching data:', err);
+      setError(err.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -167,7 +174,8 @@ const Assets = () => {
         asset_id: '',
         asset_type: 'forklift',
         model_number: '',
-        description: ''
+        description: '',
+        tracker_id: ''
       });
       setError(null);
       setSuccessMessage(`Asset "${newAsset.asset_name || newAsset.asset_id}" created successfully`);
@@ -660,6 +668,118 @@ const Assets = () => {
         <div className="success-toast">
           <span>{successMessage}</span>
           <button onClick={() => setSuccessMessage(null)}>×</button>
+        </div>
+      )}
+
+      {/* Asset Creation Modal */}
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Create New Asset</h3>
+              <button className="close-btn" onClick={() => setShowModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <form onSubmit={handleSubmit}>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>Asset Name *</label>
+                    <input
+                      type="text"
+                      name="asset_name"
+                      value={formData.asset_name}
+                      onChange={handleInputChange}
+                      placeholder="Enter asset name"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Asset ID *</label>
+                    <input
+                      type="text"
+                      name="asset_id"
+                      value={formData.asset_id}
+                      onChange={handleInputChange}
+                      placeholder="Enter unique asset ID"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Asset Type *</label>
+                    <select
+                      name="asset_type"
+                      value={formData.asset_type}
+                      onChange={handleInputChange}
+                      required
+                    >
+                      <option value="forklift">Forklift</option>
+                      <option value="trailer">Trailer</option>
+                      <option value="equipment">Equipment</option>
+                      <option value="person">Person</option>
+                    </select>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Select Tracker *</label>
+                    <select
+                      name="tracker_id"
+                      value={formData.tracker_id}
+                      onChange={handleInputChange}
+                      required
+                    >
+                      <option value="">Choose a tracker device</option>
+                      {trackers.map((tracker) => (
+                        <option key={tracker.tracker_id} value={tracker.tracker_id}>
+                          {tracker.tracker_name} (ID: {tracker.tracker_id})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Model Number</label>
+                    <input
+                      type="text"
+                      name="model_number"
+                      value={formData.model_number}
+                      onChange={handleInputChange}
+                      placeholder="Enter model number"
+                    />
+                  </div>
+                  
+                  <div className="form-group full-width">
+                    <label>Description</label>
+                    <textarea
+                      name="description"
+                      value={formData.description}
+                      onChange={handleInputChange}
+                      placeholder="Enter asset description"
+                      rows="3"
+                    />
+                  </div>
+                </div>
+                
+                <div className="modal-footer">
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={() => setShowModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary"
+                    disabled={submitting}
+                  >
+                    {submitting ? 'Creating...' : 'Create Asset'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
     </div>
