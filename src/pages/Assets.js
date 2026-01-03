@@ -49,12 +49,13 @@ const assetIcons = {
 };
 
 const Assets = () => {
-  const { assetLocations: realTimeLocations, connected: wsConnected } = useWebSocketContext();
+  const { assetLocations: realTimeAssetLocations, connected: wsConnected } = useWebSocketContext();
   
   const [assets, setAssets] = useState([]);
   const [assetLocations, setAssetLocations] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -77,87 +78,41 @@ const Assets = () => {
   // Merge real-time locations with cached locations
   const mergedAssetLocations = {
     ...assetLocations,
-    ...realTimeLocations
+    ...realTimeAssetLocations
   };
 
   // Debug realtime location updates
   useEffect(() => {
-    console.log('🔄 RealTime Asset Locations Updated:', realTimeLocations);
+    console.log('🔄 RealTime Asset Locations Updated:', realTimeAssetLocations);
     console.log('📍 Merged Asset Locations:', mergedAssetLocations);
     console.log('🔗 WebSocket Connected:', wsConnected);
-  }, [realTimeLocations, wsConnected]);
+  }, [realTimeAssetLocations, wsConnected]);
 
   useEffect(() => {
     let mounted = true;
     const fetchData = async () => {
       try {
-        // For now, use sample data until backend API is created
-        const sampleAssets = [
-          {
-            id: 'forklift-01',
-            asset_name: 'Forklift-01',
-            asset_id: 'FLT001',
-            asset_type: 'forklift',
-            model_number: 'CAT-2C5000',
-            description: 'Main warehouse forklift',
-            status: 'online',
-            last_seen: new Date(Date.now() - 2 * 60 * 1000).toISOString(), // 2 minutes ago
-            battery_level: 81,
-            speed: 5.2
-          },
-          {
-            id: 'trailer-09',
-            asset_name: 'Trailer-09',
-            asset_id: 'TLR009',
-            asset_type: 'trailer',
-            model_number: 'FDX-53FT',
-            description: 'Long haul trailer',
-            status: 'offline',
-            last_seen: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3 hours ago
-            battery_level: 23,
-            speed: 0
-          },
-          {
-            id: 'equipment-15',
-            asset_name: 'Equipment-15',
-            asset_id: 'EQP015',
-            asset_type: 'equipment',
-            model_number: 'GEN-5000',
-            description: 'Portable generator',
-            status: 'online',
-            last_seen: new Date(Date.now() - 15 * 60 * 1000).toISOString(), // 15 minutes ago
-            battery_level: 95,
-            speed: 0
-          }
-        ];
-
-        const sampleLocations = {
-          'forklift-01': {
-            latitude: 42.3601,
-            longitude: -71.0589,
-            address: 'Boston, MA',
-            timestamp: new Date().toISOString()
-          },
-          'trailer-09': {
-            latitude: 40.7128,
-            longitude: -74.0060,
-            address: 'New York, NY',
-            timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
-          },
-          'equipment-15': {
-            latitude: 39.2904,
-            longitude: -76.6122,
-            address: 'Baltimore, MD',
-            timestamp: new Date().toISOString()
-          }
-        };
+        setLoading(true);
+        
+        // Fetch assets and locations from backend
+        const [assetsData, locationsData] = await Promise.all([
+          assetApi.getAll(),
+          assetApi.getLocations()
+        ]);
         
         if (mounted) {
-          setAssets(sampleAssets);
-          setAssetLocations(sampleLocations);
+          setAssets(assetsData);
+          setAssetLocations(locationsData);
+          setError(null);
         }
       } catch (err) {
-        if (mounted) setError(err.message || 'Failed to load data');
+        console.error('Error fetching assets:', err);
+        if (mounted) {
+          setError(err.message || 'Failed to load assets');
+          // Fallback to empty arrays instead of sample data
+          setAssets([]);
+          setAssetLocations({});
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -171,14 +126,16 @@ const Assets = () => {
   const fetchAssets = async () => {
     try {
       setLoading(true);
-      // TODO: Replace with actual API calls when backend is ready
-      // const [assetsData, locationsData] = await Promise.all([
-      //   assetApi.getAll(),
-      //   assetApi.getLocations()
-      // ]);
+      const [assetsData, locationsData] = await Promise.all([
+        assetApi.getAll(),
+        assetApi.getLocations()
+      ]);
+      setAssets(assetsData);
+      setAssetLocations(locationsData);
       setError(null);
     } catch (err) {
-      setError(err.message || 'Failed to load data');
+      console.error('Error fetching assets:', err);
+      setError(err.message || 'Failed to load assets');
     } finally {
       setLoading(false);
     }
@@ -199,19 +156,10 @@ const Assets = () => {
     setSubmitting(true);
 
     try {
-      // TODO: Replace with actual API call
-      // await assetApi.create(formData);
+      // Create asset using backend API
+      const newAsset = await assetApi.create(formData);
       
-      // For now, add to local state
-      const newAsset = {
-        id: `${formData.asset_type}-${Date.now()}`,
-        ...formData,
-        status: 'online',
-        last_seen: new Date().toISOString(),
-        battery_level: 100,
-        speed: 0
-      };
-      
+      // Add to local state
       setAssets(prev => [...prev, newAsset]);
       setShowModal(false);
       setFormData({
@@ -221,7 +169,13 @@ const Assets = () => {
         model_number: '',
         description: ''
       });
+      setError(null);
+      setSuccessMessage(`Asset "${newAsset.asset_name || newAsset.asset_id}" created successfully`);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
+      console.error('Error creating asset:', err);
       setError(err.message || 'Failed to create asset');
     } finally {
       setSubmitting(false);
@@ -253,13 +207,20 @@ const Assets = () => {
     
     setDeleting(true);
     try {
-      // TODO: Replace with actual API call
-      // await assetApi.delete(selectedAssets);
+      // Delete assets using backend API
+      await assetApi.delete(selectedAssets);
       
-      // For now, remove from local state
+      // Remove from local state
       setAssets(prev => prev.filter(asset => !selectedAssets.includes(asset.id)));
       setSelectedAssets([]);
+      setSelectAll(false);
+      setError(null);
+      setSuccessMessage(`${selectedAssets.length} asset(s) deleted successfully`);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
+      console.error('Error deleting assets:', err);
       setError(err.message || 'Failed to delete assets');
     } finally {
       setDeleting(false);
@@ -329,9 +290,9 @@ const Assets = () => {
           <button 
             className="btn btn-danger" 
             onClick={handleBulkDelete}
-            disabled={selectedAssets.length === 0}
+            disabled={selectedAssets.length === 0 || deleting}
           >
-            Delete
+            {deleting ? 'Deleting...' : 'Delete'}
           </button>
         </div>
 
@@ -692,6 +653,13 @@ const Assets = () => {
         <div className="error-toast">
           <span>{error}</span>
           <button onClick={() => setError(null)}>×</button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="success-toast">
+          <span>{successMessage}</span>
+          <button onClick={() => setSuccessMessage(null)}>×</button>
         </div>
       )}
     </div>

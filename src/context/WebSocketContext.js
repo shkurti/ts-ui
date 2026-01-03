@@ -20,6 +20,7 @@ export const WebSocketProvider = ({ children }) => {
   const [alerts, setAlerts] = useState([]);
   const [sensorData, setSensorData] = useState({});
   const [trackerLocations, setTrackerLocations] = useState({});
+  const [assetLocations, setAssetLocations] = useState({});
 
   // Handle incoming WebSocket messages
   useEffect(() => {
@@ -131,6 +132,18 @@ export const WebSocketProvider = ({ children }) => {
         console.log('📡 Updated tracker locations state:', updated);
         return updated;
       });
+      
+      // Also update asset locations if this tracker is linked to an asset
+      setAssetLocations(prev => {
+        // For now, we assume asset ID matches tracker ID
+        // In a real implementation, you'd have a mapping between assets and trackers
+        const updated = {
+          ...prev,
+          [trackerId]: newLocationData
+        };
+        console.log('🏭 Updated asset locations state:', updated);
+        return updated;
+      });
     }
   }, []);
 
@@ -171,6 +184,7 @@ export const WebSocketProvider = ({ children }) => {
     alerts,
     sensorData,
     trackerLocations,
+    assetLocations,
     
     // Methods
     sendMessage,
@@ -180,7 +194,8 @@ export const WebSocketProvider = ({ children }) => {
     // Data management
     clearAlerts: () => setAlerts([]),
     clearSensorData: () => setSensorData({}),
-    clearTrackerLocations: () => setTrackerLocations({})
+    clearTrackerLocations: () => setTrackerLocations({}),
+    clearAssetLocations: () => setAssetLocations({})
   };
 
   return (
