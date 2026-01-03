@@ -368,6 +368,9 @@ const Assets = () => {
                       e.stopPropagation();
                       handleAssetSelect(asset.id);
                     }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
                     className="asset-checkbox"
                   />
                   <span className={`status-indicator ${asset.status}`}></span>
