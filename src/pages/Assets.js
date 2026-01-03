@@ -68,6 +68,7 @@ const Assets = () => {
   });
   const [submitting, setSubmitting] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState([]);
+  const [selectAll, setSelectAll] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [assetTypeFilter, setAssetTypeFilter] = useState('All');
@@ -227,6 +228,16 @@ const Assets = () => {
     }
   };
 
+  // Handle select all
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelectedAssets([]);
+    } else {
+      setSelectedAssets(filteredAssets.map(asset => asset.id));
+    }
+    setSelectAll(!selectAll);
+  };
+
   // Handle asset selection
   const handleAssetSelect = (assetId) => {
     setSelectedAssets(prev => 
@@ -306,11 +317,34 @@ const Assets = () => {
     <div className="assets-layout">
       {/* Left Panel - Assets List */}
       <div className="assets-panel">
-        <div className="panel-header">
-          <h1>Assets</h1>
-          <button className="create-btn" onClick={() => setShowModal(true)}>
+        <div className="sidebar-header">
+          <h2>Asset Management</h2>
+          <p>Track and manage assets</p>
+        </div>
+
+        <div className="action-buttons">
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
             + Add Asset
           </button>
+          <button 
+            className="btn btn-danger" 
+            onClick={handleBulkDelete}
+            disabled={selectedAssets.length === 0}
+          >
+            Delete
+          </button>
+        </div>
+
+        <div className="select-all">
+          <label className="checkbox-container">
+            <input
+              type="checkbox"
+              checked={selectAll}
+              onChange={handleSelectAll}
+            />
+            <span className="checkmark"></span>
+            Select All ({filteredAssets.length} assets)
+          </label>
         </div>
 
         <div className="panel-filters">
@@ -345,18 +379,7 @@ const Assets = () => {
             </select>
           </div>
 
-          {selectedAssets.length > 0 && (
-            <div className="bulk-actions">
-              <span className="selected-count">{selectedAssets.length} selected</span>
-              <button
-                className="delete-btn"
-                onClick={handleBulkDelete}
-                disabled={deleting}
-              >
-                {deleting ? 'Deleting...' : 'Delete Selected'}
-              </button>
-            </div>
-          )}
+
         </div>
 
         <div className="assets-list">

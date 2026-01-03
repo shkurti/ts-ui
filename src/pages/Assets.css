@@ -19,57 +19,117 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid #e9ecef;
+  padding: 1rem;
 }
 
-/* Panel Header */
-.panel-header {
+/* Sidebar Header */
+.sidebar-header {
+  margin-bottom: 2rem;
+}
+
+.sidebar-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #2d3748;
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-header p {
+  color: #718096;
+  font-size: 0.95rem;
+}
+
+/* Action Buttons */
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.btn {
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+}
+
+.btn-primary {
+  background: #667eea;
+  color: white;
+  flex: 1;
+}
+
+.btn-primary:hover {
+  background: #5a67d8;
+}
+
+.btn-danger {
+  background: #e53e3e;
+  color: white;
+  flex: 0 0 auto;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #c53030;
+}
+
+.btn-danger:disabled {
+  background: #cbd5e0;
+  cursor: not-allowed;
+}
+
+/* Select All */
+.select-all {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.checkbox-container {
   display: flex;
   align-items: center;
-  padding: 16px 24px;
-  border-bottom: 1px solid #e9ecef;
-  gap: 16px;
-}
-
-.panel-header h1 {
-  font-size: 20px;
-  font-weight: 600;
-  color: #212529;
-  margin: 0;
-}
-
-.create-btn {
-  background: #28a745;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  font-size: 0.9rem;
+  color: #4a5568;
 }
 
-.create-btn:hover {
-  background: #218838;
+.checkbox-container input {
+  margin-right: 0.3rem;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
 }
 
 /* Panel Filters */
 .panel-filters {
-  padding: 16px 24px;
-  border-bottom: 1px solid #e9ecef;
-  background: #f8f9fa;
+  margin-bottom: 1.5rem;
 }
 
 .search-bar {
-  margin-bottom: 12px;
+  margin-bottom: 1.5rem;
 }
 
 .search-bar input {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ced4da;
-  border-radius: 4px;
-  font-size: 14px;
+  padding: 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: white;
+  transition: border-color 0.2s ease;
+}
+
+.search-bar input:focus {
+  border-color: #667eea;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.search-bar input::placeholder {
+  color: #a0aec0;
 }
 
 .filter-row {
