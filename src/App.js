@@ -7,6 +7,7 @@ import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Shipments from './pages/Shipments';
+import Assets from './pages/Assets';
 import Trackers from './pages/Trackers';
 import Analysis from './pages/Analysis';
 import Configure from './pages/Configure';
@@ -38,6 +39,14 @@ function App() {
                 <Navbar />
                 <div className="main-content">
                   <Shipments />
+                </div>
+              </ProtectedRoute>
+            } />
+            <Route path="/assets" element={
+              <ProtectedRoute>
+                <Navbar />
+                <div className="main-content">
+                  <Assets />
                 </div>
               </ProtectedRoute>
             } />

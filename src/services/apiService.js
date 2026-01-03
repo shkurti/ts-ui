@@ -85,6 +85,23 @@ export const trackerApi = {
   getLocations: () => apiService.get('/tracker_locations'),
 };
 
+export const assetApi = {
+  getAll: () => apiService.get('/assets'),
+  create: (asset) => apiService.post('/assets', asset),
+  update: (assetId, asset) => apiService.put(`/assets/${assetId}`, asset),
+  delete: (assetIds) => apiService.delete('/assets', { asset_ids: assetIds }),
+  getLocations: () => apiService.get('/asset_locations'),
+  getHistory: (assetId, params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) searchParams.append(key, value);
+    });
+    const queryString = searchParams.toString();
+    return apiService.get(`/assets/${assetId}/history${queryString ? `?${queryString}` : ''}`);
+  },
+  getAlerts: (assetId) => apiService.get(`/assets/${assetId}/alerts`),
+};
+
 export const shipmentApi = {
   getAll: () => apiService.get('/shipment_meta'),
   create: (shipment) => apiService.post('/shipment_meta', shipment),

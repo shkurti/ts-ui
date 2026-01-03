@@ -70,6 +70,15 @@ const Navbar = () => {
           </li>
           <li className="navbar-item">
             <Link 
+              to="/assets" 
+              className={`navbar-link ${isActive('/assets') ? 'active' : ''}`}
+              onClick={closeMobileMenu}
+            >
+              Assets
+            </Link>
+          </li>
+          <li className="navbar-item">
+            <Link 
               to="/trackers" 
               className={`navbar-link ${isActive('/trackers') ? 'active' : ''}`}
               onClick={closeMobileMenu}
