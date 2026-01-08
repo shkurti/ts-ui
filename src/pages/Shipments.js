@@ -49,6 +49,7 @@ const Shipments = () => {
   const [humidityData, setHumidityData] = useState([]);
   const [batteryData, setBatteryData] = useState([]);
   const [speedData, setSpeedData] = useState([]);
+  const [lightData, setLightData] = useState([]);
   const [locationData, setLocationData] = useState([]);
   const [isLoadingSensorData, setIsLoadingSensorData] = useState(false);
   const [alertsData, setAlertsData] = useState([]);
@@ -373,6 +374,7 @@ const Shipments = () => {
     setHumidityData([]);
     setBatteryData([]);
     setSpeedData([]);
+    setLightData([]);
     setLocationData([]);
     console.log('Clearing alerts data for new shipment');
     setAlertsData([]);
@@ -441,6 +443,17 @@ const Shipments = () => {
                 ? parseFloat(record.Speed)
                 : null,
           })).filter(item => item.speed !== null)
+        );
+        
+        setLightData(
+          data.map((record) => ({
+            timestamp: record.timestamp || 'N/A',
+            light: record.light !== undefined
+              ? parseFloat(record.light)
+              : record.Light !== undefined
+                ? parseFloat(record.Light)
+                : null,
+          })).filter(item => item.light !== null)
         );
 
         // Process location data for polyline
@@ -728,6 +741,7 @@ const Shipments = () => {
     setHumidityData([]);
     setBatteryData([]);
     setSpeedData([]);
+    setLightData([]);
     setLocationData([]);
     // Clear hover marker
     setHoverMarkerPosition(null);
@@ -1197,6 +1211,11 @@ const Shipments = () => {
       if (spd !== undefined && spd !== null) {
         setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(spd) }]);
       }
+
+      const light = reading.Light ?? reading.light ?? latestSensorData.Light;
+      if (light !== undefined && light !== null) {
+        setLightData(prev => [...prev, { timestamp: ts, light: parseFloat(light) }]);
+      }
     });
 
     console.log('✅ Successfully updated real-time sensor data from WebSocketContext');
@@ -1519,6 +1538,47 @@ const Shipments = () => {
                                     ) : (
                                       <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
                                         No speed data available
+                                      </text>
+                                    )}
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
+                              <div className="shipment-details">
+                                <div className="shipment-header">
+                                  <div className="shipment-header-left">
+                                    <span className="shipment-id">Light</span>
+                                  </div>
+                                  <span className="current-value">
+                                    {typeof getCurrentValue(lightData, 'light') === 'number' 
+                                      ? getCurrentValue(lightData, 'light').toFixed(1) + ' Lux'
+                                      : getCurrentValue(lightData, 'light')}
+                                  </span>
+                                </div>
+                                <div className="inline-chart light-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
+                                  <svg 
+                                    width="100%" 
+                                    height="60" 
+                                    viewBox="0 0 300 60"
+                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                    onMouseMove={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
+                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Light', e)}
+                                    onTouchStart={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
+                                    onTouchMove={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
+                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Light', e)}
+                                  >
+                                    {lightData.length > 0 ? (
+                                      <polyline
+                                        fill="none"
+                                        stroke="#fdcb6e"
+                                        strokeWidth="2"
+                                        points={generateSVGPath(lightData, 'light')}
+                                      />
+                                    ) : (
+                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
+                                        No light data available
                                       </text>
                                     )}
                                   </svg>
