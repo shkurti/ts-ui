@@ -1355,17 +1355,64 @@ const Shipments = () => {
                 </div>
 
                 <div className="shipment-info">
-                  <div className="info-item">
-                    <strong>From:</strong> {selectedShipmentDetail.legs?.[0]?.shipFromAddress || 'N/A'}
+                  {/* Route timeline */}
+                  <div className="route-card">
+                    <div className="route-stop-row">
+                      <div className="route-dot-col">
+                        <div className="route-dot route-dot-green" />
+                      </div>
+                      <div className="route-stop-text">
+                        <span className="route-stop-label">FROM</span>
+                        <span className="route-stop-addr">
+                          {selectedShipmentDetail.legs?.[0]?.shipFromAddress || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="route-mid-row">
+                      <div className="route-dot-col">
+                        <div className="route-vert-line" />
+                      </div>
+                      <span className="route-legs-pill">
+                        {selectedShipmentDetail.legs?.length || 0}{' '}
+                        {(selectedShipmentDetail.legs?.length || 0) === 1 ? 'leg' : 'legs'}
+                        {selectedShipmentDetail.legs?.[0]?.mode ? ` · ${selectedShipmentDetail.legs[0].mode}` : ''}
+                      </span>
+                    </div>
+
+                    <div className="route-stop-row">
+                      <div className="route-dot-col">
+                        <div className="route-dot route-dot-red" />
+                      </div>
+                      <div className="route-stop-text">
+                        <span className="route-stop-label">TO</span>
+                        <span className="route-stop-addr">
+                          {selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.stopAddress || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="info-item">
-                    <strong>To:</strong> {selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.stopAddress || 'N/A'}
-                  </div>
-                  <div className="info-item">
-                    <strong>ETA:</strong> {formatDate(selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.arrivalDate)}
-                  </div>
-                  <div className="info-item">
-                    <strong>Carrier:</strong> {selectedShipmentDetail.legs?.[0]?.carrier || 'N/A'}
+
+                  {/* Info chips */}
+                  <div className="info-chips-row">
+                    <div className="info-chip">
+                      <span className="info-chip-label">ETA</span>
+                      <span className="info-chip-value">
+                        {formatDate(selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.arrivalDate)}
+                      </span>
+                    </div>
+                    <div className="info-chip">
+                      <span className="info-chip-label">CARRIER</span>
+                      <span className="info-chip-value">
+                        {selectedShipmentDetail.legs?.[0]?.carrier || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="info-chip">
+                      <span className="info-chip-label">TRACKER</span>
+                      <span className="info-chip-value">
+                        #{selectedShipmentDetail.trackerId || 'N/A'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
