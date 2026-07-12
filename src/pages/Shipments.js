@@ -1346,12 +1346,17 @@ const Shipments = () => {
               <div className="shipment-detail-view">
                 <div className="detail-header">
                   <button className="back-btn" onClick={handleBackToList}>
-                    ← Back to Shipments
+                    &#8592; Back
                   </button>
-                  <h2>Shipment #{selectedShipmentDetail.trackerId}</h2>
-                  <span className={`status ${getShipmentStatus(selectedShipmentDetail).toLowerCase().replace(' ', '-')}`}>
-                    {getShipmentStatus(selectedShipmentDetail)}
-                  </span>
+                  <div className="detail-header-main">
+                    <div className="detail-header-title">
+                      <span className="detail-header-label">Shipment</span>
+                      <h2 className="detail-header-id">#{selectedShipmentDetail.trackerId}</h2>
+                    </div>
+                    <span className={`status-badge status-badge-${getShipmentStatus(selectedShipmentDetail).toLowerCase().replace(' ', '-')}`}>
+                      {getShipmentStatus(selectedShipmentDetail)}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="shipment-info">

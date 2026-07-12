@@ -450,43 +450,94 @@
 }
 
 .detail-header {
+  padding: 12px 16px 14px;
+  background: linear-gradient(160deg, #f0f4ff 0%, #ffffff 100%);
+  border-bottom: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
-  gap: 15px;
-  padding: 20px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f8f9fa;
+  gap: 10px;
 }
 
 .back-btn {
   align-self: flex-start;
-  background: #007bff;
-  color: white;
+  background: none;
   border: none;
-  padding: 8px 15px;
-  border-radius: 6px;
+  color: #667eea;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+  letter-spacing: 0.01em;
 }
 
 .back-btn:hover {
-  background: #0056b3;
+  opacity: 1;
 }
 
-.detail-header h2 {
-  margin: 0;
-  color: #333;
-  font-size: 24px;
+.detail-header-main {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.detail-header .status {
-  align-self: flex-start;
-  padding: 6px 12px;
-  border-radius: 15px;
-  font-size: 12px;
-  font-weight: bold;
+.detail-header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.detail-header-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #9ca3af;
   text-transform: uppercase;
+}
+
+.detail-header-id {
+  font-size: 24px;
+  font-weight: 800;
+  color: #111827;
+  margin: 0;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+}
+
+/* Status badge variants for the header */
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  align-self: flex-end;
+  margin-bottom: 3px;
+}
+
+.status-badge-in-transit {
+  background: #fff3e0;
+  color: #c05621;
+  border: 1px solid #fbd38d;
+}
+
+.status-badge-delivered {
+  background: #f0fff4;
+  color: #276749;
+  border: 1px solid #9ae6b4;
+}
+
+.status-badge-pending {
+  background: #fff5f5;
+  color: #c53030;
+  border: 1px solid #fed7d7;
 }
 
 /* ===== Shipment Info Panel ===== */
