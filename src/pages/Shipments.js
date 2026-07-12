@@ -1734,6 +1734,143 @@ const Shipments = () => {
                         </div>
                       </div>
                     )}
+
+                    {activeTab === 'trips' && (() => {
+                      const legs = selectedShipmentDetail?.legs || [];
+
+                      // A leg's destination stop (legPoints[legIndex+1]) is visited if
+                      // GPS physically reached it OR the scheduled arrival has passed
+                      const isToVisited = (legIndex) => {
+                        const leg = legs[legIndex];
+                        if (!leg) return false;
+                        const arrival = leg.arrivalDate ? new Date(leg.arrivalDate) : null;
+                        return visitedStopIndices.has(legIndex + 1) || !!(arrival && now > arrival);
+                      };
+
+                      // A leg's origin stop (legPoints[legIndex]) is visited if GPS
+                      // reached it, or (for the first origin) departure has passed
+                      const isFromVisited = (legIndex) => {
+                        if (legIndex === 0) {
+                          const dep = legs[0]?.departureDate || legs[0]?.shipDate;
+                          return visitedStopIndices.has(0) || !!(dep && now > new Date(dep));
+                        }
+                        return isToVisited(legIndex - 1);
+                      };
+
+                      const getLegStatus = (legIndex) => {
+                        if (isToVisited(legIndex)) return 'completed';
+                        if (isFromVisited(legIndex)) return 'in-progress';
+                        return 'pending';
+                      };
+
+                      const formatLegDate = (dateStr) => {
+                        if (!dateStr) return 'N/A';
+                        try {
+                          const d = new Date(dateStr);
+                          return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                        } catch { return 'N/A'; }
+                      };
+
+                      const formatLegTime = (dateStr) => {
+                        if (!dateStr) return '';
+                        try {
+                          const d = new Date(dateStr);
+                          return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+                        } catch { return ''; }
+                      };
+
+                      const getDuration = (start, end) => {
+                        if (!start || !end) return null;
+                        const diff = new Date(end) - new Date(start);
+                        if (isNaN(diff) || diff <= 0) return null;
+                        const h = Math.floor(diff / 3600000);
+                        const m = Math.floor((diff % 3600000) / 60000);
+                        if (h > 0) return `${h}h ${m}m`;
+                        return `${m}m`;
+                      };
+
+                      const statusLabel = { completed: 'Completed', 'in-progress': 'In Progress', pending: 'Upcoming' };
+
+                      if (legs.length === 0) {
+                        return (
+                          <div className="trips-content">
+                            <div className="no-messages">No trip data available for this shipment.</div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="trips-content">
+                          {legs.map((leg, index) => {
+                            const fromAddress = index === 0
+                              ? (leg.shipFromAddress || 'N/A')
+                              : (legs[index - 1]?.stopAddress || 'N/A');
+                            const toAddress = leg.stopAddress || 'N/A';
+                            const fromPoint = index + 1;
+                            const toPoint = index + 2;
+
+                            const status = getLegStatus(index);
+                            const fromVisited = isFromVisited(index);
+                            const toVisited = isToVisited(index);
+                            const duration = getDuration(leg.departureDate || leg.shipDate, leg.arrivalDate);
+
+                            return (
+                              <div key={leg._id || index} className={`trip-item trip-${status}`}>
+                                <div className="trip-status-bar">
+                                  <div className={`trip-status-dot trip-dot-${status}`} />
+                                  <span className="trip-status-label">{statusLabel[status]}</span>
+                                  {duration && status === 'completed' && (
+                                    <span className="trip-duration">{duration}</span>
+                                  )}
+                                </div>
+
+                                <div className="trip-route">
+                                  {/* From stop */}
+                                  <div className="trip-stop">
+                                    <span className={`trip-stop-number ${fromVisited ? 'stop-visited' : 'stop-pending'}`}>
+                                      {fromPoint}
+                                    </span>
+                                    <div className="trip-stop-info">
+                                      <span className="trip-stop-address">{fromAddress}</span>
+                                      {(leg.departureDate || leg.shipDate) && (
+                                        <span className="trip-stop-time">
+                                          {formatLegTime(leg.departureDate || leg.shipDate)} · {formatLegDate(leg.departureDate || leg.shipDate)}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Connector */}
+                                  <div className="trip-connector">
+                                    <div className={`trip-line trip-line-${status}`} />
+                                    <div className="trip-connector-meta">
+                                      {leg.mode && <span className="trip-mode">{leg.mode}</span>}
+                                      {leg.carrier && <span className="trip-carrier">{leg.carrier}</span>}
+                                    </div>
+                                  </div>
+
+                                  {/* To stop */}
+                                  <div className="trip-stop">
+                                    <span className={`trip-stop-number ${toVisited ? 'stop-visited' : 'stop-pending'}`}>
+                                      {toPoint}
+                                    </span>
+                                    <div className="trip-stop-info">
+                                      <span className="trip-stop-address">{toAddress}</span>
+                                      {leg.arrivalDate && (
+                                        <span className="trip-stop-time">
+                                          {formatLegTime(leg.arrivalDate)} · {formatLegDate(leg.arrivalDate)}
+                                          {status !== 'completed' && <span className="trip-eta-label"> (ETA)</span>}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
