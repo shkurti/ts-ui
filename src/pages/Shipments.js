@@ -1928,7 +1928,7 @@ const Shipments = () => {
               </div>
             ) : (
               // Shipments List View
-              <>
+              <div className="list-view-content">
                 <div className="sidebar-header">
                   <h2>Shipment Management</h2>
                   <p>Track and manage shipments</p>
@@ -2019,7 +2019,7 @@ const Shipments = () => {
                     ))
                   )}
                 </div>
-              </>
+              </div>
             )}
           </div>
         )}

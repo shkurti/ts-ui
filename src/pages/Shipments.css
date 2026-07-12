@@ -48,7 +48,7 @@
 }
 
 .sidebar-content {
-  padding: 0.2rem;
+  padding: 0;
   height: 100%;
   overflow-y: auto;
   display: flex;
@@ -421,12 +421,11 @@
   }
   
   .sidebar-content {
-    padding: 1rem;
+    padding: 0;
   }
 
-  .shipment-detail-view {
-    margin: -1rem;
-    width: calc(100% + 2rem);
+  .list-view-content {
+    padding: 0 0.75rem;
   }
   
   .action-buttons {
@@ -452,9 +451,6 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  /* Break out of sidebar-content padding so tabs/content reach panel edges */
-  margin: -0.2rem;
-  width: calc(100% + 0.4rem);
 }
 
 .detail-header {
