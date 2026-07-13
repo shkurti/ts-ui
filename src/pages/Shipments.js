@@ -1929,44 +1929,49 @@ const Shipments = () => {
             ) : (
               // Shipments List View
               <div className="list-view-content">
-                <div className="sidebar-header">
-                  <h2>Shipment Management</h2>
-                  <p>Track and manage shipments</p>
-                </div>
+                <div className="list-header">
+                  <div className="list-header-top">
+                    <div className="list-header-title">
+                      <span className="list-title-text">Shipments</span>
+                      <span className="list-count-pill">{filteredShipments.length}</span>
+                    </div>
+                    <div className="list-header-actions">
+                      {selectedShipments.length > 0 && (
+                        <button
+                          className="btn-delete-selected"
+                          onClick={handleDeleteSelected}
+                          title={`Delete ${selectedShipments.length} selected`}
+                        >
+                          ✕ {selectedShipments.length}
+                        </button>
+                      )}
+                      <button className="btn-new" onClick={handleNewShipment}>
+                        + New
+                      </button>
+                    </div>
+                  </div>
 
-                <div className="action-buttons">
-                  <button className="btn btn-primary" onClick={handleNewShipment}>
-                    + New Shipment
-                  </button>
-                  <button 
-                    className="btn btn-danger" 
-                    onClick={handleDeleteSelected}
-                    disabled={selectedShipments.length === 0}
-                  >
-                    Delete
-                  </button>
-                </div>
-
-                <div className="select-all">
-                  <label className="checkbox-container">
+                  <div className="list-search-wrap">
                     <input
-                      type="checkbox"
-                      checked={selectAll}
-                      onChange={handleSelectAll}
+                      type="text"
+                      placeholder="Search shipments..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="list-search-input"
                     />
-                    <span className="checkmark"></span>
-                    Select All ({filteredShipments.length} shipments)
-                  </label>
-                </div>
+                  </div>
 
-                <div className="search-bar">
-                  <input
-                    type="text"
-                    placeholder="Search shipments..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="search-input"
-                  />
+                  <div className="list-select-row">
+                    <label className="checkbox-container">
+                      <input
+                        type="checkbox"
+                        checked={selectAll}
+                        onChange={handleSelectAll}
+                      />
+                      <span className="checkmark"></span>
+                      Select all &middot; {filteredShipments.length} shipment{filteredShipments.length !== 1 ? 's' : ''}
+                    </label>
+                  </div>
                 </div>
 
                 <div className="shipments-list">

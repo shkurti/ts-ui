@@ -71,6 +71,118 @@
   font-size: 0.95rem;
 }
 
+/* ===== Slick List View Header ===== */
+.list-header {
+  margin: 0 -0.75rem 0;
+  background: linear-gradient(160deg, #f0f4ff 0%, #ffffff 100%);
+  border-bottom: 1px solid #e5e7eb;
+  padding: 14px 16px 0;
+}
+
+.list-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.list-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.list-title-text {
+  font-size: 20px;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.4px;
+}
+
+.list-count-pill {
+  background: #667eea;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  line-height: 1.5;
+}
+
+.list-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-new {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  letter-spacing: 0.01em;
+}
+
+.btn-new:hover {
+  background: #5a67d8;
+}
+
+.btn-delete-selected {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-delete-selected:hover {
+  background: #fecaca;
+}
+
+.list-search-wrap {
+  margin-bottom: 10px;
+}
+
+.list-search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  background: white;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.list-search-input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.list-search-input::placeholder {
+  color: #9ca3af;
+}
+
+.list-select-row {
+  padding: 8px 0;
+  border-top: 1px solid #f0f0f0;
+}
+
+.list-select-row .checkbox-container {
+  font-size: 12px;
+  color: #6b7280;
+}
+
 .action-buttons {
   display: flex;
   gap: 1rem;
