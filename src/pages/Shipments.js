@@ -1789,21 +1789,32 @@ const Shipments = () => {
               // Shipments List View
               <>
                 <div className="sidebar-header">
-                  <h2>Shipment Management</h2>
-                  <p>Track and manage shipments</p>
-                </div>
-
-                <div className="action-buttons">
-                  <button className="btn btn-primary" onClick={handleNewShipment}>
-                    + New Shipment
-                  </button>
-                  <button 
-                    className="btn btn-danger" 
-                    onClick={handleDeleteSelected}
-                    disabled={selectedShipments.length === 0}
-                  >
-                    Delete
-                  </button>
+                  <div className="sidebar-header-top">
+                    <div className="sidebar-header-title">
+                      <span className="sidebar-header-eyebrow">Fleet</span>
+                      <h2>Shipments</h2>
+                    </div>
+                    <span className="shipment-count-badge">{filteredShipments.length}</span>
+                  </div>
+                  <div className="sidebar-header-actions">
+                    <button className="btn-new" onClick={handleNewShipment}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                      </svg>
+                      New Shipment
+                    </button>
+                    <button
+                      className="btn-delete"
+                      onClick={handleDeleteSelected}
+                      disabled={selectedShipments.length === 0}
+                      title="Delete selected"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                      </svg>
+                      {selectedShipments.length > 0 && <span className="btn-delete-count">{selectedShipments.length}</span>}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="select-all">
@@ -1814,36 +1825,49 @@ const Shipments = () => {
                       onChange={handleSelectAll}
                     />
                     <span className="checkmark"></span>
-                    Select All ({filteredShipments.length} shipments)
+                    Select all
                   </label>
                 </div>
 
                 <div className="search-bar">
-                  <input
-                    type="text"
-                    placeholder="Search shipments..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="search-input"
-                  />
+                  <div className="search-input-wrapper">
+                    <svg className="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Search tracker, origin, destination…"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="search-input"
+                    />
+                    {searchTerm && (
+                      <button className="search-clear-btn" onClick={() => setSearchTerm('')} title="Clear">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="shipments-list">
                   {isLoading ? (
-                    <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                      Loading shipments...
+                    <div className="list-state-msg">
+                      <div className="list-spinner"></div>
+                      Loading shipments…
                     </div>
                   ) : filteredShipments.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                      {shipments.length === 0 ? 'No shipments found' : 'No shipments match your search'}
+                    <div className="list-state-msg">
+                      {shipments.length === 0 ? 'No shipments yet' : 'No results for your search'}
                     </div>
                   ) : (
                     filteredShipments.map(shipment => (
-                      <div 
-                        key={shipment._id} 
+                      <div
+                        key={shipment._id}
                         className={`shipment-item ${selectedShipments.includes(shipment._id) ? 'selected' : ''}`}
+                        data-status={getShipmentStatus(shipment).toLowerCase().replace(' ', '-')}
                         onClick={() => handleShipmentClick(shipment)}
-                        style={{ cursor: 'pointer' }}
                       >
                         <div className="shipment-details">
                           <div className="shipment-header">
@@ -1863,14 +1887,19 @@ const Shipments = () => {
                             </span>
                           </div>
                           <div className="shipment-route">
-                            <div className="route-info">
-                              <strong>From:</strong> {shipment.legs?.[0]?.shipFromAddress || 'N/A'}
+                            <div className="route-endpoint">
+                              <span className="route-dot-sm route-dot-sm-green"></span>
+                              <span className="route-addr">{shipment.legs?.[0]?.shipFromAddress || 'N/A'}</span>
                             </div>
-                            <div className="route-info">
-                              <strong>To:</strong> {shipment.legs?.[shipment.legs.length - 1]?.stopAddress || 'N/A'}
+                            <div className="route-endpoint">
+                              <span className="route-dot-sm route-dot-sm-red"></span>
+                              <span className="route-addr">{shipment.legs?.[shipment.legs.length - 1]?.stopAddress || 'N/A'}</span>
                             </div>
-                            <div className="route-info">
-                              <strong>ETA:</strong> {formatDate(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate)}
+                            <div className="route-meta">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                              </svg>
+                              <span className="route-eta">ETA {formatDate(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate)}</span>
                             </div>
                           </div>
                         </div>
