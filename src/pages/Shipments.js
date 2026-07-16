@@ -1393,183 +1393,141 @@ const Shipments = () => {
                     {activeTab === 'sensors' && (
                       <div className="sensors-content">
                         {isLoadingSensorData ? (
-                          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-                            <div style={{
-                              width: '32px',
-                              height: '32px',
-                              border: '3px solid #ddd',
-                              borderTop: '3px solid #007bff',
-                              borderRadius: '50%',
-                              animation: 'spin 1s linear infinite',
-                              margin: '0 auto 15px'
-                            }}></div>
-                            Loading sensor data...
+                          <div className="list-state-msg">
+                            <div className="list-spinner"></div>
+                            Loading sensor data…
                           </div>
                         ) : (
-                          <div className="sensor-charts" style={{ width: '100%', padding: '0', margin: '0' }}>
-                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
-                              <div className="shipment-details">
-                                <div className="shipment-header">
-                                  <div className="shipment-header-left">
-                                    <span className="shipment-id">Temperature</span>
-                                  </div>
-                                  <span className="current-value">
-                                    {typeof getCurrentValue(temperatureData, 'temperature') === 'number' 
-                                      ? getCurrentValue(temperatureData, 'temperature').toFixed(1) + '°C'
-                                      : getCurrentValue(temperatureData, 'temperature')}
-                                  </span>
-                                </div>
-                                <div className="inline-chart temperature-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
-                                  <svg 
-                                    width="100%" 
-                                    height="60" 
-                                    viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                    onMouseMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Temperature', e)}
-                                    onTouchStart={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                    onTouchMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Temperature', e)}
-                                  >
-                                    {temperatureData.length > 0 ? (
-                                      <polyline
-                                        fill="none"
-                                        stroke="#ff6b6b"
-                                        strokeWidth="2"
-                                        points={generateSVGPath(temperatureData, 'temperature')}
-                                      />
-                                    ) : (
-                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                        No temperature data available
-                                      </text>
-                                    )}
-                                  </svg>
-                                </div>
+                          <div className="sensor-charts">
+
+                            {/* Temperature */}
+                            <div className="sensor-card sensor-card--temp">
+                              <div className="sensor-card-header">
+                                <span className="sensor-name">Temperature</span>
+                                <span className="sensor-value">
+                                  {typeof getCurrentValue(temperatureData, 'temperature') === 'number'
+                                    ? getCurrentValue(temperatureData, 'temperature').toFixed(1) + '°C'
+                                    : '—'}
+                                </span>
+                              </div>
+                              <div className="sensor-chart-area">
+                                <svg
+                                  width="100%" height="56" viewBox="0 0 300 56"
+                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                  onMouseMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Temperature', e)}
+                                  onTouchStart={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                  onTouchMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Temperature', e)}
+                                >
+                                  {temperatureData.length > 0 ? (
+                                    <>
+                                      <polygon fill="rgba(239,68,68,0.12)" points={generateSVGPath(temperatureData, 'temperature') + ' 300,56 0,56'} />
+                                      <polyline fill="none" stroke="#ef4444" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(temperatureData, 'temperature')} />
+                                    </>
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
+                                  )}
+                                </svg>
                               </div>
                             </div>
 
-                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
-                              <div className="shipment-details">
-                                <div className="shipment-header">
-                                  <div className="shipment-header-left">
-                                    <span className="shipment-id">Humidity</span>
-                                  </div>
-                                  <span className="current-value">
-                                    {typeof getCurrentValue(humidityData, 'humidity') === 'number' 
-                                      ? getCurrentValue(humidityData, 'humidity').toFixed(1) + '%'
-                                      : getCurrentValue(humidityData, 'humidity')}
-                                  </span>
-                                </div>
-                                <div className="inline-chart humidity-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
-                                  <svg 
-                                    width="100%" 
-                                    height="60" 
-                                    viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                    onMouseMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Humidity', e)}
-                                    onTouchStart={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                    onTouchMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Humidity', e)}
-                                  >
-                                    {humidityData.length > 0 ? (
-                                      <polyline
-                                        fill="none"
-                                        stroke="#4ecdc4"
-                                        strokeWidth="2"
-                                        points={generateSVGPath(humidityData, 'humidity')}
-                                      />
-                                    ) : (
-                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                        No humidity data available
-                                      </text>
-                                    )}
-                                  </svg>
-                                </div>
+                            {/* Humidity */}
+                            <div className="sensor-card sensor-card--humidity">
+                              <div className="sensor-card-header">
+                                <span className="sensor-name">Humidity</span>
+                                <span className="sensor-value">
+                                  {typeof getCurrentValue(humidityData, 'humidity') === 'number'
+                                    ? getCurrentValue(humidityData, 'humidity').toFixed(1) + '%'
+                                    : '—'}
+                                </span>
+                              </div>
+                              <div className="sensor-chart-area">
+                                <svg
+                                  width="100%" height="56" viewBox="0 0 300 56"
+                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                  onMouseMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Humidity', e)}
+                                  onTouchStart={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                  onTouchMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Humidity', e)}
+                                >
+                                  {humidityData.length > 0 ? (
+                                    <>
+                                      <polygon fill="rgba(59,130,246,0.12)" points={generateSVGPath(humidityData, 'humidity') + ' 300,56 0,56'} />
+                                      <polyline fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(humidityData, 'humidity')} />
+                                    </>
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
+                                  )}
+                                </svg>
                               </div>
                             </div>
 
-                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
-                              <div className="shipment-details">
-                                <div className="shipment-header">
-                                  <div className="shipment-header-left">
-                                    <span className="shipment-id">Battery</span>
-                                  </div>
-                                  <span className="current-value">
-                                    {typeof getCurrentValue(batteryData, 'battery') === 'number' 
-                                      ? getCurrentValue(batteryData, 'battery').toFixed(1) + '%'
-                                      : getCurrentValue(batteryData, 'battery')}
-                                  </span>
-                                </div>
-                                <div className="inline-chart battery-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
-                                  <svg 
-                                    width="100%" 
-                                    height="60" 
-                                    viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                    onMouseMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Battery', e)}
-                                    onTouchStart={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                    onTouchMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Battery', e)}
-                                  >
-                                    {batteryData.length > 0 ? (
-                                      <polyline
-                                        fill="none"
-                                        stroke="#95e1d3"
-                                        strokeWidth="2"
-                                        points={generateSVGPath(batteryData, 'battery')}
-                                      />
-                                    ) : (
-                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                        No battery data available
-                                      </text>
-                                    )}
-                                  </svg>
-                                </div>
+                            {/* Battery */}
+                            <div className="sensor-card sensor-card--battery">
+                              <div className="sensor-card-header">
+                                <span className="sensor-name">Battery</span>
+                                <span className="sensor-value">
+                                  {typeof getCurrentValue(batteryData, 'battery') === 'number'
+                                    ? getCurrentValue(batteryData, 'battery').toFixed(1) + '%'
+                                    : '—'}
+                                </span>
+                              </div>
+                              <div className="sensor-chart-area">
+                                <svg
+                                  width="100%" height="56" viewBox="0 0 300 56"
+                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                  onMouseMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Battery', e)}
+                                  onTouchStart={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                  onTouchMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Battery', e)}
+                                >
+                                  {batteryData.length > 0 ? (
+                                    <>
+                                      <polygon fill="rgba(34,197,94,0.12)" points={generateSVGPath(batteryData, 'battery') + ' 300,56 0,56'} />
+                                      <polyline fill="none" stroke="#22c55e" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(batteryData, 'battery')} />
+                                    </>
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
+                                  )}
+                                </svg>
                               </div>
                             </div>
 
-                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
-                              <div className="shipment-details">
-                                <div className="shipment-header">
-                                  <div className="shipment-header-left">
-                                    <span className="shipment-id">Speed</span>
-                                  </div>
-                                  <span className="current-value">
-                                    {typeof getCurrentValue(speedData, 'speed') === 'number' 
-                                      ? getCurrentValue(speedData, 'speed').toFixed(1) + ' km/h'
-                                      : getCurrentValue(speedData, 'speed')}
-                                  </span>
-                                </div>
-                                <div className="inline-chart speed-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
-                                  <svg 
-                                    width="100%" 
-                                    height="60" 
-                                    viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                    onMouseMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Speed', e)}
-                                    onTouchStart={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                    onTouchMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Speed', e)}
-                                  >
-                                    {speedData.length > 0 ? (
-                                      <polyline
-                                        fill="none"
-                                        stroke="#ffeaa7"
-                                        strokeWidth="2"
-                                        points={generateSVGPath(speedData, 'speed')}
-                                      />
-                                    ) : (
-                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                        No speed data available
-                                      </text>
-                                    )}
-                                  </svg>
-                                </div>
+                            {/* Speed */}
+                            <div className="sensor-card sensor-card--speed">
+                              <div className="sensor-card-header">
+                                <span className="sensor-name">Speed</span>
+                                <span className="sensor-value">
+                                  {typeof getCurrentValue(speedData, 'speed') === 'number'
+                                    ? getCurrentValue(speedData, 'speed').toFixed(1) + ' km/h'
+                                    : '—'}
+                                </span>
+                              </div>
+                              <div className="sensor-chart-area">
+                                <svg
+                                  width="100%" height="56" viewBox="0 0 300 56"
+                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                  onMouseMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Speed', e)}
+                                  onTouchStart={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                  onTouchMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Speed', e)}
+                                >
+                                  {speedData.length > 0 ? (
+                                    <>
+                                      <polygon fill="rgba(234,88,12,0.12)" points={generateSVGPath(speedData, 'speed') + ' 300,56 0,56'} />
+                                      <polyline fill="none" stroke="#ea580c" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(speedData, 'speed')} />
+                                    </>
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
+                                  )}
+                                </svg>
                               </div>
                             </div>
+
                           </div>
                         )}
                       </div>

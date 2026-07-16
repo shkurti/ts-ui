@@ -937,76 +937,80 @@
   background: white;
 }
 
-/* Sensor Charts */
+/* ── Sensor Charts ─────────────────────────────────────────────────────── */
 .sensors-content {
   height: 100%;
+  background: var(--color-bg);
 }
 
 .sensor-charts {
   display: flex;
   flex-direction: column;
-  gap: 0px;
+  gap: 1px;
+  padding: 10px 10px;
 }
 
-.chart-item {
-  background: #f8f9fa;
-  border-radius: 2px;
-  padding: 0px;
-  border: 0.1px solid #e5e7eb;
+/* Base card */
+.sensor-card {
+  background: #fff;
+  border: 1.5px solid var(--color-border);
+  border-top: 3px solid var(--color-border);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
-.chart-header {
+/* Sensor color accent on top border */
+.sensor-card--temp     { border-top-color: #ef4444; }
+.sensor-card--humidity { border-top-color: #3b82f6; }
+.sensor-card--battery  { border-top-color: #22c55e; }
+.sensor-card--speed    { border-top-color: #ea580c; }
+
+.sensor-card-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
+  align-items: baseline;
+  padding: 10px 12px 6px;
 }
 
-.chart-header h4 {
-  margin: 0;
-  font-size: 16px;
-  color: #333;
+.sensor-name {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
 }
 
-.current-value {
-  font-size: 12px;
-  font-weight: bold;
-  color: #007bff;
+/* Live reading — the hero number per Exaggerated Minimalism */
+.sensor-value {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-family: var(--font-sans);
+  line-height: 1;
 }
 
-.inline-chart {
-  height: 100px;
+.sensor-card--temp     .sensor-value { color: #ef4444; }
+.sensor-card--humidity .sensor-value { color: #3b82f6; }
+.sensor-card--battery  .sensor-value { color: #22c55e; }
+.sensor-card--speed    .sensor-value { color: #ea580c; }
+
+.sensor-chart-area {
   width: 100%;
-  background: white;
-  border-radius: 4px;
-  border: 1px solid #e5e7eb;
+  height: 56px;
+  overflow: hidden;
 }
 
-.inline-chart svg {
+.sensor-chart-area svg {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-/* Temperature chart specific styling */
-.temperature-chart .current-value {
-  color: #ff6b6b;
-}
-
-/* Humidity chart specific styling */
-.humidity-chart .current-value {
-  color: #4ecdc4;
-}
-
-/* Battery chart specific styling */
-.battery-chart .current-value {
-  color: #95e1d3;
-}
-
-/* Speed chart specific styling */
-.speed-chart .current-value {
-  color: #ffeaa7;
-}
+/* Legacy classes kept for any CSS specificity that still references them */
+.chart-item { background: transparent; border: none; border-radius: 0; padding: 0; }
+.inline-chart { height: auto; border: none; background: transparent; }
+.current-value { font-size: 12px; font-weight: bold; color: var(--color-primary); }
 
 /* Alerts Content */
 .alerts-content {
