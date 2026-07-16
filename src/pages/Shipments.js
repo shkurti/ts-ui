@@ -1301,26 +1301,65 @@ const Shipments = () => {
               <div className="shipment-detail-view">
                 <div className="detail-header">
                   <button className="back-btn" onClick={handleBackToList}>
-                    ← Back to Shipments
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 18 9 12 15 6"/>
+                    </svg>
+                    Shipments
                   </button>
-                  <h2>Shipment #{selectedShipmentDetail.trackerId}</h2>
-                  <span className={`status ${getShipmentStatus(selectedShipmentDetail).toLowerCase().replace(' ', '-')}`}>
-                    {getShipmentStatus(selectedShipmentDetail)}
-                  </span>
+                  <div className="detail-header-main">
+                    <div className="detail-header-title">
+                      <span className="detail-header-eyebrow">Tracker</span>
+                      <h2 className="detail-header-id">#{selectedShipmentDetail.trackerId}</h2>
+                    </div>
+                    <span className={`status ${getShipmentStatus(selectedShipmentDetail).toLowerCase().replace(' ', '-')}`}>
+                      {getShipmentStatus(selectedShipmentDetail)}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="shipment-info">
-                  <div className="info-item">
-                    <strong>From:</strong> {selectedShipmentDetail.legs?.[0]?.shipFromAddress || 'N/A'}
+                  <div className="route-timeline">
+                    <div className="route-tl-row">
+                      <div className="route-tl-dot-col">
+                        <div className="route-tl-dot route-tl-dot-green"></div>
+                      </div>
+                      <div className="route-tl-text">
+                        <span className="route-tl-label">FROM</span>
+                        <span className="route-tl-addr">{selectedShipmentDetail.legs?.[0]?.shipFromAddress || 'N/A'}</span>
+                      </div>
+                    </div>
+                    <div className="route-tl-connector">
+                      <div className="route-tl-line"></div>
+                      <span className="route-tl-meta">
+                        {selectedShipmentDetail.legs?.length || 0}{' '}
+                        {(selectedShipmentDetail.legs?.length || 0) === 1 ? 'leg' : 'legs'}
+                        {selectedShipmentDetail.legs?.[0]?.mode ? ` · ${selectedShipmentDetail.legs[0].mode}` : ''}
+                      </span>
+                    </div>
+                    <div className="route-tl-row">
+                      <div className="route-tl-dot-col">
+                        <div className="route-tl-dot route-tl-dot-orange"></div>
+                      </div>
+                      <div className="route-tl-text">
+                        <span className="route-tl-label">TO</span>
+                        <span className="route-tl-addr">{selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.stopAddress || 'N/A'}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="info-item">
-                    <strong>To:</strong> {selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.stopAddress || 'N/A'}
-                  </div>
-                  <div className="info-item">
-                    <strong>ETA:</strong> {formatDate(selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.arrivalDate)}
-                  </div>
-                  <div className="info-item">
-                    <strong>Carrier:</strong> {selectedShipmentDetail.legs?.[0]?.carrier || 'N/A'}
+
+                  <div className="info-chips">
+                    <div className="info-chip">
+                      <span className="info-chip-label">ETA</span>
+                      <span className="info-chip-value">{formatDate(selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.arrivalDate)}</span>
+                    </div>
+                    <div className="info-chip">
+                      <span className="info-chip-label">CARRIER</span>
+                      <span className="info-chip-value">{selectedShipmentDetail.legs?.[0]?.carrier || 'N/A'}</span>
+                    </div>
+                    <div className="info-chip">
+                      <span className="info-chip-label">TRACKER</span>
+                      <span className="info-chip-value">#{selectedShipmentDetail.trackerId || 'N/A'}</span>
+                    </div>
                   </div>
                 </div>
 
