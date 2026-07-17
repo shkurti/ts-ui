@@ -49,6 +49,7 @@ const Shipments = () => {
   const [humidityData, setHumidityData] = useState([]);
   const [batteryData, setBatteryData] = useState([]);
   const [speedData, setSpeedData] = useState([]);
+  const [lightData, setLightData] = useState([]);
   const [locationData, setLocationData] = useState([]);
   const [isLoadingSensorData, setIsLoadingSensorData] = useState(false);
   const [alertsData, setAlertsData] = useState([]);
@@ -373,6 +374,7 @@ const Shipments = () => {
     setHumidityData([]);
     setBatteryData([]);
     setSpeedData([]);
+    setLightData([]);
     setLocationData([]);
     console.log('Clearing alerts data for new shipment');
     setAlertsData([]);
@@ -441,6 +443,17 @@ const Shipments = () => {
                 ? parseFloat(record.Speed)
                 : null,
           })).filter(item => item.speed !== null)
+        );
+
+        setLightData(
+          data.map((record) => ({
+            timestamp: record.timestamp || 'N/A',
+            light: record.light !== undefined
+              ? parseFloat(record.light)
+              : record.Light !== undefined
+                ? parseFloat(record.Light)
+                : null,
+          })).filter(item => item.light !== null)
         );
 
         // Process location data for polyline
@@ -728,6 +741,7 @@ const Shipments = () => {
     setHumidityData([]);
     setBatteryData([]);
     setSpeedData([]);
+    setLightData([]);
     setLocationData([]);
     // Clear hover marker
     setHoverMarkerPosition(null);
@@ -1197,6 +1211,11 @@ const Shipments = () => {
       if (spd !== undefined && spd !== null) {
         setSpeedData(prev => [...prev, { timestamp: ts, speed: parseFloat(spd) }]);
       }
+
+      const light = reading.Light ?? reading.light ?? latestSensorData.Light;
+      if (light !== undefined && light !== null) {
+        setLightData(prev => [...prev, { timestamp: ts, light: parseFloat(light) }]);
+      }
     });
 
     console.log('✅ Successfully updated real-time sensor data from WebSocketContext');
@@ -1301,26 +1320,65 @@ const Shipments = () => {
               <div className="shipment-detail-view">
                 <div className="detail-header">
                   <button className="back-btn" onClick={handleBackToList}>
-                    ← Back to Shipments
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 18 9 12 15 6"/>
+                    </svg>
+                    Shipments
                   </button>
-                  <h2>Shipment #{selectedShipmentDetail.trackerId}</h2>
-                  <span className={`status ${getShipmentStatus(selectedShipmentDetail).toLowerCase().replace(' ', '-')}`}>
-                    {getShipmentStatus(selectedShipmentDetail)}
-                  </span>
+                  <div className="detail-header-main">
+                    <div className="detail-header-title">
+                      <span className="detail-header-eyebrow">Tracker</span>
+                      <h2 className="detail-header-id">#{selectedShipmentDetail.trackerId}</h2>
+                    </div>
+                    <span className={`status ${getShipmentStatus(selectedShipmentDetail).toLowerCase().replace(' ', '-')}`}>
+                      {getShipmentStatus(selectedShipmentDetail)}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="shipment-info">
-                  <div className="info-item">
-                    <strong>From:</strong> {selectedShipmentDetail.legs?.[0]?.shipFromAddress || 'N/A'}
+                  <div className="route-timeline">
+                    <div className="route-tl-row">
+                      <div className="route-tl-dot-col">
+                        <div className="route-tl-dot route-tl-dot-green"></div>
+                      </div>
+                      <div className="route-tl-text">
+                        <span className="route-tl-label">FROM</span>
+                        <span className="route-tl-addr">{selectedShipmentDetail.legs?.[0]?.shipFromAddress || 'N/A'}</span>
+                      </div>
+                    </div>
+                    <div className="route-tl-connector">
+                      <div className="route-tl-line"></div>
+                      <span className="route-tl-meta">
+                        {selectedShipmentDetail.legs?.length || 0}{' '}
+                        {(selectedShipmentDetail.legs?.length || 0) === 1 ? 'leg' : 'legs'}
+                        {selectedShipmentDetail.legs?.[0]?.mode ? ` · ${selectedShipmentDetail.legs[0].mode}` : ''}
+                      </span>
+                    </div>
+                    <div className="route-tl-row">
+                      <div className="route-tl-dot-col">
+                        <div className="route-tl-dot route-tl-dot-orange"></div>
+                      </div>
+                      <div className="route-tl-text">
+                        <span className="route-tl-label">TO</span>
+                        <span className="route-tl-addr">{selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.stopAddress || 'N/A'}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="info-item">
-                    <strong>To:</strong> {selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.stopAddress || 'N/A'}
-                  </div>
-                  <div className="info-item">
-                    <strong>ETA:</strong> {formatDate(selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.arrivalDate)}
-                  </div>
-                  <div className="info-item">
-                    <strong>Carrier:</strong> {selectedShipmentDetail.legs?.[0]?.carrier || 'N/A'}
+
+                  <div className="info-chips">
+                    <div className="info-chip">
+                      <span className="info-chip-label">ETA</span>
+                      <span className="info-chip-value">{formatDate(selectedShipmentDetail.legs?.[selectedShipmentDetail.legs.length - 1]?.arrivalDate)}</span>
+                    </div>
+                    <div className="info-chip">
+                      <span className="info-chip-label">CARRIER</span>
+                      <span className="info-chip-value">{selectedShipmentDetail.legs?.[0]?.carrier || 'N/A'}</span>
+                    </div>
+                    <div className="info-chip">
+                      <span className="info-chip-label">TRACKER</span>
+                      <span className="info-chip-value">#{selectedShipmentDetail.trackerId || 'N/A'}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -1354,183 +1412,173 @@ const Shipments = () => {
                     {activeTab === 'sensors' && (
                       <div className="sensors-content">
                         {isLoadingSensorData ? (
-                          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-                            <div style={{
-                              width: '32px',
-                              height: '32px',
-                              border: '3px solid #ddd',
-                              borderTop: '3px solid #007bff',
-                              borderRadius: '50%',
-                              animation: 'spin 1s linear infinite',
-                              margin: '0 auto 15px'
-                            }}></div>
-                            Loading sensor data...
+                          <div className="list-state-msg">
+                            <div className="list-spinner"></div>
+                            Loading sensor data…
                           </div>
                         ) : (
-                          <div className="sensor-charts" style={{ width: '100%', padding: '0', margin: '0' }}>
-                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
-                              <div className="shipment-details">
-                                <div className="shipment-header">
-                                  <div className="shipment-header-left">
-                                    <span className="shipment-id">Temperature</span>
-                                  </div>
-                                  <span className="current-value">
-                                    {typeof getCurrentValue(temperatureData, 'temperature') === 'number' 
-                                      ? getCurrentValue(temperatureData, 'temperature').toFixed(1) + '°C'
-                                      : getCurrentValue(temperatureData, 'temperature')}
-                                  </span>
-                                </div>
-                                <div className="inline-chart temperature-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
-                                  <svg 
-                                    width="100%" 
-                                    height="60" 
-                                    viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                    onMouseMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Temperature', e)}
-                                    onTouchStart={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                    onTouchMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Temperature', e)}
-                                  >
-                                    {temperatureData.length > 0 ? (
-                                      <polyline
-                                        fill="none"
-                                        stroke="#ff6b6b"
-                                        strokeWidth="2"
-                                        points={generateSVGPath(temperatureData, 'temperature')}
-                                      />
-                                    ) : (
-                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                        No temperature data available
-                                      </text>
-                                    )}
-                                  </svg>
-                                </div>
+                          <div className="sensor-charts">
+
+                            {/* Temperature */}
+                            <div className="sensor-card sensor-card--temp">
+                              <div className="sensor-card-header">
+                                <span className="sensor-name">Temperature</span>
+                                <span className="sensor-value">
+                                  {typeof getCurrentValue(temperatureData, 'temperature') === 'number'
+                                    ? getCurrentValue(temperatureData, 'temperature').toFixed(1) + '°C'
+                                    : '—'}
+                                </span>
+                              </div>
+                              <div className="sensor-chart-area">
+                                <svg
+                                  width="100%" height="56" viewBox="0 0 300 56"
+                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                  onMouseMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Temperature', e)}
+                                  onTouchStart={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                  onTouchMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
+                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Temperature', e)}
+                                >
+                                  {temperatureData.length > 0 ? (
+                                    <>
+                                      <polygon fill="rgba(239,68,68,0.12)" points={generateSVGPath(temperatureData, 'temperature') + ' 300,56 0,56'} />
+                                      <polyline fill="none" stroke="#ef4444" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(temperatureData, 'temperature')} />
+                                    </>
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
+                                  )}
+                                </svg>
                               </div>
                             </div>
 
-                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
-                              <div className="shipment-details">
-                                <div className="shipment-header">
-                                  <div className="shipment-header-left">
-                                    <span className="shipment-id">Humidity</span>
-                                  </div>
-                                  <span className="current-value">
-                                    {typeof getCurrentValue(humidityData, 'humidity') === 'number' 
-                                      ? getCurrentValue(humidityData, 'humidity').toFixed(1) + '%'
-                                      : getCurrentValue(humidityData, 'humidity')}
-                                  </span>
-                                </div>
-                                <div className="inline-chart humidity-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
-                                  <svg 
-                                    width="100%" 
-                                    height="60" 
-                                    viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                    onMouseMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Humidity', e)}
-                                    onTouchStart={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                    onTouchMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Humidity', e)}
-                                  >
-                                    {humidityData.length > 0 ? (
-                                      <polyline
-                                        fill="none"
-                                        stroke="#4ecdc4"
-                                        strokeWidth="2"
-                                        points={generateSVGPath(humidityData, 'humidity')}
-                                      />
-                                    ) : (
-                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                        No humidity data available
-                                      </text>
-                                    )}
-                                  </svg>
-                                </div>
+                            {/* Humidity */}
+                            <div className="sensor-card sensor-card--humidity">
+                              <div className="sensor-card-header">
+                                <span className="sensor-name">Humidity</span>
+                                <span className="sensor-value">
+                                  {typeof getCurrentValue(humidityData, 'humidity') === 'number'
+                                    ? getCurrentValue(humidityData, 'humidity').toFixed(1) + '%'
+                                    : '—'}
+                                </span>
+                              </div>
+                              <div className="sensor-chart-area">
+                                <svg
+                                  width="100%" height="56" viewBox="0 0 300 56"
+                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                  onMouseMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Humidity', e)}
+                                  onTouchStart={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                  onTouchMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
+                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Humidity', e)}
+                                >
+                                  {humidityData.length > 0 ? (
+                                    <>
+                                      <polygon fill="rgba(59,130,246,0.12)" points={generateSVGPath(humidityData, 'humidity') + ' 300,56 0,56'} />
+                                      <polyline fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(humidityData, 'humidity')} />
+                                    </>
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
+                                  )}
+                                </svg>
                               </div>
                             </div>
 
-                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
-                              <div className="shipment-details">
-                                <div className="shipment-header">
-                                  <div className="shipment-header-left">
-                                    <span className="shipment-id">Battery</span>
-                                  </div>
-                                  <span className="current-value">
-                                    {typeof getCurrentValue(batteryData, 'battery') === 'number' 
-                                      ? getCurrentValue(batteryData, 'battery').toFixed(1) + '%'
-                                      : getCurrentValue(batteryData, 'battery')}
-                                  </span>
-                                </div>
-                                <div className="inline-chart battery-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
-                                  <svg 
-                                    width="100%" 
-                                    height="60" 
-                                    viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                    onMouseMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Battery', e)}
-                                    onTouchStart={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                    onTouchMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Battery', e)}
-                                  >
-                                    {batteryData.length > 0 ? (
-                                      <polyline
-                                        fill="none"
-                                        stroke="#95e1d3"
-                                        strokeWidth="2"
-                                        points={generateSVGPath(batteryData, 'battery')}
-                                      />
-                                    ) : (
-                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                        No battery data available
-                                      </text>
-                                    )}
-                                  </svg>
-                                </div>
+                            {/* Battery */}
+                            <div className="sensor-card sensor-card--battery">
+                              <div className="sensor-card-header">
+                                <span className="sensor-name">Battery</span>
+                                <span className="sensor-value">
+                                  {typeof getCurrentValue(batteryData, 'battery') === 'number'
+                                    ? getCurrentValue(batteryData, 'battery').toFixed(1) + '%'
+                                    : '—'}
+                                </span>
+                              </div>
+                              <div className="sensor-chart-area">
+                                <svg
+                                  width="100%" height="56" viewBox="0 0 300 56"
+                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                  onMouseMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Battery', e)}
+                                  onTouchStart={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                  onTouchMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
+                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Battery', e)}
+                                >
+                                  {batteryData.length > 0 ? (
+                                    <>
+                                      <polygon fill="rgba(34,197,94,0.12)" points={generateSVGPath(batteryData, 'battery') + ' 300,56 0,56'} />
+                                      <polyline fill="none" stroke="#22c55e" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(batteryData, 'battery')} />
+                                    </>
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
+                                  )}
+                                </svg>
                               </div>
                             </div>
 
-                            <div className="shipment-item chart-item" style={{ margin: '0 0 0px 0', width: '100%' }}>
-                              <div className="shipment-details">
-                                <div className="shipment-header">
-                                  <div className="shipment-header-left">
-                                    <span className="shipment-id">Speed</span>
-                                  </div>
-                                  <span className="current-value">
-                                    {typeof getCurrentValue(speedData, 'speed') === 'number' 
-                                      ? getCurrentValue(speedData, 'speed').toFixed(1) + ' km/h'
-                                      : getCurrentValue(speedData, 'speed')}
-                                  </span>
-                                </div>
-                                <div className="inline-chart speed-chart" style={{ position: 'relative', marginTop: '10px', width: '100%' }}>
-                                  <svg 
-                                    width="100%" 
-                                    height="60" 
-                                    viewBox="0 0 300 60"
-                                    style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                    onMouseMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                    onMouseLeave={(e) => handleChartLeaveOrEnd('Speed', e)}
-                                    onTouchStart={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                    onTouchMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                    onTouchEnd={(e) => handleChartLeaveOrEnd('Speed', e)}
-                                  >
-                                    {speedData.length > 0 ? (
-                                      <polyline
-                                        fill="none"
-                                        stroke="#ffeaa7"
-                                        strokeWidth="2"
-                                        points={generateSVGPath(speedData, 'speed')}
-                                      />
-                                    ) : (
-                                      <text x="150" y="30" textAnchor="middle" fill="#999" fontSize="12">
-                                        No speed data available
-                                      </text>
-                                    )}
-                                  </svg>
-                                </div>
+                            {/* Speed */}
+                            <div className="sensor-card sensor-card--speed">
+                              <div className="sensor-card-header">
+                                <span className="sensor-name">Speed</span>
+                                <span className="sensor-value">
+                                  {typeof getCurrentValue(speedData, 'speed') === 'number'
+                                    ? getCurrentValue(speedData, 'speed').toFixed(1) + ' km/h'
+                                    : '—'}
+                                </span>
+                              </div>
+                              <div className="sensor-chart-area">
+                                <svg
+                                  width="100%" height="56" viewBox="0 0 300 56"
+                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                  onMouseMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Speed', e)}
+                                  onTouchStart={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                  onTouchMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
+                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Speed', e)}
+                                >
+                                  {speedData.length > 0 ? (
+                                    <>
+                                      <polygon fill="rgba(234,88,12,0.12)" points={generateSVGPath(speedData, 'speed') + ' 300,56 0,56'} />
+                                      <polyline fill="none" stroke="#ea580c" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(speedData, 'speed')} />
+                                    </>
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
+                                  )}
+                                </svg>
                               </div>
                             </div>
+
+                            {/* Light */}
+                            <div className="sensor-card sensor-card--light">
+                              <div className="sensor-card-header">
+                                <span className="sensor-name">Light</span>
+                                <span className="sensor-value">
+                                  {typeof getCurrentValue(lightData, 'light') === 'number'
+                                    ? getCurrentValue(lightData, 'light').toFixed(1) + ' Lux'
+                                    : '—'}
+                                </span>
+                              </div>
+                              <div className="sensor-chart-area">
+                                <svg
+                                  width="100%" height="56" viewBox="0 0 300 56"
+                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                  onMouseMove={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
+                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Light', e)}
+                                  onTouchStart={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
+                                  onTouchMove={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
+                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Light', e)}
+                                >
+                                  {lightData.length > 0 ? (
+                                    <>
+                                      <polygon fill="rgba(202,138,4,0.12)" points={generateSVGPath(lightData, 'light') + ' 300,56 0,56'} />
+                                      <polyline fill="none" stroke="#ca8a04" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(lightData, 'light')} />
+                                    </>
+                                  ) : (
+                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
+                                  )}
+                                </svg>
+                              </div>
+                            </div>
+
                           </div>
                         )}
                       </div>
@@ -1538,95 +1586,69 @@ const Shipments = () => {
 
                     {activeTab === 'alerts' && (
                       <div className="alerts-content">
-                        {console.log('Alerts tab rendering, alertsData:', alertsData, 'length:', alertsData.length, 'isLoadingAlerts:', isLoadingAlerts)}
                         {/* Alert Configurations Section */}
-                        {selectedShipmentDetail && selectedShipmentDetail.legs && selectedShipmentDetail.legs.length > 0 && 
-                         selectedShipmentDetail.legs[0].alertPresets && selectedShipmentDetail.legs[0].alertPresets.length > 0 && (
-                          <div style={{ marginBottom: '20px' }}>
-                            <h4 style={{ marginBottom: '10px', color: '#374151', fontSize: '14px' }}>Alert Configurations</h4>
+                        {selectedShipmentDetail?.legs?.[0]?.alertPresets?.length > 0 && (
+                          <div className="alerts-section">
+                            <h4 className="alerts-section-title">Configured</h4>
                             {selectedShipmentDetail.legs[0].alertPresets.map((preset, index) => (
-                              <div key={index} className="alert alert-config" style={{ 
-                                backgroundColor: '#f8fafc', 
-                                border: '1px solid #e2e8f0',
-                                marginBottom: '8px'
-                              }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
-                                  <span>{preset.name}</span>
-                                  <span style={{ fontSize: '12px', opacity: 0.8, color: '#10b981' }}>Configured</span>
+                              <div key={index} className="alert-card alert-card--configured">
+                                <div className="alert-card-header">
+                                  <span className="alert-card-name">{preset.name}</span>
+                                  <span className="alert-badge alert-badge--active">Active</span>
                                 </div>
-                                <p style={{ marginBottom: '8px', fontSize: '13px' }}>
-                                  {preset.type?.toUpperCase()} alert configured
-                                </p>
-                                <div style={{ fontSize: '12px', color: '#374151', display: 'grid', rowGap: '4px' }}>
+                                <div className="alert-card-meta">
                                   <span>Type: {preset.type}</span>
-                                  <span>Range: {preset.minValue}{preset.unit} - {preset.maxValue}{preset.unit}</span>
-                                  <span>Created: {preset.createdAt ? new Date(preset.createdAt).toLocaleString() : 'N/A'}</span>
+                                  <span>Range: {preset.minValue}{preset.unit} – {preset.maxValue}{preset.unit}</span>
+                                  <span>Since: {preset.createdAt ? new Date(preset.createdAt).toLocaleDateString() : 'N/A'}</span>
                                 </div>
                               </div>
                             ))}
                           </div>
                         )}
-                        
-                        {/* All Alerts Section (Combined) */}
-                        <div>
-                          <h4 style={{ marginBottom: '10px', color: '#374151', fontSize: '14px' }}>All Alerts</h4>
+
+                        {/* All Alerts Section */}
+                        <div className="alerts-section">
+                          <h4 className="alerts-section-title">Triggered</h4>
                           {isLoadingAlerts ? (
-                            <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-                              <div style={{
-                                width: '32px',
-                                height: '32px',
-                                border: '3px solid #ddd',
-                                borderTop: '3px solid #f97316',
-                                borderRadius: '50%',
-                                animation: 'spin 1s linear infinite',
-                                margin: '0 auto 15px'
-                              }}></div>
-                              Loading alerts...
+                            <div className="list-state-msg">
+                              <div className="list-spinner"></div>
+                              Loading alerts…
                             </div>
                           ) : alertsData.length === 0 ? (
-                            <div className="no-messages">No alerts configured or triggered for this shipment.</div>
+                            <div className="alerts-empty">No alerts triggered for this shipment.</div>
                           ) : (
-                            alertsData.map((alert) => (
+                            alertsData.filter(a => !a.isConfigured).map((alert) => (
                               <div
                                 key={alert.alertId}
-                                className={`alert ${alert.isConfigured ? 'alert-config' : 
-                                  (alert.severity === 'critical' ? 'alert-error' : 'alert-info')}`}
-                                style={{ 
-                                  backgroundColor: alert.isConfigured ? '#f0f9ff' : undefined,
-                                  border: alert.isConfigured ? '1px solid #0ea5e9' : undefined,
-                                  marginBottom: '8px'
-                                }}
+                                className={`alert-card ${
+                                  alert.severity === 'critical' ? 'alert-card--critical' : 'alert-card--warning'
+                                }`}
                               >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontWeight: 600 }}>
-                                  <span>{alert.alertName}</span>
-                                  <span style={{ 
-                                    fontSize: '12px', 
-                                    opacity: 0.8,
-                                    color: alert.isConfigured ? '#0ea5e9' : undefined
-                                  }}>
-                                    {alert.isConfigured ? 'Configured' : alert.lastTriggeredAt}
+                                <div className="alert-card-header">
+                                  <span className="alert-card-name">{alert.alertName}</span>
+                                  <span className={`alert-badge ${alert.severity === 'critical' ? 'alert-badge--critical' : 'alert-badge--warning'}`}>
+                                    {alert.severity === 'critical' ? 'Critical' : 'Warning'}
                                   </span>
                                 </div>
-                                <p style={{ marginBottom: '8px' }}>
-                                  {alert.message || `${(alert.alertType || 'Alert').toUpperCase()} ${alert.isConfigured ? 'configured' : 'detected'}.`}
-                                </p>
-                                <div style={{ fontSize: '12px', color: '#374151', display: 'grid', rowGap: '4px' }}>
-                                  {!alert.isConfigured && <span>First triggered: {alert.timestamp}</span>}
-                                  <span>
-                                    {alert.isConfigured ? 'Status: Active configuration' : `Occurrences: ${alert.occurrenceCount}`}
-                                  </span>
-                                  {!alert.isConfigured && alert.sensorValue != null && (
-                                    <span>Sensor value: {alert.sensorValue}{alert.unit}</span>
+                                {alert.message && (
+                                  <p className="alert-card-msg">{alert.message}</p>
+                                )}
+                                <div className="alert-card-meta">
+                                  <span>First seen: {alert.timestamp}</span>
+                                  <span>Occurrences: {alert.occurrenceCount}</span>
+                                  {alert.sensorValue != null && (
+                                    <span>Value: {alert.sensorValue}{alert.unit}</span>
                                   )}
-                                  <span>Allowed range: {alert.minThreshold}{alert.unit} - {alert.maxThreshold}{alert.unit}</span>
-                                  {!alert.isConfigured && alert.location?.latitude != null && alert.location?.longitude != null && (
-                                    <span>
-                                      Location: {Number(alert.location.latitude).toFixed(4)}, {Number(alert.location.longitude).toFixed(4)}
-                                    </span>
+                                  <span>Range: {alert.minThreshold}{alert.unit} – {alert.maxThreshold}{alert.unit}</span>
+                                  {alert.location?.latitude != null && alert.location?.longitude != null && (
+                                    <span>Location: {Number(alert.location.latitude).toFixed(4)}, {Number(alert.location.longitude).toFixed(4)}</span>
                                   )}
                                 </div>
                               </div>
                             ))
+                          )}
+                          {!isLoadingAlerts && alertsData.filter(a => !a.isConfigured).length === 0 && alertsData.length > 0 && (
+                            <div className="alerts-empty">No triggered alerts — all clear.</div>
                           )}
                         </div>
                       </div>
@@ -1789,21 +1811,32 @@ const Shipments = () => {
               // Shipments List View
               <>
                 <div className="sidebar-header">
-                  <h2>Shipment Management</h2>
-                  <p>Track and manage shipments</p>
-                </div>
-
-                <div className="action-buttons">
-                  <button className="btn btn-primary" onClick={handleNewShipment}>
-                    + New Shipment
-                  </button>
-                  <button 
-                    className="btn btn-danger" 
-                    onClick={handleDeleteSelected}
-                    disabled={selectedShipments.length === 0}
-                  >
-                    Delete
-                  </button>
+                  <div className="sidebar-header-top">
+                    <div className="sidebar-header-title">
+                      <span className="sidebar-header-eyebrow">Fleet</span>
+                      <h2>Shipments</h2>
+                    </div>
+                    <span className="shipment-count-badge">{filteredShipments.length}</span>
+                  </div>
+                  <div className="sidebar-header-actions">
+                    <button className="btn-new" onClick={handleNewShipment}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                      </svg>
+                      New Shipment
+                    </button>
+                    <button
+                      className="btn-delete"
+                      onClick={handleDeleteSelected}
+                      disabled={selectedShipments.length === 0}
+                      title="Delete selected"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+                      </svg>
+                      {selectedShipments.length > 0 && <span className="btn-delete-count">{selectedShipments.length}</span>}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="select-all">
@@ -1814,36 +1847,49 @@ const Shipments = () => {
                       onChange={handleSelectAll}
                     />
                     <span className="checkmark"></span>
-                    Select All ({filteredShipments.length} shipments)
+                    Select all
                   </label>
                 </div>
 
                 <div className="search-bar">
-                  <input
-                    type="text"
-                    placeholder="Search shipments..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="search-input"
-                  />
+                  <div className="search-input-wrapper">
+                    <svg className="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Search tracker, origin, destination…"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="search-input"
+                    />
+                    {searchTerm && (
+                      <button className="search-clear-btn" onClick={() => setSearchTerm('')} title="Clear">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="shipments-list">
                   {isLoading ? (
-                    <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                      Loading shipments...
+                    <div className="list-state-msg">
+                      <div className="list-spinner"></div>
+                      Loading shipments…
                     </div>
                   ) : filteredShipments.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-                      {shipments.length === 0 ? 'No shipments found' : 'No shipments match your search'}
+                    <div className="list-state-msg">
+                      {shipments.length === 0 ? 'No shipments yet' : 'No results for your search'}
                     </div>
                   ) : (
                     filteredShipments.map(shipment => (
-                      <div 
-                        key={shipment._id} 
+                      <div
+                        key={shipment._id}
                         className={`shipment-item ${selectedShipments.includes(shipment._id) ? 'selected' : ''}`}
+                        data-status={getShipmentStatus(shipment).toLowerCase().replace(' ', '-')}
                         onClick={() => handleShipmentClick(shipment)}
-                        style={{ cursor: 'pointer' }}
                       >
                         <div className="shipment-details">
                           <div className="shipment-header">
@@ -1863,14 +1909,19 @@ const Shipments = () => {
                             </span>
                           </div>
                           <div className="shipment-route">
-                            <div className="route-info">
-                              <strong>From:</strong> {shipment.legs?.[0]?.shipFromAddress || 'N/A'}
+                            <div className="route-endpoint">
+                              <span className="route-dot-sm route-dot-sm-green"></span>
+                              <span className="route-addr">{shipment.legs?.[0]?.shipFromAddress || 'N/A'}</span>
                             </div>
-                            <div className="route-info">
-                              <strong>To:</strong> {shipment.legs?.[shipment.legs.length - 1]?.stopAddress || 'N/A'}
+                            <div className="route-endpoint">
+                              <span className="route-dot-sm route-dot-sm-red"></span>
+                              <span className="route-addr">{shipment.legs?.[shipment.legs.length - 1]?.stopAddress || 'N/A'}</span>
                             </div>
-                            <div className="route-info">
-                              <strong>ETA:</strong> {formatDate(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate)}
+                            <div className="route-meta">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                              </svg>
+                              <span className="route-eta">ETA {formatDate(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate)}</span>
                             </div>
                           </div>
                         </div>
