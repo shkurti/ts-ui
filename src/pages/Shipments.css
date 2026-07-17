@@ -964,6 +964,7 @@
 .sensor-card--humidity { border-top-color: #3b82f6; }
 .sensor-card--battery  { border-top-color: #22c55e; }
 .sensor-card--speed    { border-top-color: #ea580c; }
+.sensor-card--light    { border-top-color: #ca8a04; }
 
 .sensor-card-header {
   display: flex;
@@ -994,6 +995,7 @@
 .sensor-card--humidity .sensor-value { color: #3b82f6; }
 .sensor-card--battery  .sensor-value { color: #22c55e; }
 .sensor-card--speed    .sensor-value { color: #ea580c; }
+.sensor-card--light    .sensor-value { color: #ca8a04; }
 
 .sensor-chart-area {
   width: 100%;
