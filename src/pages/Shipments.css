@@ -1,20 +1,4 @@
-/* ── Plus Jakarta Sans (ui-ux-pro-max design system) ─────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
-
-/* ── Design tokens ────────────────────────────────────────────────── */
-:root {
-  --color-primary:    #2563EB;
-  --color-secondary:  #3B82F6;
-  --color-accent:     #EA580C;
-  --color-bg:         #EFF6FF;
-  --color-foreground: #1E40AF;
-  --color-muted:      #E9EFF8;
-  --color-border:     #BFDBFE;
-  --color-destructive:#DC2626;
-  --color-text:       #1e293b;
-  --color-text-muted: #64748b;
-  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
-}
+/* ── Design tokens live in src/theme.css (imported globally) ────── */
 
 .shipments-container {
   position: fixed;
@@ -716,7 +700,7 @@
 .form-group select:focus {
   border-color: #667eea;
   outline: none;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
 .add-stop-btn {

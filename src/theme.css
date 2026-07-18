@@ -1,0 +1,50 @@
+/* ── Shared design tokens ──────────────────────────────────────────────
+   Single source of truth for color, type, radius and shadow across every
+   page. Pages should reference these vars instead of hardcoding hex
+   values so the app reads as one system. */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --color-primary:          #2563EB;
+  --color-primary-dark:     #1E40AF;
+  --color-primary-hover:    #1D4ED8;
+  --color-secondary:        #3B82F6;
+  --color-accent:           #EA580C;
+
+  --color-success:          #16A34A;
+  --color-success-text:     #15803D;
+  --color-success-hover:    #15803D;
+  --color-success-bg:       #F0FDF4;
+  --color-success-border:   #BBF7D0;
+
+  --color-warning:          #CA8A04;
+  --color-warning-bg:       #FFFBEB;
+  --color-warning-border:   #FDE68A;
+
+  --color-destructive:        #DC2626;
+  --color-destructive-hover:  #B91C1C;
+  --color-destructive-bg:     #FEF2F2;
+  --color-destructive-border: #FECACA;
+
+  --color-bg:         #EFF6FF;
+  --color-foreground: #1E40AF;
+  --color-muted:      #E9EFF8;
+  --color-border:     #BFDBFE;
+  --color-text:       #1E293B;
+  --color-text-muted: #64748B;
+
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 4px 20px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 28px -6px rgba(15, 23, 42, 0.18);
+}
+
+body {
+  font-family: var(--font-sans);
+}
