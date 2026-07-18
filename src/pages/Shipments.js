@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import './Shipments.css';
-import { TriangleAlert } from 'lucide-react';
+import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
@@ -1326,13 +1326,40 @@ const Shipments = () => {
       </div>
 
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
-        <button 
+        <button
           className="collapse-btn"
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          aria-label={sidebarCollapsed ? 'Expand panel' : 'Collapse panel'}
+          aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed ? 'Expand panel' : 'Collapse panel'}
         >
-          {sidebarCollapsed ? '→' : '←'}
-        </button>        
-        {!sidebarCollapsed && (
+          {sidebarCollapsed ? <ChevronRight size={14} strokeWidth={2.5} /> : <ChevronLeft size={14} strokeWidth={2.5} />}
+        </button>
+        {sidebarCollapsed ? (
+          <div className="sidebar-rail">
+            <div className="sidebar-rail-logo" title="Shipments">
+              <Package size={17} strokeWidth={2.2} />
+            </div>
+            <span className="sidebar-rail-count">{filteredShipments.length}</span>
+            <div className="sidebar-rail-divider" />
+            <button
+              className="sidebar-rail-btn"
+              onClick={() => setSidebarCollapsed(false)}
+              title="New shipment"
+              aria-label="New shipment"
+            >
+              <Plus size={16} strokeWidth={2.3} />
+            </button>
+            <button
+              className="sidebar-rail-btn"
+              onClick={() => setSidebarCollapsed(false)}
+              title="Search shipments"
+              aria-label="Search shipments"
+            >
+              <Search size={16} strokeWidth={2.3} />
+            </button>
+          </div>
+        ) : (
           <div className="sidebar-content">
             {selectedShipmentDetail ? (
               // Shipment Detail View
