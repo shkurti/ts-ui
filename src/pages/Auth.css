@@ -195,24 +195,55 @@
 /* User Menu Styles */
 .user-menu {
   position: relative;
+  flex-shrink: 0;
 }
 
 .user-menu-toggle {
   background: none;
-  border: none;
-  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(226, 232, 240, 0.9);
   cursor: pointer;
-  padding: 8px 12px;
-  border-radius: 6px;
-  transition: background-color 0.3s ease;
+  padding: 0.3rem 0.6rem 0.3rem 0.3rem;
+  border-radius: 999px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-family: inherit;
 }
 
 .user-menu-toggle:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.user-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(155deg, #6366f1, #4338ca);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.user-menu-name {
+  font-weight: 600;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-chevron {
+  color: rgba(226, 232, 240, 0.6);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
 }
 
 .user-menu-dropdown {
@@ -220,42 +251,52 @@
   top: 100%;
   right: 0;
   background: white;
-  border-radius: 8px;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-  padding: 8px 0;
-  min-width: 180px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.22);
+  padding: 6px;
+  min-width: 190px;
   z-index: 1000;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .user-menu-item {
   display: block;
-  padding: 12px 16px;
-  color: #333;
+  padding: 10px 12px;
+  color: #334155;
   text-decoration: none;
   border: none;
   background: none;
   width: 100%;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.3s ease;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border-radius: 6px;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .user-menu-item:hover {
-  background-color: #f8f9fa;
+  background-color: #fef2f2;
+  color: #dc2626;
 }
 
 .user-info {
-  padding: 12px 16px;
-  border-bottom: 1px solid #eee;
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid #f1f5f9;
   margin-bottom: 4px;
 }
 
 .user-info strong {
   display: block;
-  color: #333;
-  font-size: 14px;
-  margin-bottom: 4px;
+  color: #0f172a;
+  font-size: 0.875rem;
+  margin-bottom: 2px;
+}
+
+.user-info span {
+  color: #64748b;
+  font-size: 0.8rem;
 }
 
 .user-info span {

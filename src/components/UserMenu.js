@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const UserMenu = () => {
@@ -24,22 +25,23 @@ const UserMenu = () => {
 
   if (!user) return null;
 
+  const displayName = user.first_name || user.username || user.email;
+  const initial = displayName.charAt(0).toUpperCase();
+
   return (
     <div className="user-menu" ref={menuRef}>
-      <button 
+      <button
         className="user-menu-toggle"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <span>{user.first_name || user.username || user.email}</span>
-        <svg 
-          width="16" 
-          height="16" 
-          viewBox="0 0 24 24" 
-          fill="currentColor"
-          style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease' }}
-        >
-          <path d="M7 10l5 5 5-5z"/>
-        </svg>
+        <span className="user-avatar">{initial}</span>
+        <span className="user-menu-name">{displayName}</span>
+        <ChevronDown
+          size={15}
+          strokeWidth={2.5}
+          className="user-menu-chevron"
+          style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+        />
       </button>
 
       {isOpen && (
