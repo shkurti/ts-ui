@@ -766,6 +766,25 @@ const Shipments = () => {
     
     return points;
   };
+
+  // Helper function to get the coordinates of the last (current) data point,
+  // used to draw the endpoint marker on each sparkline
+  const getLastPoint = (data, valueKey, maxHeight = 60, maxWidth = 300) => {
+    if (!data || data.length === 0) return null;
+
+    const values = data.map(item => item[valueKey]).filter(val => val !== null && !isNaN(val));
+    if (values.length === 0) return null;
+
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const range = maxValue - minValue || 1;
+    const lastIndex = values.length - 1;
+
+    const x = values.length > 1 ? (lastIndex / (values.length - 1)) * maxWidth : maxWidth;
+    const y = maxHeight - ((values[lastIndex] - minValue) / range) * (maxHeight - 10) - 5;
+
+    return { x, y };
+  };
   // Helper function to get current value
   const getCurrentValue = (data, valueKey) => {
     if (!data || data.length === 0) return 'N/A';
@@ -1409,180 +1428,71 @@ const Shipments = () => {
                       Trips
                     </button>
                   </div>                  <div className="tab-content">
-                    {activeTab === 'sensors' && (
-                      <div className="sensors-content">
-                        {isLoadingSensorData ? (
-                          <div className="list-state-msg">
-                            <div className="list-spinner"></div>
-                            Loading sensor data…
-                          </div>
-                        ) : (
-                          <div className="sensor-charts">
+                    {activeTab === 'sensors' && (() => {
+                      const sensorRows = [
+                        { key: 'temp', label: 'Temperature', data: temperatureData, field: 'temperature', unit: '°C', color: '#ef4444', fill: 'rgba(239,68,68,0.08)' },
+                        { key: 'humidity', label: 'Humidity', data: humidityData, field: 'humidity', unit: '%', color: '#3b82f6', fill: 'rgba(59,130,246,0.08)' },
+                        { key: 'battery', label: 'Battery', data: batteryData, field: 'battery', unit: '%', color: '#22c55e', fill: 'rgba(34,197,94,0.08)' },
+                        { key: 'speed', label: 'Speed', data: speedData, field: 'speed', unit: ' km/h', color: '#ea580c', fill: 'rgba(234,88,12,0.08)' },
+                        { key: 'light', label: 'Light', data: lightData, field: 'light', unit: ' Lux', color: '#ca8a04', fill: 'rgba(202,138,4,0.08)' },
+                      ];
+                      const CHART_H = 64;
 
-                            {/* Temperature */}
-                            <div className="sensor-card sensor-card--temp">
-                              <div className="sensor-card-header">
-                                <span className="sensor-name">Temperature</span>
-                                <span className="sensor-value">
-                                  {typeof getCurrentValue(temperatureData, 'temperature') === 'number'
-                                    ? getCurrentValue(temperatureData, 'temperature').toFixed(1) + '°C'
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="sensor-chart-area">
-                                <svg
-                                  width="100%" height="56" viewBox="0 0 300 56"
-                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                  onMouseMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Temperature', e)}
-                                  onTouchStart={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                  onTouchMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Temperature', e)}
-                                >
-                                  {temperatureData.length > 0 ? (
-                                    <>
-                                      <polygon fill="rgba(239,68,68,0.12)" points={generateSVGPath(temperatureData, 'temperature') + ' 300,56 0,56'} />
-                                      <polyline fill="none" stroke="#ef4444" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(temperatureData, 'temperature')} />
-                                    </>
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
-                                  )}
-                                </svg>
-                              </div>
+                      return (
+                        <div className="sensors-content">
+                          {isLoadingSensorData ? (
+                            <div className="list-state-msg">
+                              <div className="list-spinner"></div>
+                              Loading sensor data…
                             </div>
-
-                            {/* Humidity */}
-                            <div className="sensor-card sensor-card--humidity">
-                              <div className="sensor-card-header">
-                                <span className="sensor-name">Humidity</span>
-                                <span className="sensor-value">
-                                  {typeof getCurrentValue(humidityData, 'humidity') === 'number'
-                                    ? getCurrentValue(humidityData, 'humidity').toFixed(1) + '%'
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="sensor-chart-area">
-                                <svg
-                                  width="100%" height="56" viewBox="0 0 300 56"
-                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                  onMouseMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Humidity', e)}
-                                  onTouchStart={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                  onTouchMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Humidity', e)}
-                                >
-                                  {humidityData.length > 0 ? (
-                                    <>
-                                      <polygon fill="rgba(59,130,246,0.12)" points={generateSVGPath(humidityData, 'humidity') + ' 300,56 0,56'} />
-                                      <polyline fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(humidityData, 'humidity')} />
-                                    </>
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
-                                  )}
-                                </svg>
-                              </div>
+                          ) : (
+                            <div className="sensor-charts">
+                              {sensorRows.map((row) => {
+                                const lastPoint = getLastPoint(row.data, row.field, CHART_H);
+                                const currentValue = getCurrentValue(row.data, row.field);
+                                return (
+                                  <div key={row.key} className={`sensor-card sensor-card--${row.key}`}>
+                                    <div className="sensor-card-header">
+                                      <span className="sensor-name">
+                                        <span className={`sensor-dot sensor-dot--${row.key}`}></span>
+                                        {row.label}
+                                      </span>
+                                      <span className="sensor-value">
+                                        {typeof currentValue === 'number' ? currentValue.toFixed(1) + row.unit : '—'}
+                                      </span>
+                                    </div>
+                                    <div className="sensor-chart-area">
+                                      <svg
+                                        width="100%" height={CHART_H} viewBox={`0 0 300 ${CHART_H}`} preserveAspectRatio="none"
+                                        style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                        onMouseMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
+                                        onMouseLeave={(e) => handleChartLeaveOrEnd(row.label, e)}
+                                        onTouchStart={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
+                                        onTouchMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
+                                        onTouchEnd={(e) => handleChartLeaveOrEnd(row.label, e)}
+                                      >
+                                        {row.data.length > 0 ? (
+                                          <>
+                                            <line x1="0" y1={CHART_H - 1} x2="300" y2={CHART_H - 1} stroke="var(--color-border)" strokeWidth="1" />
+                                            <polygon fill={row.fill} points={generateSVGPath(row.data, row.field, CHART_H) + ` 300,${CHART_H} 0,${CHART_H}`} />
+                                            <polyline fill="none" stroke={row.color} strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" points={generateSVGPath(row.data, row.field, CHART_H)} />
+                                            {lastPoint && (
+                                              <circle cx={lastPoint.x} cy={lastPoint.y} r="3" fill={row.color} stroke="#fff" strokeWidth="1.5" />
+                                            )}
+                                          </>
+                                        ) : (
+                                          <text x="150" y={CHART_H / 2} textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
+                                        )}
+                                      </svg>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-
-                            {/* Battery */}
-                            <div className="sensor-card sensor-card--battery">
-                              <div className="sensor-card-header">
-                                <span className="sensor-name">Battery</span>
-                                <span className="sensor-value">
-                                  {typeof getCurrentValue(batteryData, 'battery') === 'number'
-                                    ? getCurrentValue(batteryData, 'battery').toFixed(1) + '%'
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="sensor-chart-area">
-                                <svg
-                                  width="100%" height="56" viewBox="0 0 300 56"
-                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                  onMouseMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Battery', e)}
-                                  onTouchStart={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                  onTouchMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Battery', e)}
-                                >
-                                  {batteryData.length > 0 ? (
-                                    <>
-                                      <polygon fill="rgba(34,197,94,0.12)" points={generateSVGPath(batteryData, 'battery') + ' 300,56 0,56'} />
-                                      <polyline fill="none" stroke="#22c55e" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(batteryData, 'battery')} />
-                                    </>
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
-                                  )}
-                                </svg>
-                              </div>
-                            </div>
-
-                            {/* Speed */}
-                            <div className="sensor-card sensor-card--speed">
-                              <div className="sensor-card-header">
-                                <span className="sensor-name">Speed</span>
-                                <span className="sensor-value">
-                                  {typeof getCurrentValue(speedData, 'speed') === 'number'
-                                    ? getCurrentValue(speedData, 'speed').toFixed(1) + ' km/h'
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="sensor-chart-area">
-                                <svg
-                                  width="100%" height="56" viewBox="0 0 300 56"
-                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                  onMouseMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Speed', e)}
-                                  onTouchStart={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                  onTouchMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Speed', e)}
-                                >
-                                  {speedData.length > 0 ? (
-                                    <>
-                                      <polygon fill="rgba(234,88,12,0.12)" points={generateSVGPath(speedData, 'speed') + ' 300,56 0,56'} />
-                                      <polyline fill="none" stroke="#ea580c" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(speedData, 'speed')} />
-                                    </>
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
-                                  )}
-                                </svg>
-                              </div>
-                            </div>
-
-                            {/* Light */}
-                            <div className="sensor-card sensor-card--light">
-                              <div className="sensor-card-header">
-                                <span className="sensor-name">Light</span>
-                                <span className="sensor-value">
-                                  {typeof getCurrentValue(lightData, 'light') === 'number'
-                                    ? getCurrentValue(lightData, 'light').toFixed(1) + ' Lux'
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="sensor-chart-area">
-                                <svg
-                                  width="100%" height="56" viewBox="0 0 300 56"
-                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                  onMouseMove={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
-                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Light', e)}
-                                  onTouchStart={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
-                                  onTouchMove={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
-                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Light', e)}
-                                >
-                                  {lightData.length > 0 ? (
-                                    <>
-                                      <polygon fill="rgba(202,138,4,0.12)" points={generateSVGPath(lightData, 'light') + ' 300,56 0,56'} />
-                                      <polyline fill="none" stroke="#ca8a04" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(lightData, 'light')} />
-                                    </>
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
-                                  )}
-                                </svg>
-                              </div>
-                            </div>
-
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {activeTab === 'alerts' && (
                       <div className="alerts-content">

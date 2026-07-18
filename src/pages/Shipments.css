@@ -938,42 +938,38 @@
 }
 
 /* ── Sensor Charts ─────────────────────────────────────────────────────── */
+/* Flat instrument-panel layout: hairline-divided rows, no cards, charts bleed edge-to-edge */
 .sensors-content {
   height: 100%;
-  background: var(--color-bg);
+  background: #fff;
 }
 
 .sensor-charts {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 10px 10px;
 }
 
-/* Base card */
+/* Base row — flat, no border/radius/shadow; a hairline divider separates rows */
 .sensor-card {
   background: #fff;
-  border: 1.5px solid var(--color-border);
-  border-top: 3px solid var(--color-border);
-  border-radius: 10px;
-  overflow: hidden;
+  border-bottom: 1px solid var(--color-border);
 }
 
-/* Sensor color accent on top border */
-.sensor-card--temp     { border-top-color: #ef4444; }
-.sensor-card--humidity { border-top-color: #3b82f6; }
-.sensor-card--battery  { border-top-color: #22c55e; }
-.sensor-card--speed    { border-top-color: #ea580c; }
-.sensor-card--light    { border-top-color: #ca8a04; }
+.sensor-card:last-child {
+  border-bottom: none;
+}
 
 .sensor-card-header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  padding: 10px 12px 6px;
+  padding: 14px 16px 0;
 }
 
 .sensor-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -981,6 +977,20 @@
   color: var(--color-text-muted);
   font-family: var(--font-sans);
 }
+
+/* Label dot replaces the old top-border accent bar */
+.sensor-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sensor-dot--temp     { background: #ef4444; }
+.sensor-dot--humidity { background: #3b82f6; }
+.sensor-dot--battery  { background: #22c55e; }
+.sensor-dot--speed    { background: #ea580c; }
+.sensor-dot--light    { background: #ca8a04; }
 
 /* Live reading — the hero number per Exaggerated Minimalism */
 .sensor-value {
@@ -997,10 +1007,12 @@
 .sensor-card--speed    .sensor-value { color: #ea580c; }
 .sensor-card--light    .sensor-value { color: #ca8a04; }
 
+/* No horizontal padding here — the chart spans the row's full width,
+   flush with the panel's left and right edges. */
 .sensor-chart-area {
   width: 100%;
-  height: 56px;
-  overflow: hidden;
+  height: 64px;
+  margin-top: 2px;
 }
 
 .sensor-chart-area svg {
