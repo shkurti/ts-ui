@@ -1473,11 +1473,11 @@ const Shipments = () => {
                                       >
                                         {row.data.length > 0 ? (
                                           <>
-                                            <line x1="0" y1={CHART_H - 1} x2="300" y2={CHART_H - 1} stroke="var(--color-border)" strokeWidth="1" />
+                                            <line x1="0" y1={CHART_H - 1} x2="300" y2={CHART_H - 1} stroke="var(--color-border)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
                                             <polygon fill={row.fill} points={generateSVGPath(row.data, row.field, CHART_H) + ` 300,${CHART_H} 0,${CHART_H}`} />
-                                            <polyline fill="none" stroke={row.color} strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" points={generateSVGPath(row.data, row.field, CHART_H)} />
+                                            <polyline fill="none" stroke={row.color} strokeWidth="1" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" points={generateSVGPath(row.data, row.field, CHART_H)} />
                                             {lastPoint && (
-                                              <circle cx={lastPoint.x} cy={lastPoint.y} r="3" fill={row.color} stroke="#fff" strokeWidth="1.5" />
+                                              <circle cx={lastPoint.x} cy={lastPoint.y} r="2.25" fill={row.color} stroke="#fff" strokeWidth="1" vectorEffect="non-scaling-stroke" />
                                             )}
                                           </>
                                         ) : (
