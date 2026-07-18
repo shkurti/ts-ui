@@ -1503,6 +1503,7 @@ const Shipments = () => {
                             {selectedShipmentDetail.legs[0].alertPresets.map((preset, index) => (
                               <div key={index} className="alert-card alert-card--configured">
                                 <div className="alert-card-header">
+                                  <span className="alert-dot alert-dot--configured"></span>
                                   <span className="alert-card-name">{preset.name}</span>
                                   <span className="alert-badge alert-badge--active">Active</span>
                                 </div>
@@ -1535,6 +1536,7 @@ const Shipments = () => {
                                 }`}
                               >
                                 <div className="alert-card-header">
+                                  <span className={`alert-dot ${alert.severity === 'critical' ? 'alert-dot--critical' : 'alert-dot--warning'}`}></span>
                                   <span className="alert-card-name">{alert.alertName}</span>
                                   <span className={`alert-badge ${alert.severity === 'critical' ? 'alert-badge--critical' : 'alert-badge--warning'}`}>
                                     {alert.severity === 'critical' ? 'Critical' : 'Warning'}
