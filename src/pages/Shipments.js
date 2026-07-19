@@ -319,7 +319,7 @@ const Shipments = () => {
       handleCancelForm();
     } catch (error) {
       console.error('Error:', error);
-      alert('An error occurred while creating the shipment.');
+      alert(error.message || 'An error occurred while creating the shipment.');
     }
   };
 
