@@ -2231,13 +2231,23 @@ const Shipments = () => {
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="modal-header">
-              <h3>Create New Shipment</h3>
+              <div>
+                <h3>Create New Shipment</h3>
+                <p className="modal-subtitle">Define the route, timing and tracker for this shipment</p>
+              </div>
+              <button type="button" className="modal-close-btn" onClick={handleCancelForm} aria-label="Close">
+                ×
+              </button>
             </div>
             <div className="modal-body">
               {formData.legs.map((leg, index) => (
                 <div key={index} className="leg-section">
-                  <h4>Leg {index + 1}</h4>
-                  <div className="form-grid">
+                  <div className="leg-header">
+                    <span className="leg-badge">{index + 1}</span>
+                    <h4>{index === 0 ? 'Leg 1 — Origin' : `Leg ${index + 1} — Stop`}</h4>
+                  </div>
+
+                  <div className="form-row">
                     {index === 0 ? (
                       <>
                         <div className="form-group">
@@ -2270,34 +2280,15 @@ const Shipments = () => {
                         />
                       </div>
                     )}
+                  </div>
+
+                  <div className="form-row form-row-dates">
                     <div className="form-group">
                       <label>Ship Date *</label>
                       <input
                         type="datetime-local"
                         value={leg.shipDate}
                         onChange={(e) => handleLegChange(index, 'shipDate', e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Transport Mode *</label>
-                      <select
-                        value={leg.transportMode}
-                        onChange={(e) => handleLegChange(index, 'transportMode', e.target.value)}
-                        required
-                      >
-                        <option value="">Select Mode</option>
-                        <option value="Road">Road</option>
-                        <option value="Air">Air</option>
-                        <option value="Sea">Sea</option>
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label>Carrier *</label>
-                      <input
-                        type="text"
-                        value={leg.carrier}
-                        onChange={(e) => handleLegChange(index, 'carrier', e.target.value)}
                         required
                       />
                     </div>
@@ -2320,33 +2311,52 @@ const Shipments = () => {
                       />
                     </div>
                   </div>
-                  
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Transport Mode *</label>
+                      <select
+                        value={leg.transportMode}
+                        onChange={(e) => handleLegChange(index, 'transportMode', e.target.value)}
+                        required
+                      >
+                        <option value="">Select Mode</option>
+                        <option value="Road">Road</option>
+                        <option value="Air">Air</option>
+                        <option value="Sea">Sea</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Carrier *</label>
+                      <input
+                        type="text"
+                        value={leg.carrier}
+                        onChange={(e) => handleLegChange(index, 'carrier', e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+
                   {/* Geofence Toggle and Configuration */}
                   {legCoordinates[index] && (
-                    <div className="form-group" style={{ marginTop: '15px', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                    <div className="geofence-panel">
+                      <div className="geofence-toggle-row">
                         <input
                           type="checkbox"
                           id={`geofence-toggle-${index}`}
                           checked={geofenceRadii[index] !== undefined}
                           onChange={() => toggleGeofence(index)}
-                          style={{ marginRight: '10px', width: '18px', height: '18px', cursor: 'pointer' }}
                         />
-                        <label 
-                          htmlFor={`geofence-toggle-${index}`}
-                          style={{ margin: 0, cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
-                        >
-                          Enable Geofence Alert for this destination
+                        <label htmlFor={`geofence-toggle-${index}`}>
+                          Enable geofence alert for this destination
                         </label>
                       </div>
-                      
+
                       {geofenceRadii[index] !== undefined && (
                         <>
-                          <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px' }}>
-                            Geofence Radius: {geofenceRadii[index]}m
-                            <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
-                              (Alert when within this distance)
-                            </span>
+                          <label className="geofence-radius-label">
+                            Geofence radius: <strong>{geofenceRadii[index]}m</strong>
+                            <span className="geofence-radius-hint">(alert when within this distance)</span>
                           </label>
                           <input
                             type="range"
@@ -2355,51 +2365,52 @@ const Shipments = () => {
                             step="100"
                             value={geofenceRadii[index]}
                             onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
-                            style={{ width: '100%' }}
+                            className="geofence-slider"
                           />
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#999', marginTop: '4px' }}>
+                          <div className="geofence-scale">
                             <span>100m</span>
                             <span>2.5km</span>
                             <span>5km</span>
                           </div>
-                          <div style={{ marginTop: '10px', padding: '8px', background: '#e3f2fd', borderRadius: '4px', fontSize: '12px', color: '#1976d2' }}>
+                          <div className="geofence-destination">
                             📍 Destination: {index === 0 ? leg.stopAddress : leg.shipTo}
                           </div>
                         </>
                       )}
                     </div>
                   )}
-                  
+
                   {/* Show message if address not geocoded yet */}
                   {!legCoordinates[index] && (index === 0 ? leg.stopAddress : leg.shipTo) && (
-                    <div style={{ marginTop: '10px', padding: '8px', background: '#fff3cd', borderRadius: '4px', fontSize: '12px', color: '#856404' }}>
+                    <div className="geofence-pending-hint">
                       ⏳ Enter and blur the address field to enable geofence configuration
                     </div>
                   )}
                 </div>
               ))}
-              
-              {/* Tracker selection and buttons */}
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label>Select Tracker *</label>
-                <select
-                  value={selectedTracker}
-                  onChange={(e) => setSelectedTracker(e.target.value)}
-                  required
-                  style={{ width: '100%' }}
-                >
-                  <option value="">Choose a tracker device</option>
-                  {trackers.map((tracker) => (
-                    <option key={tracker.tracker_id} value={tracker.tracker_id}>
-                      {tracker.tracker_name} (ID: {tracker.tracker_id})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <button className="btn btn-secondary add-stop-btn" onClick={handleAddStop}>
-                Add Stop
+
+              <button type="button" className="add-stop-btn" onClick={handleAddStop}>
+                + Add Stop
               </button>
+
+              {/* Tracker selection */}
+              <div className="tracker-section">
+                <div className="form-group">
+                  <label>Select Tracker *</label>
+                  <select
+                    value={selectedTracker}
+                    onChange={(e) => setSelectedTracker(e.target.value)}
+                    required
+                  >
+                    <option value="">Choose a tracker device</option>
+                    {trackers.map((tracker) => (
+                      <option key={tracker.tracker_id} value={tracker.tracker_id}>
+                        {tracker.tracker_name} (ID: {tracker.tracker_id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={handleCancelForm}>
