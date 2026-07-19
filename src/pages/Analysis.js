@@ -836,10 +836,10 @@ const Analysis = () => {
     if (!humidityTrendData || !Array.isArray(humidityTrendData) || humidityTrendData.length === 0) {
       return (
         <div className="chart-container">
-          <h4 className="chart-title">💧 Average Shipment Humidity Over Time</h4>
-          <div className="no-data" style={{ padding: '2rem', textAlign: 'center', backgroundColor: '#f8f9fa' }}>
-            <div style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>No humidity data available</div>
-            <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
+          <h4 className="chart-title">Average Shipment Humidity Over Time</h4>
+          <div className="no-data">
+            <div style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>No humidity data available</div>
+            <div style={{ fontSize: '0.8125rem', marginBottom: '0.5rem' }}>
               Total readings processed: {humidityStats?.totalReadings || 0}
             </div>
             <div style={{ fontSize: '0.8rem', color: '#999' }}>
@@ -1326,15 +1326,15 @@ const Analysis = () => {
 
       <div className="tive-content">
         {/* Shipments Overview */}
-        <div className="overview-section accent-blue">
-          <h2 className="section-heading"><span className="section-icon">📦</span>Shipments Overview</h2>
+        <div className="overview-section">
+          <h2 className="section-heading">Shipments Overview</h2>
 
           <div className="overview-grid">
             <div className="overview-card">
               <div className="overview-label">Total Shipments</div>
               <div className="overview-number">{analyticsData.totalShipments}</div>
               <span className="overview-percentage">
-                ↗ 20%
+                ▲ 20%
               </span>
             </div>
 
@@ -1342,7 +1342,7 @@ const Analysis = () => {
               <div className="overview-label">Shipments with Alerts</div>
               <div className="overview-number">{analyticsData.shipmentsWithAlerts}</div>
               <span className="overview-percentage trend-down">
-                ↗ 15%
+                ▲ 15%
               </span>
             </div>
           </div>
@@ -1353,8 +1353,8 @@ const Analysis = () => {
           {/* Left Column */}
           <div className="left-column">
             {/* Highlights */}
-            <div className="highlights-section accent-blue">
-              <h3 className="section-heading"><span className="section-icon">📈</span>Highlights</h3>
+            <div className="highlights-section">
+              <h3 className="section-heading">Highlights</h3>
 
               <div className="highlights-grid">
                 <div className="highlight-group">
@@ -1400,8 +1400,8 @@ const Analysis = () => {
             </div>
 
             {/* Delays & Stops */}
-            <div className="delays-section accent-amber">
-              <h3 className="section-heading"><span className="section-icon">⏰</span>Delays & Stops</h3>
+            <div className="delays-section">
+              <h3 className="section-heading">Delays & Stops</h3>
 
               <div className="delays-grid">
                 <div className="delay-item">
@@ -1421,21 +1421,21 @@ const Analysis = () => {
             </div>
 
             {/* Add Temperature Chart */}
-            <div className="chart-section accent-orange">
+            <div className="chart-section">
               <TemperatureChart />
             </div>
 
             {/* Add Humidity Chart */}
-            <div className="chart-section accent-blue">
+            <div className="chart-section">
               <HumidityChart />
             </div>
           </div>
 
           {/* Right Column - Carrier Performance */}
           <div className="right-column">
-            <div className="carrier-section accent-violet">
+            <div className="carrier-section">
               <div className="carrier-header">
-                <h3 className="section-heading"><span className="section-icon">🏢</span>Carrier Performance</h3>
+                <h3 className="section-heading">Carrier Performance</h3>
                 <div className="chart-toggle">
                   <button
                     className={`toggle-btn ${chartType === 'donut' ? 'active' : ''}`}
@@ -1455,17 +1455,17 @@ const Analysis = () => {
             </div>
 
             {/* Add Duration Chart */}
-            <div className="chart-section accent-violet">
+            <div className="chart-section">
               <ShipmentDurationChart />
             </div>
 
             {/* Add Carrier Temperature Chart */}
-            <div className="chart-section accent-orange">
+            <div className="chart-section">
               <CarrierTemperatureChart />
             </div>
 
             {/* Add Carrier Humidity Chart */}
-            <div className="chart-section accent-blue">
+            <div className="chart-section">
               <CarrierHumidityChart />
             </div>
           </div>
