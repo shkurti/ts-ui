@@ -3,6 +3,30 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { analysisApi, trackerApi } from '../services/apiService';
 import './Page.css';
 
+// Fixed-order, CVD-safe categorical palette (mirrors theme.css --chart-series-*
+// and the backend's carrier color assignment). Grid/axis are deliberately
+// recessive so the data lines stay the loudest thing on each card.
+const CHART = {
+  blue: '#2a78d6',
+  green: '#008300',
+  magenta: '#e87ba4',
+  amber: '#eda100',
+  aqua: '#1baf7a',
+  orange: '#eb6834',
+  violet: '#4a3aa7',
+  red: '#e34948',
+  grid: '#E2E8F0',
+  axis: '#94A3B8',
+};
+
+// Reserved status colors — never reused for series identity.
+const STATUS = {
+  good: '#16A34A',
+  warning: '#CA8A04',
+  critical: '#DC2626',
+  muted: '#64748B',
+};
+
 const Analysis = () => {
   const [analyticsData, setAnalyticsData] = useState({
     totalShipments: 1007,
@@ -291,28 +315,28 @@ const Analysis = () => {
       <div className="chart-container">
         <h4 className="chart-title">Carrier Distribution</h4>
         <ResponsiveContainer width="100%" height={300}>
-          <RechartsBarChart 
-            data={sortedData} 
+          <RechartsBarChart
+            data={sortedData}
             margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
-            <XAxis 
-              dataKey="name" 
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+            <XAxis
+              dataKey="name"
               fontSize={12}
-              stroke="#666"
+              stroke={CHART.axis}
               angle={-45}
               textAnchor="end"
               height={60}
               interval={0}
             />
-            <YAxis 
-              label={{ 
-                value: 'Shipments', 
-                angle: -90, 
-                position: 'insideLeft' 
+            <YAxis
+              label={{
+                value: 'Shipments',
+                angle: -90,
+                position: 'insideLeft'
               }}
               fontSize={12}
-              stroke="#666"
+              stroke={CHART.axis}
             />
             <Tooltip content={<CarrierChartTooltip />} />
             <Bar 
@@ -459,9 +483,9 @@ const Analysis = () => {
             );
           })}
           <p className="tooltip-performance">
-            <span style={{ color: '#28a745' }}>On-time: {data.onTimePercentage}%</span><br/>
-            <span style={{ color: '#dc3545' }}>Late: {data.latePercentage}%</span><br/>
-            <span style={{ color: '#6c757d' }}>Unknown: {data.unknownPercentage}%</span>
+            <span style={{ color: STATUS.good }}>On-time: {data.onTimePercentage}%</span><br/>
+            <span style={{ color: STATUS.critical }}>Late: {data.latePercentage}%</span><br/>
+            <span style={{ color: STATUS.muted }}>Unknown: {data.unknownPercentage}%</span>
           </p>
           <p className="tooltip-count">
             <span style={{ color: '#666' }}>
@@ -553,44 +577,46 @@ const Analysis = () => {
 
     return (
       <div className="chart-container">
-        <h4 className="chart-title">⏱️ Shipment Leg Duration Over Time</h4>
+        <h4 className="chart-title">Shipment Leg Duration Over Time</h4>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
-            <XAxis 
-              dataKey="month" 
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+            <XAxis
+              dataKey="month"
               fontSize={12}
-              stroke="#666"
+              stroke={CHART.axis}
             />
-            <YAxis 
-              label={{ 
-                value: `Duration (${isHourUnit ? 'Hours' : 'Days'})`, 
-                angle: -90, 
-                position: 'insideLeft' 
+            <YAxis
+              label={{
+                value: `Duration (${isHourUnit ? 'Hours' : 'Days'})`,
+                angle: -90,
+                position: 'insideLeft'
               }}
               tickFormatter={yAxisTickFormatter}
               fontSize={12}
-              stroke="#666"
+              stroke={CHART.axis}
               domain={['dataMin', 'dataMax']}
               tickCount={5}
               allowDuplicatedCategory={false}
             />
             <Tooltip content={<DurationTooltip />} />
             <Legend />
-            <Line 
-              type="monotone" 
-              dataKey="averagePlannedDuration" 
-              stroke="#4ecdc4" 
-              strokeWidth={3}
-              dot={{ fill: '#4ecdc4', strokeWidth: 2, r: 4 }}
+            <Line
+              type="monotone"
+              dataKey="averagePlannedDuration"
+              stroke={CHART.blue}
+              strokeWidth={2}
+              dot={{ fill: CHART.blue, strokeWidth: 0, r: 4 }}
+              activeDot={{ r: 6 }}
               name="Average Planned Duration"
             />
-            <Line 
-              type="monotone" 
-              dataKey="averageActualDuration" 
-              stroke="#667eea" 
-              strokeWidth={3}
-              dot={{ fill: '#667eea', strokeWidth: 2, r: 4 }}
+            <Line
+              type="monotone"
+              dataKey="averageActualDuration"
+              stroke={CHART.violet}
+              strokeWidth={2}
+              dot={{ fill: CHART.violet, strokeWidth: 0, r: 4 }}
+              activeDot={{ r: 6 }}
               name="Average Actual Duration"
             />
           </LineChart>
@@ -691,73 +717,76 @@ const Analysis = () => {
 
     return (
       <div className="chart-container">
-        <h4 className="chart-title">🌡️ Average Shipment Temperature Over Time</h4>
+        <h4 className="chart-title">Average Shipment Temperature Over Time</h4>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
-            <XAxis 
-              dataKey="date" 
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+            <XAxis
+              dataKey="date"
               fontSize={12}
-              stroke="#666"
+              stroke={CHART.axis}
             />
-            <YAxis 
-              label={{ 
-                value: 'Temperature (°C)', 
-                angle: -90, 
-                position: 'insideLeft' 
+            <YAxis
+              label={{
+                value: 'Temperature (°C)',
+                angle: -90,
+                position: 'insideLeft'
               }}
               fontSize={12}
-              stroke="#666"
+              stroke={CHART.axis}
               domain={['dataMin - 2', 'dataMax + 2']}
             />
             <Tooltip content={<TemperatureTooltip />} />
             <Legend />
-            <Line 
-              type="monotone" 
-              dataKey="averageTemperature" 
-              stroke="#ff6b6b" 
-              strokeWidth={3}
-              dot={{ fill: '#ff6b6b', strokeWidth: 2, r: 4 }}
+            <Line
+              type="monotone"
+              dataKey="averageTemperature"
+              stroke={CHART.orange}
+              strokeWidth={2}
+              dot={{ fill: CHART.orange, strokeWidth: 0, r: 4 }}
+              activeDot={{ r: 6 }}
               name="Average Temperature"
             />
-            <Line 
-              type="monotone" 
-              dataKey="minTemperature" 
-              stroke="#74c0fc" 
-              strokeWidth={2}
-              strokeDasharray="5,5"
-              dot={{ fill: '#74c0fc', strokeWidth: 1, r: 3 }}
+            <Line
+              type="monotone"
+              dataKey="minTemperature"
+              stroke={CHART.orange}
+              strokeOpacity={0.5}
+              strokeWidth={1.5}
+              strokeDasharray="4,4"
+              dot={false}
               name="Min Temperature"
             />
-            <Line 
-              type="monotone" 
-              dataKey="maxTemperature" 
-              stroke="#ff8cc8" 
-              strokeWidth={2}
-              strokeDasharray="5,5"
-              dot={{ fill: '#ff8cc8', strokeWidth: 1, r: 3 }}
+            <Line
+              type="monotone"
+              dataKey="maxTemperature"
+              stroke={CHART.orange}
+              strokeOpacity={0.9}
+              strokeWidth={1.5}
+              strokeDasharray="4,4"
+              dot={false}
               name="Max Temperature"
             />
           </LineChart>
         </ResponsiveContainer>
-        
+
         {/* Temperature Summary */}
         <div className="performance-summary">
           <div className="performance-item">
             <span className="performance-label">Overall Avg:</span>
-            <span className="performance-value" style={{ color: '#ff6b6b' }}>
+            <span className="performance-value" style={{ color: CHART.orange }}>
               {temperatureStats.overallAverage}°C
             </span>
           </div>
           <div className="performance-item">
             <span className="performance-label">Min Recorded:</span>
-            <span className="performance-value" style={{ color: '#74c0fc' }}>
+            <span className="performance-value" style={{ color: CHART.orange, opacity: 0.6 }}>
               {temperatureStats.overallMin}°C
             </span>
           </div>
           <div className="performance-item">
             <span className="performance-label">Max Recorded:</span>
-            <span className="performance-value" style={{ color: '#ff8cc8' }}>
+            <span className="performance-value" style={{ color: CHART.orange }}>
               {temperatureStats.overallMax}°C
             </span>
           </div>
@@ -831,73 +860,76 @@ const Analysis = () => {
 
     return (
       <div className="chart-container" key={`humidity-${humidityTrendData.length}-${Date.now()}`}>
-        <h4 className="chart-title">💧 Average Shipment Humidity Over Time</h4>
+        <h4 className="chart-title">Average Shipment Humidity Over Time</h4>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
-            <XAxis 
-              dataKey="date" 
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+            <XAxis
+              dataKey="date"
               fontSize={12}
-              stroke="#666"
+              stroke={CHART.axis}
             />
-            <YAxis 
-              label={{ 
-                value: 'Humidity (%)', 
-                angle: -90, 
-                position: 'insideLeft' 
+            <YAxis
+              label={{
+                value: 'Humidity (%)',
+                angle: -90,
+                position: 'insideLeft'
               }}
               fontSize={12}
-              stroke="#666"
+              stroke={CHART.axis}
               domain={['dataMin - 2', 'dataMax + 2']}
             />
             <Tooltip content={<HumidityTooltip />} />
             <Legend />
-            <Line 
-              type="monotone" 
-              dataKey="averageHumidity" 
-              stroke="#4fc3f7" 
-              strokeWidth={3}
-              dot={{ fill: '#4fc3f7', strokeWidth: 2, r: 4 }}
+            <Line
+              type="monotone"
+              dataKey="averageHumidity"
+              stroke={CHART.blue}
+              strokeWidth={2}
+              dot={{ fill: CHART.blue, strokeWidth: 0, r: 4 }}
+              activeDot={{ r: 6 }}
               name="Average Humidity"
             />
-            <Line 
-              type="monotone" 
-              dataKey="minHumidity" 
-              stroke="#81c784" 
-              strokeWidth={2}
-              strokeDasharray="5,5"
-              dot={{ fill: '#81c784', strokeWidth: 1, r: 3 }}
+            <Line
+              type="monotone"
+              dataKey="minHumidity"
+              stroke={CHART.blue}
+              strokeOpacity={0.5}
+              strokeWidth={1.5}
+              strokeDasharray="4,4"
+              dot={false}
               name="Min Humidity"
             />
-            <Line 
-              type="monotone" 
-              dataKey="maxHumidity" 
-              stroke="#64b5f6" 
-              strokeWidth={2}
-              strokeDasharray="5,5"
-              dot={{ fill: '#64b5f6', strokeWidth: 1, r: 3 }}
+            <Line
+              type="monotone"
+              dataKey="maxHumidity"
+              stroke={CHART.blue}
+              strokeOpacity={0.9}
+              strokeWidth={1.5}
+              strokeDasharray="4,4"
+              dot={false}
               name="Max Humidity"
             />
           </LineChart>
         </ResponsiveContainer>
-        
+
         {/* Humidity Summary */}
         <div className="performance-summary">
           <div className="performance-item">
             <span className="performance-label">Overall Avg:</span>
-            <span className="performance-value" style={{ color: '#4fc3f7' }}>
+            <span className="performance-value" style={{ color: CHART.blue }}>
               {humidityStats.overallAverage}%
             </span>
           </div>
           <div className="performance-item">
             <span className="performance-label">Min Recorded:</span>
-            <span className="performance-value" style={{ color: '#81c784' }}>
+            <span className="performance-value" style={{ color: CHART.blue, opacity: 0.6 }}>
               {humidityStats.overallMin}%
             </span>
           </div>
           <div className="performance-item">
             <span className="performance-label">Max Recorded:</span>
-            <span className="performance-value" style={{ color: '#64b5f6' }}>
+            <span className="performance-value" style={{ color: CHART.blue }}>
               {humidityStats.overallMax}%
             </span>
           </div>
@@ -967,77 +999,80 @@ const Analysis = () => {
 
     return (
       <div className="chart-container">
-        <h4 className="chart-title">📊 Average Leg Temperature by Carrier</h4>
+        <h4 className="chart-title">Average Leg Temperature by Carrier</h4>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={sortedChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
-            <XAxis 
-              dataKey="carrier" 
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+            <XAxis
+              dataKey="carrier"
               fontSize={11}
-              stroke="#666"
+              stroke={CHART.axis}
               angle={-45}
               textAnchor="end"
               height={60}
               interval={0}
             />
-            <YAxis 
-              label={{ 
-                value: 'Temperature (°C)', 
-                angle: -90, 
-                position: 'insideLeft' 
+            <YAxis
+              label={{
+                value: 'Temperature (°C)',
+                angle: -90,
+                position: 'insideLeft'
               }}
               fontSize={12}
-              stroke="#666"
+              stroke={CHART.axis}
               domain={['dataMin - 1', 'dataMax + 1']}
             />
             <Tooltip content={<CarrierTemperatureTooltip />} />
             <Legend />
-            <Line 
-              type="monotone" 
-              dataKey="averageTemperature" 
-              stroke="#ff6b35" 
-              strokeWidth={3}
-              dot={{ fill: '#ff6b35', strokeWidth: 2, r: 5 }}
+            <Line
+              type="monotone"
+              dataKey="averageTemperature"
+              stroke={CHART.orange}
+              strokeWidth={2}
+              dot={{ fill: CHART.orange, strokeWidth: 0, r: 4 }}
+              activeDot={{ r: 6 }}
               name="Average Temperature"
             />
-            <Line 
-              type="monotone" 
-              dataKey="minTemperature" 
-              stroke="#4ecdc4" 
-              strokeWidth={2}
+            <Line
+              type="monotone"
+              dataKey="minTemperature"
+              stroke={CHART.orange}
+              strokeOpacity={0.5}
+              strokeWidth={1.5}
               strokeDasharray="3,3"
-              dot={{ fill: '#4ecdc4', strokeWidth: 1, r: 3 }}
+              dot={false}
               name="Min Temperature"
             />
-            <Line 
-              type="monotone" 
-              dataKey="maxTemperature" 
-              stroke="#ff8a80" 
-              strokeWidth={2}
+            <Line
+              type="monotone"
+              dataKey="maxTemperature"
+              stroke={CHART.orange}
+              strokeOpacity={0.9}
+              strokeWidth={1.5}
               strokeDasharray="3,3"
-              dot={{ fill: '#ff8a80', strokeWidth: 1, r: 3 }}
+              dot={false}
               name="Max Temperature"
             />
           </LineChart>
         </ResponsiveContainer>
-        
+
         {/* Carrier Temperature Summary */}
         <div className="performance-summary">
           <div className="performance-item">
             <span className="performance-label">Overall Avg:</span>
-            <span className="performance-value" style={{ color: '#ff6b35' }}>
+            <span className="performance-value" style={{ color: CHART.orange }}>
               {carrierTemperatureStats.overallAverage}°C
             </span>
           </div>
           <div className="performance-item">
             <span className="performance-label">Coldest Carrier:</span>
-            <span className="performance-value" style={{ color: '#4ecdc4' }}>
+            <span className="performance-value" style={{ color: CHART.orange, opacity: 0.6 }}>
               {carrierTemperatureStats.overallMin}°C
             </span>
           </div>
           <div className="performance-item">
             <span className="performance-label">Warmest Carrier:</span>
-            <span className="performance-value" style={{ color: '#ff8a80' }}>
+            <span className="performance-value" style={{ color: CHART.orange }}>
               {carrierTemperatureStats.overallMax}°C
             </span>
           </div>
@@ -1119,77 +1154,80 @@ const Analysis = () => {
 
     return (
       <div className="chart-container" key={`carrier-humidity-${chartData.length}-${Date.now()}`}>
-        <h4 className="chart-title">💧 Average Leg Humidity by Carrier</h4>
+        <h4 className="chart-title">Average Leg Humidity by Carrier</h4>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={sortedChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e0e4e7" />
-            <XAxis 
-              dataKey="carrier" 
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+            <XAxis
+              dataKey="carrier"
               fontSize={11}
-              stroke="#666"
+              stroke={CHART.axis}
               angle={-45}
               textAnchor="end"
               height={60}
               interval={0}
             />
-            <YAxis 
-              label={{ 
-                value: 'Humidity (%)', 
-                angle: -90, 
-                position: 'insideLeft' 
+            <YAxis
+              label={{
+                value: 'Humidity (%)',
+                angle: -90,
+                position: 'insideLeft'
               }}
               fontSize={12}
-              stroke="#666"
+              stroke={CHART.axis}
               domain={['dataMin - 1', 'dataMax + 1']}
             />
             <Tooltip content={<CarrierHumidityTooltip />} />
             <Legend />
-            <Line 
-              type="monotone" 
-              dataKey="averageHumidity" 
-              stroke="#2196f3" 
-              strokeWidth={3}
-              dot={{ fill: '#2196f3', strokeWidth: 2, r: 5 }}
+            <Line
+              type="monotone"
+              dataKey="averageHumidity"
+              stroke={CHART.blue}
+              strokeWidth={2}
+              dot={{ fill: CHART.blue, strokeWidth: 0, r: 4 }}
+              activeDot={{ r: 6 }}
               name="Average Humidity"
             />
-            <Line 
-              type="monotone" 
-              dataKey="minHumidity" 
-              stroke="#4caf50" 
-              strokeWidth={2}
+            <Line
+              type="monotone"
+              dataKey="minHumidity"
+              stroke={CHART.blue}
+              strokeOpacity={0.5}
+              strokeWidth={1.5}
               strokeDasharray="3,3"
-              dot={{ fill: '#4caf50', strokeWidth: 1, r: 3 }}
+              dot={false}
               name="Min Humidity"
             />
-            <Line 
-              type="monotone" 
-              dataKey="maxHumidity" 
-              stroke="#03a9f4" 
-              strokeWidth={2}
+            <Line
+              type="monotone"
+              dataKey="maxHumidity"
+              stroke={CHART.blue}
+              strokeOpacity={0.9}
+              strokeWidth={1.5}
               strokeDasharray="3,3"
-              dot={{ fill: '#03a9f4', strokeWidth: 1, r: 3 }}
+              dot={false}
               name="Max Humidity"
             />
           </LineChart>
         </ResponsiveContainer>
-        
+
         {/* Carrier Humidity Summary */}
         <div className="performance-summary">
           <div className="performance-item">
             <span className="performance-label">Overall Avg:</span>
-            <span className="performance-value" style={{ color: '#2196f3' }}>
+            <span className="performance-value" style={{ color: CHART.blue }}>
               {carrierHumidityStats.overallAverage}%
             </span>
           </div>
           <div className="performance-item">
             <span className="performance-label">Driest Carrier:</span>
-            <span className="performance-value" style={{ color: '#4caf50' }}>
+            <span className="performance-value" style={{ color: CHART.blue, opacity: 0.6 }}>
               {carrierHumidityStats.overallMin}%
             </span>
           </div>
           <div className="performance-item">
             <span className="performance-label">Most Humid Carrier:</span>
-            <span className="performance-value" style={{ color: '#03a9f4' }}>
+            <span className="performance-value" style={{ color: CHART.blue }}>
               {carrierHumidityStats.overallMax}%
             </span>
           </div>
@@ -1213,9 +1251,9 @@ const Analysis = () => {
       <div className="tive-container">
         <div className="tive-header">
           <h1>TS Logics</h1>
-          <p>Data Last Updated: 6 hours ago</p>
+          <p className="last-updated">Data Last Updated: 6 hours ago</p>
         </div>
-        <div className="loading-state">Loading analytics data...</div>
+        <div className="loading-state">Loading analytics data…</div>
       </div>
     );
   }
@@ -1288,9 +1326,9 @@ const Analysis = () => {
 
       <div className="tive-content">
         {/* Shipments Overview */}
-        <div className="overview-section">
-          <h2>📦 Shipments Overview</h2>
-          
+        <div className="overview-section accent-blue">
+          <h2 className="section-heading"><span className="section-icon">📦</span>Shipments Overview</h2>
+
           <div className="overview-grid">
             <div className="overview-card">
               <div className="overview-label">Total Shipments</div>
@@ -1299,11 +1337,11 @@ const Analysis = () => {
                 ↗ 20%
               </span>
             </div>
-            
+
             <div className="overview-card">
               <div className="overview-label">Shipments with Alerts</div>
               <div className="overview-number">{analyticsData.shipmentsWithAlerts}</div>
-              <span className="overview-percentage">
+              <span className="overview-percentage trend-down">
                 ↗ 15%
               </span>
             </div>
@@ -1315,9 +1353,9 @@ const Analysis = () => {
           {/* Left Column */}
           <div className="left-column">
             {/* Highlights */}
-            <div className="highlights-section">
-              <h3>📈 Highlights</h3>
-              
+            <div className="highlights-section accent-blue">
+              <h3 className="section-heading"><span className="section-icon">📈</span>Highlights</h3>
+
               <div className="highlights-grid">
                 <div className="highlight-group">
                   <h4>SHIPMENTS & LEGS</h4>
@@ -1362,9 +1400,9 @@ const Analysis = () => {
             </div>
 
             {/* Delays & Stops */}
-            <div className="delays-section">
-              <h3>⏰ Delays & Stops</h3>
-              
+            <div className="delays-section accent-amber">
+              <h3 className="section-heading"><span className="section-icon">⏰</span>Delays & Stops</h3>
+
               <div className="delays-grid">
                 <div className="delay-item">
                   <div className="delay-time">
@@ -1383,33 +1421,33 @@ const Analysis = () => {
             </div>
 
             {/* Add Temperature Chart */}
-            <div className="chart-section">
+            <div className="chart-section accent-orange">
               <TemperatureChart />
             </div>
 
             {/* Add Humidity Chart */}
-            <div className="chart-section">
+            <div className="chart-section accent-blue">
               <HumidityChart />
             </div>
           </div>
 
           {/* Right Column - Carrier Performance */}
           <div className="right-column">
-            <div className="carrier-section">
+            <div className="carrier-section accent-violet">
               <div className="carrier-header">
-                <h3>🏢 Carrier Performance</h3>
+                <h3 className="section-heading"><span className="section-icon">🏢</span>Carrier Performance</h3>
                 <div className="chart-toggle">
-                  <button 
+                  <button
                     className={`toggle-btn ${chartType === 'donut' ? 'active' : ''}`}
                     onClick={() => setChartType('donut')}
                   >
-                    🍩 Donut
+                    Donut
                   </button>
-                  <button 
+                  <button
                     className={`toggle-btn ${chartType === 'bar' ? 'active' : ''}`}
                     onClick={() => setChartType('bar')}
                   >
-                    📊 Bar
+                    Bar
                   </button>
                 </div>
               </div>
@@ -1417,17 +1455,17 @@ const Analysis = () => {
             </div>
 
             {/* Add Duration Chart */}
-            <div className="chart-section">
+            <div className="chart-section accent-violet">
               <ShipmentDurationChart />
             </div>
 
             {/* Add Carrier Temperature Chart */}
-            <div className="chart-section">
+            <div className="chart-section accent-orange">
               <CarrierTemperatureChart />
             </div>
 
             {/* Add Carrier Humidity Chart */}
-            <div className="chart-section">
+            <div className="chart-section accent-blue">
               <CarrierHumidityChart />
             </div>
           </div>

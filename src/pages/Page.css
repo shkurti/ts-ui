@@ -535,55 +535,72 @@ input[type="checkbox"] {
   width: auto;
 }
 
-/* Clean Modern Tive Analytics Styles - Your working Analysis page styles */
+/* ── Analysis dashboard ──────────────────────────────────────────────
+   Section identity is carried by a left accent + icon chip drawn from
+   the same fixed categorical palette used inside the charts, so the
+   chrome and the data read as one coded system rather than decoration. */
 .tive-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 2rem;
   background-color: var(--color-bg);
   min-height: 100vh;
   font-family: var(--font-sans);
 }
 
 .tive-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-bottom: 1.5rem;
 }
 
 .tive-header h1 {
-  font-size: 1.75rem;
-  font-weight: 600;
+  font-size: 1.625rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   color: var(--color-text);
-  margin: 0 0 0.25rem 0;
+  margin: 0;
 }
 
 .last-updated {
   color: var(--color-text-muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   margin: 0;
-  font-weight: 400;
+  font-weight: 500;
 }
 
 .tive-controls {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   margin-bottom: 1.5rem;
   flex-wrap: wrap;
   background: white;
-  padding: 1rem;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   border: 1px solid var(--color-border);
 }
 
 .tive-select {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: white;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: var(--color-text);
-  font-weight: 400;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.tive-select:hover,
+.tive-select:focus {
+  border-color: var(--color-primary);
+  outline: none;
 }
 
 .date-range-container {
@@ -595,45 +612,62 @@ input[type="checkbox"] {
 .date-input {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: white;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: var(--color-text);
+  font-weight: 500;
+}
+
+.date-input:hover,
+.date-input:focus {
+  border-color: var(--color-primary);
+  outline: none;
 }
 
 .date-separator {
   color: var(--color-text-muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
 
 .filter-group {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   margin-left: auto;
 }
 
 .filter-item {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.375rem;
   padding: 0.375rem 0.75rem;
   background: var(--color-muted);
-  border-radius: 6px;
+  border-radius: var(--radius-pill);
   font-size: 0.75rem;
   color: var(--color-text-muted);
-  font-weight: 500;
+  font-weight: 600;
+}
+
+.filter-icon {
+  font-size: 0.8125rem;
+  line-height: 1;
 }
 
 .all-filters-btn {
   padding: 0.5rem 1rem;
-  background: var(--color-secondary);
+  background: var(--color-primary);
   color: white;
   border: none;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.all-filters-btn:hover {
+  background: var(--color-primary-hover);
 }
 
 .tive-content {
@@ -642,22 +676,48 @@ input[type="checkbox"] {
   gap: 1.5rem;
 }
 
-.overview-section {
+/* Shared "dashboard card" surface — every panel on the page inherits
+   this, with a 3px top accent that carries the section's identity color. */
+.overview-section,
+.highlights-section,
+.delays-section,
+.carrier-section,
+.chart-section {
   background: white;
   padding: 1.5rem;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   border: 1px solid var(--color-border);
+  border-top: 3px solid var(--accent-color, var(--color-primary));
+  margin-bottom: 0;
 }
 
-.overview-section h2 {
-  font-size: 1.125rem;
-  font-weight: 600;
+.overview-section.accent-blue,   .highlights-section.accent-blue,   .delays-section.accent-blue,   .carrier-section.accent-blue,   .chart-section.accent-blue   { --accent-color: var(--chart-series-1); }
+.overview-section.accent-amber,  .highlights-section.accent-amber,  .delays-section.accent-amber,  .carrier-section.accent-amber,  .chart-section.accent-amber  { --accent-color: var(--chart-series-4); }
+.overview-section.accent-violet, .highlights-section.accent-violet, .delays-section.accent-violet, .carrier-section.accent-violet, .chart-section.accent-violet { --accent-color: var(--chart-series-7); }
+.overview-section.accent-orange, .highlights-section.accent-orange, .delays-section.accent-orange, .carrier-section.accent-orange, .chart-section.accent-orange { --accent-color: var(--chart-series-6); }
+.overview-section.accent-teal,   .highlights-section.accent-teal,   .delays-section.accent-teal,   .carrier-section.accent-teal,   .chart-section.accent-teal   { --accent-color: var(--chart-series-5); }
+
+.section-heading {
+  font-size: 0.9375rem;
+  font-weight: 700;
   color: var(--color-text);
-  margin: 0 0 1rem 0;
+  margin: 0 0 1.125rem 0;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.625rem;
+}
+
+.section-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-color, var(--color-primary)) 14%, white);
+  font-size: 0.9375rem;
+  flex-shrink: 0;
 }
 
 .overview-grid {
@@ -668,44 +728,52 @@ input[type="checkbox"] {
 
 .overview-card {
   text-align: left;
-  padding: 1rem;
-  background: white;
-  border-radius: 8px;
+  padding: 1.125rem 1.25rem;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   position: relative;
 }
 
 .overview-number {
-  font-size: 2rem;
-  font-weight: 600;
+  font-size: 2.125rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   color: var(--color-text);
   margin-bottom: 0.25rem;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .overview-label {
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: var(--color-text-muted);
-  font-weight: 400;
-  margin-bottom: 0.5rem;
+  font-weight: 600;
+  margin-bottom: 0.625rem;
 }
 
 .overview-percentage {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.125rem 0.5rem;
-  background: var(--color-muted);
-  border-radius: 12px;
+  padding: 0.1875rem 0.5rem;
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+  border-radius: var(--radius-pill);
   font-size: 0.75rem;
-  color: var(--color-text-muted);
-  font-weight: 500;
+  font-weight: 700;
+}
+
+.overview-percentage.trend-down {
+  background: var(--color-destructive-bg);
+  color: var(--color-destructive);
 }
 
 .main-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
+  align-items: start;
 }
 
 .left-column,
@@ -715,28 +783,6 @@ input[type="checkbox"] {
   gap: 1.5rem;
 }
 
-.highlights-section,
-.delays-section,
-.carrier-section {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid var(--color-border);
-}
-
-.highlights-section h3,
-.delays-section h3,
-.carrier-section h3 {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--color-text);
-  margin: 0 0 1rem 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 .highlights-grid {
   display: flex;
   flex-direction: column;
@@ -744,12 +790,12 @@ input[type="checkbox"] {
 }
 
 .highlight-group h4 {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.06em;
   margin: 0 0 0.75rem 0;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .highlight-items {
@@ -765,84 +811,86 @@ input[type="checkbox"] {
 .highlight-number {
   display: block;
   font-size: 1.5rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-text);
   margin-bottom: 0.25rem;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .highlight-label {
   display: block;
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 500;
+  letter-spacing: 0.05em;
+  font-weight: 600;
 }
 
 .delays-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 1rem;
 }
 
 .delay-item {
   text-align: left;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
+  padding: 0.875rem 1rem;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
 }
 
 .delay-time {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.125rem;
+  font-weight: 700;
   color: var(--color-text);
   margin-bottom: 0.25rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .delay-label {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   color: var(--color-text-muted);
-  font-weight: 400;
+  font-weight: 600;
 }
 
 .carrier-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.125rem;
+}
+
+.carrier-header .section-heading {
+  margin-bottom: 0;
 }
 
 .chart-toggle {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.125rem;
   background: var(--color-muted);
-  padding: 0.125rem;
-  border-radius: 6px;
+  padding: 0.1875rem;
+  border-radius: var(--radius-sm);
 }
 
 .toggle-btn {
-  padding: 0.5rem 0.75rem;
+  padding: 0.4375rem 0.75rem;
   border: none;
   background: transparent;
-  border-radius: 4px;
+  border-radius: 5px;
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   color: var(--color-text-muted);
+  transition: all 0.15s ease;
 }
 
 .toggle-btn.active {
   background: white;
   color: var(--color-text);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.chart-section {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid var(--color-border);
-  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .chart-container {
@@ -850,39 +898,48 @@ input[type="checkbox"] {
 }
 
 .chart-title {
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: 0.9375rem;
+  font-weight: 700;
   color: var(--color-text);
-  margin: 0 0 1rem 0;
+  margin: 0 0 1.125rem 0;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.625rem;
 }
 
 .chart-summary {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.625rem 1rem;
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--color-border);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: var(--color-text-muted);
 }
 
 .custom-tooltip {
   background: white;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 0.75rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  font-size: 0.875rem;
+  border-radius: var(--radius-md);
+  padding: 0.75rem 0.875rem;
+  box-shadow: var(--shadow-lg);
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 
 .tooltip-label {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-text);
-  margin: 0 0 0.5rem 0;
+  margin: 0 0 0.375rem 0;
+}
+
+.tooltip-performance,
+.tooltip-count {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--color-border);
 }
 
 .performance-summary {
@@ -890,9 +947,9 @@ input[type="checkbox"] {
   justify-content: space-between;
   align-items: center;
   margin: 1rem 0;
-  padding: 1rem;
+  padding: 0.875rem 1rem;
   background: var(--color-bg);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
 }
 
@@ -904,16 +961,17 @@ input[type="checkbox"] {
 }
 
 .performance-label {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 500;
+  letter-spacing: 0.05em;
+  font-weight: 700;
 }
 
 .performance-value {
   font-size: 1.25rem;
-  font-weight: 700;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 .performance-value.on-time {
@@ -931,6 +989,7 @@ input[type="checkbox"] {
 .performance-count {
   font-size: 0.75rem;
   color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .no-data {
@@ -942,9 +1001,50 @@ input[type="checkbox"] {
   text-align: center;
   color: var(--color-text-muted);
   background: var(--color-bg);
-  border: 2px dashed var(--color-border);
-  border-radius: 8px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
   margin: 1rem 0;
+}
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 4rem 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  background: white;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.loading-state::before {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Recharts chrome — recede the axes/legend into the ink scale so the
+   data lines stay the loudest thing on the card. */
+.recharts-cartesian-axis-tick text {
+  fill: var(--color-text-muted);
+  font-family: var(--font-sans);
+}
+
+.recharts-legend-item-text {
+  color: var(--color-text) !important;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.recharts-default-legend {
+  padding-top: 0.5rem !important;
 }
 
 @keyframes spin {
@@ -985,6 +1085,23 @@ input[type="checkbox"] {
   }
   
   .highlight-items {
+    grid-template-columns: 1fr;
+  }
+
+  .tive-container {
+    padding: 1rem;
+  }
+
+  .tive-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .filter-group {
+    margin-left: 0;
+  }
+
+  .delays-grid {
     grid-template-columns: 1fr;
   }
 }

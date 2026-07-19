@@ -43,6 +43,23 @@
   --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
   --shadow-md: 0 4px 20px rgba(15, 23, 42, 0.08);
   --shadow-lg: 0 12px 28px -6px rgba(15, 23, 42, 0.18);
+
+  /* ── Data-viz tokens ──────────────────────────────────────────────
+     Fixed-order categorical palette, validated CVD-safe (worst adjacent
+     dE 9.1 OKLab x100). Order is the safety mechanism - never cycle or
+     re-sort it per-view. Series 1 doubles as the app's own brand blue. */
+  --chart-series-1: #2a78d6;
+  --chart-series-2: #008300;
+  --chart-series-3: #e87ba4;
+  --chart-series-4: #eda100;
+  --chart-series-5: #1baf7a;
+  --chart-series-6: #eb6834;
+  --chart-series-7: #4a3aa7;
+  --chart-series-8: #e34948;
+
+  --chart-grid: #E2E8F0;
+  --chart-axis: #94A3B8;
+  --chart-tick: #64748B;
 }
 
 body {
