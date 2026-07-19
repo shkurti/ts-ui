@@ -2228,29 +2228,29 @@ const Shipments = () => {
 
       {/* Modal for new shipment form */}
       {showNewShipmentForm && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
+        <div className="sf-modal-overlay">
+          <div className="sf-modal-content">
+            <div className="sf-modal-header">
               <div>
                 <h3>Create New Shipment</h3>
-                <p className="modal-subtitle">Define the route, timing and tracker for this shipment</p>
+                <p className="sf-modal-subtitle">Define the route, timing and tracker for this shipment</p>
               </div>
-              <button type="button" className="modal-close-btn" onClick={handleCancelForm} aria-label="Close">
+              <button type="button" className="sf-modal-close-btn" onClick={handleCancelForm} aria-label="Close">
                 ×
               </button>
             </div>
-            <div className="modal-body">
+            <div className="sf-modal-body">
               {formData.legs.map((leg, index) => (
-                <div key={index} className="leg-section">
-                  <div className="leg-header">
-                    <span className="leg-badge">{index + 1}</span>
+                <div key={index} className="sf-leg-section">
+                  <div className="sf-leg-header">
+                    <span className="sf-leg-badge">{index + 1}</span>
                     <h4>{index === 0 ? 'Leg 1 — Origin' : `Leg ${index + 1} — Stop`}</h4>
                   </div>
 
-                  <div className="form-row">
+                  <div className="sf-form-row">
                     {index === 0 ? (
                       <>
-                        <div className="form-group">
+                        <div className="sf-form-group">
                           <label>Ship From Address *</label>
                           <input
                             type="text"
@@ -2259,7 +2259,7 @@ const Shipments = () => {
                             required
                           />
                         </div>
-                        <div className="form-group">
+                        <div className="sf-form-group">
                           <label>Stop Address *</label>
                           <input
                             type="text"
@@ -2270,7 +2270,7 @@ const Shipments = () => {
                         </div>
                       </>
                     ) : (
-                      <div className="form-group">
+                      <div className="sf-form-group">
                         <label>Ship To Address *</label>
                         <input
                           type="text"
@@ -2282,8 +2282,8 @@ const Shipments = () => {
                     )}
                   </div>
 
-                  <div className="form-row form-row-dates">
-                    <div className="form-group">
+                  <div className="sf-form-row sf-form-row-dates">
+                    <div className="sf-form-group">
                       <label>Ship Date *</label>
                       <input
                         type="datetime-local"
@@ -2292,7 +2292,7 @@ const Shipments = () => {
                         required
                       />
                     </div>
-                    <div className="form-group">
+                    <div className="sf-form-group">
                       <label>Arrival Date *</label>
                       <input
                         type="datetime-local"
@@ -2301,7 +2301,7 @@ const Shipments = () => {
                         required
                       />
                     </div>
-                    <div className="form-group">
+                    <div className="sf-form-group">
                       <label>Departure Date *</label>
                       <input
                         type="datetime-local"
@@ -2312,8 +2312,8 @@ const Shipments = () => {
                     </div>
                   </div>
 
-                  <div className="form-row">
-                    <div className="form-group">
+                  <div className="sf-form-row">
+                    <div className="sf-form-group">
                       <label>Transport Mode *</label>
                       <select
                         value={leg.transportMode}
@@ -2326,7 +2326,7 @@ const Shipments = () => {
                         <option value="Sea">Sea</option>
                       </select>
                     </div>
-                    <div className="form-group">
+                    <div className="sf-form-group">
                       <label>Carrier *</label>
                       <input
                         type="text"
@@ -2339,8 +2339,8 @@ const Shipments = () => {
 
                   {/* Geofence Toggle and Configuration */}
                   {legCoordinates[index] && (
-                    <div className="geofence-panel">
-                      <div className="geofence-toggle-row">
+                    <div className="sf-geofence-panel">
+                      <div className="sf-geofence-toggle-row">
                         <input
                           type="checkbox"
                           id={`geofence-toggle-${index}`}
@@ -2354,9 +2354,9 @@ const Shipments = () => {
 
                       {geofenceRadii[index] !== undefined && (
                         <>
-                          <label className="geofence-radius-label">
+                          <label className="sf-geofence-radius-label">
                             Geofence radius: <strong>{geofenceRadii[index]}m</strong>
-                            <span className="geofence-radius-hint">(alert when within this distance)</span>
+                            <span className="sf-geofence-radius-hint">(alert when within this distance)</span>
                           </label>
                           <input
                             type="range"
@@ -2365,14 +2365,14 @@ const Shipments = () => {
                             step="100"
                             value={geofenceRadii[index]}
                             onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
-                            className="geofence-slider"
+                            className="sf-geofence-slider"
                           />
-                          <div className="geofence-scale">
+                          <div className="sf-geofence-scale">
                             <span>100m</span>
                             <span>2.5km</span>
                             <span>5km</span>
                           </div>
-                          <div className="geofence-destination">
+                          <div className="sf-geofence-destination">
                             📍 Destination: {index === 0 ? leg.stopAddress : leg.shipTo}
                           </div>
                         </>
@@ -2382,20 +2382,20 @@ const Shipments = () => {
 
                   {/* Show message if address not geocoded yet */}
                   {!legCoordinates[index] && (index === 0 ? leg.stopAddress : leg.shipTo) && (
-                    <div className="geofence-pending-hint">
+                    <div className="sf-geofence-pending-hint">
                       ⏳ Enter and blur the address field to enable geofence configuration
                     </div>
                   )}
                 </div>
               ))}
 
-              <button type="button" className="add-stop-btn" onClick={handleAddStop}>
+              <button type="button" className="sf-add-stop-btn" onClick={handleAddStop}>
                 + Add Stop
               </button>
 
               {/* Tracker selection */}
-              <div className="tracker-section">
-                <div className="form-group">
+              <div className="sf-tracker-section">
+                <div className="sf-form-group">
                   <label>Select Tracker *</label>
                   <select
                     value={selectedTracker}
@@ -2412,11 +2412,11 @@ const Shipments = () => {
                 </div>
               </div>
             </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={handleCancelForm}>
+            <div className="sf-modal-footer">
+              <button className="sf-btn sf-btn-secondary" onClick={handleCancelForm}>
                 Cancel
               </button>
-              <button className="btn btn-primary" onClick={handleCreateShipment}>
+              <button className="sf-btn sf-btn-primary" onClick={handleCreateShipment}>
                 Create Shipment
               </button>
             </div>

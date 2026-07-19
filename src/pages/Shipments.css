@@ -615,7 +615,12 @@
   right: 0;
 }
 
-.modal-overlay {
+/* Prefixed "sf-" (shipment form) throughout: several pages (Page.css,
+   Trackers.css) declare their own global .modal-overlay/.form-group/.btn-*
+   with no CSS-module scoping, so whichever stylesheet's <style> tag is
+   injected into the DOM last wins the cascade regardless of source order
+   here. Unique names sidestep that entirely. */
+.sf-modal-overlay {
   position: fixed;
   top: 64px; /* sits below the sticky navbar instead of centering across it */
   left: 0;
@@ -630,7 +635,7 @@
   box-sizing: border-box;
 }
 
-.modal-content {
+.sf-modal-content {
   background: #fff;
   border-radius: var(--radius-lg);
   width: 100%;
@@ -643,7 +648,7 @@
   overflow: hidden;
 }
 
-.modal-header {
+.sf-modal-header {
   padding: 20px 24px;
   border-bottom: 1px solid var(--color-border);
   display: flex;
@@ -653,7 +658,7 @@
   flex-shrink: 0;
 }
 
-.modal-header h3 {
+.sf-modal-header h3 {
   font-size: 1.15rem;
   font-weight: 800;
   letter-spacing: -0.01em;
@@ -661,13 +666,13 @@
   margin: 0;
 }
 
-.modal-subtitle {
+.sf-modal-subtitle {
   margin: 4px 0 0;
   font-size: 12.5px;
   color: var(--color-text-muted);
 }
 
-.modal-close-btn {
+.sf-modal-close-btn {
   flex-shrink: 0;
   width: 28px;
   height: 28px;
@@ -684,17 +689,17 @@
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.modal-close-btn:hover {
+.sf-modal-close-btn:hover {
   background: var(--color-destructive-bg);
   color: var(--color-destructive);
 }
 
-.modal-body {
+.sf-modal-body {
   padding: 20px 24px;
   overflow-y: auto;
 }
 
-.leg-section {
+.sf-leg-section {
   margin-bottom: 18px;
   padding: 14px 16px 16px;
   background: #fafbfc;
@@ -702,18 +707,18 @@
   border-radius: var(--radius-md);
 }
 
-.leg-section:last-of-type {
+.sf-leg-section:last-of-type {
   margin-bottom: 0;
 }
 
-.leg-header {
+.sf-leg-header {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
 }
 
-.leg-badge {
+.sf-leg-badge {
   flex-shrink: 0;
   width: 20px;
   height: 20px;
@@ -727,7 +732,7 @@
   justify-content: center;
 }
 
-.leg-section h4 {
+.sf-leg-section h4 {
   color: var(--color-foreground);
   font-weight: 700;
   margin: 0;
@@ -736,36 +741,36 @@
   letter-spacing: 0.04em;
 }
 
-.form-row {
+.sf-form-row {
   display: flex;
   gap: 12px;
   margin-bottom: 12px;
 }
 
-.form-row:last-child {
+.sf-form-row:last-child {
   margin-bottom: 0;
 }
 
-.form-row-dates .form-group {
+.sf-form-row-dates .sf-form-group {
   min-width: 0;
 }
 
-.form-group {
+.sf-form-group {
   flex: 1;
   min-width: 140px;
   display: flex;
   flex-direction: column;
 }
 
-.form-group label {
+.sf-form-group label {
   font-weight: 600;
   color: var(--color-text-muted);
   margin-bottom: 6px;
   font-size: 12px;
 }
 
-.form-group input,
-.form-group select {
+.sf-form-group input,
+.sf-form-group select {
   padding: 0.6rem 0.7rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -777,14 +782,14 @@
   min-width: 0;
 }
 
-.form-group input:focus,
-.form-group select:focus {
+.sf-form-group input:focus,
+.sf-form-group select:focus {
   border-color: var(--color-primary);
   outline: none;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
-.add-stop-btn {
+.sf-add-stop-btn {
   width: 100%;
   margin-bottom: 20px;
   padding: 10px;
@@ -799,32 +804,53 @@
   transition: all 0.15s ease;
 }
 
-.add-stop-btn:hover {
+.sf-add-stop-btn:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
   background: var(--color-bg);
 }
 
-.tracker-section {
+.sf-tracker-section {
   padding-top: 16px;
   border-top: 1px solid var(--color-border);
 }
 
-.tracker-section .form-group select {
+.sf-tracker-section .sf-form-group select {
   width: 100%;
 }
 
-.btn-secondary {
-  background: var(--color-muted);
-  color: var(--color-text);
-  flex: 1;
+.sf-btn {
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 0.9rem;
+  font-family: var(--font-sans);
+  flex: 0 0 auto;
+  min-width: 130px;
 }
 
-.btn-secondary:hover {
+.sf-btn-primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.sf-btn-primary:hover {
+  background: var(--color-primary-hover);
+}
+
+.sf-btn-secondary {
+  background: var(--color-muted);
+  color: var(--color-text);
+}
+
+.sf-btn-secondary:hover {
   background: var(--color-border);
 }
 
-.modal-footer {
+.sf-modal-footer {
   padding: 16px 24px;
   border-top: 1px solid var(--color-border);
   display: flex;
@@ -834,13 +860,8 @@
   background: #fff;
 }
 
-.modal-footer .btn {
-  flex: 0 0 auto;
-  min-width: 130px;
-}
-
 /* Geofence panel — ties into the app's blue "spatial" tint */
-.geofence-panel {
+.sf-geofence-panel {
   margin-top: 12px;
   padding: 12px 14px;
   background: var(--color-bg);
@@ -848,14 +869,14 @@
   border-radius: var(--radius-md);
 }
 
-.geofence-toggle-row {
+.sf-geofence-toggle-row {
   display: flex;
   align-items: center;
   gap: 9px;
   margin-bottom: 4px;
 }
 
-.geofence-toggle-row input {
+.sf-geofence-toggle-row input {
   width: 16px;
   height: 16px;
   cursor: pointer;
@@ -863,7 +884,7 @@
   flex-shrink: 0;
 }
 
-.geofence-toggle-row label {
+.sf-geofence-toggle-row label {
   margin: 0;
   cursor: pointer;
   font-weight: 600;
@@ -871,25 +892,25 @@
   color: var(--color-text);
 }
 
-.geofence-radius-label {
+.sf-geofence-radius-label {
   display: block;
   margin: 10px 0 8px;
   font-size: 12.5px;
   color: var(--color-text);
 }
 
-.geofence-radius-hint {
+.sf-geofence-radius-hint {
   font-size: 11.5px;
   color: var(--color-text-muted);
   margin-left: 6px;
 }
 
-.geofence-slider {
+.sf-geofence-slider {
   width: 100%;
   accent-color: var(--color-primary);
 }
 
-.geofence-scale {
+.sf-geofence-scale {
   display: flex;
   justify-content: space-between;
   font-size: 10.5px;
@@ -897,7 +918,7 @@
   margin-top: 4px;
 }
 
-.geofence-destination {
+.sf-geofence-destination {
   margin-top: 10px;
   padding: 7px 10px;
   background: #fff;
@@ -907,7 +928,7 @@
   color: var(--color-primary-dark);
 }
 
-.geofence-pending-hint {
+.sf-geofence-pending-hint {
   margin-top: 10px;
   padding: 7px 10px;
   background: var(--color-warning-bg);
@@ -959,16 +980,16 @@
     font-size: 12px;
   }
 
-  .form-row {
+  .sf-form-row {
     flex-direction: column;
   }
 
-  .modal-content {
+  .sf-modal-content {
     max-width: 100%;
     max-height: 92vh;
   }
 
-  .modal-overlay {
+  .sf-modal-overlay {
     padding: 12px;
   }
 }
