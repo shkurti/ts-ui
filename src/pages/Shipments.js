@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import './Shipments.css';
-import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search } from 'lucide-react';
+import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
@@ -1088,31 +1088,83 @@ const Shipments = () => {
     return null;
   };
 
-  // Helper to create a numbered marker icon for legs (origin, stops, destination)
-  const createNumberedMarkerIcon = (number, isFirst, isLast) => {
-    let bg = "#1976d2";
-    if (isFirst) bg = "#28a745";
-    if (isLast) bg = "#dc3545";
+  // Teardrop pin for fixed points (origin/destination) — icon names the role instead of relying on color alone
+  const createPinIcon = (role) => {
+    const { bg, Icon } = role === 'origin'
+      ? { bg: '#16a34a', Icon: Package }
+      : { bg: '#dc2626', Icon: Flag };
+    const iconSvg = renderToStaticMarkup(<Icon size={15} color="#fff" strokeWidth={2.4} />);
+
     return L.divIcon({
-      className: 'numbered-marker',
+      className: `pin-marker pin-${role}`,
+      html: `
+        <div style="
+          width: 32px;
+          height: 32px;
+          transform: rotate(-45deg);
+          border-radius: 50% 50% 50% 0;
+          background: ${bg};
+          box-shadow: 0 3px 8px rgba(0,0,0,0.28), 0 0 0 2px rgba(255,255,255,0.85);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">
+          <div style="transform: rotate(45deg); display: flex;">${iconSvg}</div>
+        </div>
+      `,
+      iconSize: [32, 32],
+      iconAnchor: [16, 32],
+      popupAnchor: [0, -30],
+    });
+  };
+
+  // Small numbered dot for intermediate stops between origin and destination
+  const createWaypointIcon = (number) => {
+    return L.divIcon({
+      className: 'waypoint-marker',
       html: `<div style="
-        background: ${bg};
+        background: #64748b;
         color: #fff;
         border-radius: 50%;
-        width: 28px;
-        height: 28px;
+        width: 22px;
+        height: 22px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: bold;
-        font-size: 15px;
+        font-size: 11px;
         border: 2px solid #fff;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         font-family: Arial, sans-serif;
       ">${number}</div>`,
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
-      popupAnchor: [0, -14],
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+      popupAnchor: [0, -11],
+    });
+  };
+
+  // Pulsing dot for the tracker's live GPS position — the one marker on the map that actually moves
+  const createLiveMarkerIcon = () => {
+    const iconSvg = renderToStaticMarkup(<Truck size={11} color="#fff" strokeWidth={2.6} />);
+    return L.divIcon({
+      className: 'live-marker',
+      html: `
+        <div class="live-marker-pulse"></div>
+        <div style="
+          position: relative;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: #2563eb;
+          box-shadow: 0 0 0 3px rgba(255,255,255,0.9), 0 3px 8px rgba(0,0,0,0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">${iconSvg}</div>
+      `,
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
+      popupAnchor: [0, -10],
     });
   };
 
@@ -1935,24 +1987,34 @@ const Shipments = () => {
             );
           })}
 
-          {/* Show all leg markers */}
-          {selectedShipmentDetail && legPoints.length > 0 && legPoints.map((point, idx) => (
-            <Marker
-              key={`leg-marker-${idx}`}
-              position={[point.lat, point.lng]}
-              icon={createNumberedMarkerIcon(point.number, idx === 0, idx === legPoints.length - 1)}
-            >
-              <Popup>
-                <div>
-                  <strong>
-                    {idx === 0 ? 'Origin' : (idx === legPoints.length - 1 ? 'Destination' : `Stop ${idx}`)}
-                  </strong>
-                  <br />
-                  {point.address}
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+          {/* Show all leg markers: origin + destination as role pins, intermediate stops as numbered waypoints */}
+          {selectedShipmentDetail && legPoints.length > 0 && legPoints.map((point, idx) => {
+            const isFirst = idx === 0;
+            const isLast = idx === legPoints.length - 1;
+            return (
+              <Marker
+                key={`leg-marker-${idx}`}
+                position={[point.lat, point.lng]}
+                icon={isFirst ? createPinIcon('origin') : isLast ? createPinIcon('destination') : createWaypointIcon(idx)}
+              >
+                <Popup>
+                  <div>
+                    <strong>
+                      {isFirst ? 'Origin' : (isLast ? 'Destination' : `Stop ${idx}`)}
+                    </strong>
+                    <br />
+                    {point.address}
+                    {isFirst && locationData.length > 0 && (
+                      <>
+                        <br />
+                        First reading: {formatTimestamp(locationData[0].timestamp)}
+                      </>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
 
           {/* Show dashed planned route ONLY if no GPS data */}
           {selectedShipmentDetail && legPoints.length > 1 && locationData.length === 0 && (
@@ -2010,22 +2072,10 @@ const Shipments = () => {
                     }}
                   />
                 )}
-                {/* Red dot at current GPS */}
+                {/* Live position: origin/destination are already drawn as pins above, so only the moving tracker needs a marker here */}
                 <Marker
                   position={gpsPos}
-                  icon={L.divIcon({
-                    className: 'current-gps-dot',
-                    html: `<div style="
-                      width: 18px;
-                      height: 18px;
-                      background: #ff4444;
-                      border: 3px solid #fff;
-                      border-radius: 50%;
-                      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                    "></div>`,
-                    iconSize: [18, 18],
-                    iconAnchor: [9, 9]
-                  })}
+                  icon={createLiveMarkerIcon()}
                 >
                   <Popup>
                     <div>
@@ -2035,65 +2085,9 @@ const Shipments = () => {
                     </div>
                   </Popup>
                 </Marker>
-                {/* Green dot at start (origin) */}
-                <Marker
-                  position={[legPoints[0].lat, legPoints[0].lng]}
-                  icon={L.divIcon({
-                    className: 'origin-dot',
-                    html: `<div style="
-                      width: 18px;
-                      height: 18px;
-                      background: #28a745;
-                      border: 3px solid #fff;
-                      border-radius: 50%;
-                      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                    "></div>`,
-                    iconSize: [18, 18],
-                    iconAnchor: [9, 9]
-                  })}
-                >
-                  <Popup>
-                    <div>
-                      <strong>Origin</strong><br />
-                      {legPoints[0].address}
-                    </div>
-                  </Popup>
-                </Marker>
               </>
             );
           })()}
-
-          {/* Remove this: Show all leg markers and polyline for selected shipment (always, even if no sensor data) */}
-          {/* {selectedShipmentDetail && legPoints.length >  0 && (
-            <>
-              <Polyline
-                positions={legPoints.map(p => [p.lat, p.lng])}
-                pathOptions={{
-                  color: '#1976d2',
-                  weight: 3,
-                  opacity: 0.7,
-                  dashArray: '8, 8'
-                }}
-              />
-              {legPoints.map((point, idx) => (
-                <Marker
-                  key={`leg-marker-${idx}`}
-                  position={[point.lat, point.lng]}
-                  icon={createNumberedMarkerIcon(point.number, idx === 0, idx === legPoints.length - 1)}
-                >
-                  <Popup>
-                    <div>
-                      <strong>
-                        {idx === 0 ? 'Origin' : (idx === legPoints.length - 1 ? 'Destination' : `Stop ${idx}`)}
-                      </strong>
-                      <br />
-                      {point.address}
-                    </div>
-                  </Popup>
-                </Marker>
-              ))}
-            </>
-          )} */}
 
           {/* Show polyline for selected shipment */}
           {selectedShipmentDetail && locationData.length > 0 && (
@@ -2140,25 +2134,12 @@ const Shipments = () => {
                 </Marker>
               )}
               
-              {/* Start marker */}
-              {locationData.length > 0 && (
-                <Marker 
+              {/* Fallback start/end pins — only needed when there's no geocoded address to anchor the
+                  origin/destination pins above (e.g. a shipment with raw GPS but no leg addresses) */}
+              {legPoints.length === 0 && locationData.length > 0 && (
+                <Marker
                   position={[locationData[0].latitude, locationData[0].longitude]}
-                  icon={L.divIcon({
-                    className: 'route-marker start-marker',
-                    html: `
-                      <div style="
-                        width: 20px;
-                        height: 20px;
-                        background: #28a745;
-                        border: 3px solid #fff;
-                        border-radius: 50%;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                      "></div>
-                    `,
-                    iconSize: [20, 20],
-                    iconAnchor: [10, 10]
-                  })}
+                  icon={createPinIcon('origin')}
                 >
                   <Popup>
                     <div>
@@ -2169,26 +2150,11 @@ const Shipments = () => {
                   </Popup>
                 </Marker>
               )}
-              
-              {/* End marker */}
-              {locationData.length > 1 && (
-                <Marker 
+
+              {legPoints.length === 0 && locationData.length > 1 && (
+                <Marker
                   position={[locationData[locationData.length - 1].latitude, locationData[locationData.length - 1].longitude]}
-                  icon={L.divIcon({
-                    className: 'route-marker end-marker',
-                    html: `
-                      <div style="
-                        width: 20px;
-                        height: 20px;
-                        background: #dc3545;
-                        border: 3px solid #fff;
-                        border-radius: 50%;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                      "></div>
-                    `,
-                    iconSize: [20, 20],
-                    iconAnchor: [10, 10]
-                  })}
+                  icon={createPinIcon('destination')}
                 >
                   <Popup>
                     <div>

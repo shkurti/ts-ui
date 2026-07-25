@@ -960,6 +960,34 @@
   }
 }
 
+/* Pulsing ring behind the live tracker marker */
+@keyframes live-marker-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.live-marker-pulse {
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  background: #2563eb;
+  opacity: 0.28;
+  animation: live-marker-pulse 2s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-marker-pulse {
+    animation: none;
+    opacity: 0.16;
+  }
+}
+
 /* Hover marker specific styling */
 .route-marker.hover-marker {
   z-index: 1000;
