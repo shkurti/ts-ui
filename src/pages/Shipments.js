@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+import 'leaflet.markercluster';
 import './Shipments.css';
 import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -17,6 +20,98 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
+// A single, non-clustered shipment on the overview map
+const createShipmentPointIcon = () => {
+  const iconSvg = renderToStaticMarkup(<Package size={13} color="#fff" strokeWidth={2.4} />);
+  return L.divIcon({
+    className: 'shipment-point-marker',
+    html: `
+      <div style="
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: #2563eb;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.32), 0 0 0 2px rgba(255,255,255,0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      ">${iconSvg}</div>
+    `,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -13],
+  });
+};
+
+// Cluster bubble: size scales with how many shipments it represents, so a
+// glance at the map communicates relative density before anyone zooms in.
+const createShipmentClusterIcon = (count) => {
+  let size = 38, fontSize = 13;
+  if (count >= 50) {
+    size = 56; fontSize = 18;
+  } else if (count >= 10) {
+    size = 46; fontSize = 15;
+  }
+  return L.divIcon({
+    className: 'shipment-cluster-marker',
+    html: `
+      <div style="
+        width: ${size}px;
+        height: ${size}px;
+        border-radius: 50%;
+        background: rgba(37, 99, 235, 0.9);
+        border: 3px solid #fff;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 700;
+        font-family: Arial, sans-serif;
+        font-size: ${fontSize}px;
+      ">${count}</div>
+    `,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+};
+
+// Imperative Leaflet layer: react-leaflet has no first-class clustering
+// primitive, so this drives leaflet.markercluster directly via useMap()
+// and rebuilds its markers whenever the point set changes.
+const ShipmentClusterLayer = ({ points, onSelect }) => {
+  const map = useMap();
+  const clusterGroupRef = useRef(null);
+
+  useEffect(() => {
+    const clusterGroup = L.markerClusterGroup({
+      maxClusterRadius: 60,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      iconCreateFunction: (cluster) => createShipmentClusterIcon(cluster.getChildCount()),
+    });
+    clusterGroupRef.current = clusterGroup;
+    map.addLayer(clusterGroup);
+    return () => {
+      map.removeLayer(clusterGroup);
+      clusterGroupRef.current = null;
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const clusterGroup = clusterGroupRef.current;
+    if (!clusterGroup) return;
+    clusterGroup.clearLayers();
+    points.forEach(({ shipment, lat, lng }) => {
+      const marker = L.marker([lat, lng], { icon: createShipmentPointIcon() });
+      marker.on('click', () => onSelect(shipment));
+      clusterGroup.addLayer(marker);
+    });
+  }, [points, onSelect]);
+
+  return null;
+};
+
 const Shipments = () => {
   const { user, isAuthenticated, loading } = useAuth();
   const { connected: wsConnected, sensorData } = useWebSocketContext();
@@ -28,6 +123,8 @@ const Shipments = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [shipments, setShipments] = useState([]);
   const [trackers, setTrackers] = useState([]);
+  // Latest known {lat, lng} per trackerId, used to plot all shipments on the overview map
+  const [trackerLocations, setTrackerLocations] = useState({});
   const [selectedTracker, setSelectedTracker] = useState('');
   const [formData, setFormData] = useState({
     legs: [{
@@ -127,6 +224,59 @@ const Shipments = () => {
     fetchTrackers();
   }, [loading]); // Only depend on loading from AuthContext
 
+  // Bulk-fetch the latest GPS position for every tracker, so the overview map
+  // can plot where all shipments currently are without opening each one.
+  useEffect(() => {
+    if (loading) return;
+
+    let cancelled = false;
+    const fetchTrackerLocations = async () => {
+      try {
+        const data = await trackerApi.getLocations();
+        if (!cancelled) setTrackerLocations(data || {});
+      } catch (error) {
+        console.error('Error fetching tracker locations:', error);
+      }
+    };
+
+    fetchTrackerLocations();
+    const intervalId = setInterval(fetchTrackerLocations, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [loading]);
+
+  // Keep overview positions fresh in real time from the same WebSocket feed
+  // used for the single-shipment detail view (sensorData is keyed by trackerId for ALL trackers).
+  useEffect(() => {
+    const trackerIds = Object.keys(sensorData || {});
+    if (trackerIds.length === 0) return;
+
+    setTrackerLocations(prev => {
+      let changed = false;
+      const next = { ...prev };
+      trackerIds.forEach(trackerId => {
+        const payload = sensorData[trackerId];
+        const reading = Array.isArray(payload?.data) && payload.data.length > 0
+          ? payload.data[payload.data.length - 1]
+          : payload;
+        const lat = reading?.Lat ?? reading?.latitude;
+        const lng = reading?.Lng ?? reading?.longitude;
+        if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
+          next[trackerId] = {
+            tracker_id: trackerId,
+            latitude: parseFloat(lat),
+            longitude: parseFloat(lng),
+            timestamp: reading?.DT ?? reading?.timestamp ?? new Date().toISOString(),
+          };
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [sensorData]);
+
   // Filter shipments based on search term
   const filteredShipments = shipments.filter(shipment => {
     const trackerId = shipment.trackerId?.toString().toLowerCase() || '';
@@ -138,6 +288,17 @@ const Shipments = () => {
            shipFromAddress.includes(searchLower) ||
            stopAddress.includes(searchLower);
   });
+
+  // Shipments with a known current position, for the clustered overview map
+  const shipmentMapPoints = useMemo(() => {
+    return filteredShipments
+      .map(shipment => {
+        const loc = trackerLocations[shipment.trackerId] ?? trackerLocations[String(shipment.trackerId)];
+        if (!loc) return null;
+        return { shipment, lat: loc.latitude, lng: loc.longitude };
+      })
+      .filter(Boolean);
+  }, [filteredShipments, trackerLocations]);
 
   const handleSelectAll = () => {
     if (selectAll) {
@@ -1950,6 +2111,13 @@ const Shipments = () => {
           />
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
           <MapBoundsHandler />
+
+          {/* Overview mode: cluster every shipment by current location. Clicking a
+              lone marker drills into that shipment; clicking a cluster zooms in,
+              splitting it into smaller clusters (e.g. by state) as you zoom. */}
+          {!selectedShipmentDetail && shipmentMapPoints.length > 0 && (
+            <ShipmentClusterLayer points={shipmentMapPoints} onSelect={handleShipmentClick} />
+          )}
 
           {/* Show geofence circles for each leg with alertPresets */}
           {selectedShipmentDetail && selectedShipmentDetail.legs && selectedShipmentDetail.legs.map((leg, legIndex) => {
