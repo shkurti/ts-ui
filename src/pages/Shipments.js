@@ -115,7 +115,11 @@ const ShipmentClusterLayer = ({ points, onSelect }) => {
 const Shipments = () => {
   const { user, isAuthenticated, loading } = useAuth();
   const { connected: wsConnected, sensorData } = useWebSocketContext();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // On phones, start with the panel collapsed to a bottom bar so the map is
+  // visible immediately; desktop/tablet keeps the panel open as before.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
   const [selectAll, setSelectAll] = useState(false);
   const [selectedShipments, setSelectedShipments] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');

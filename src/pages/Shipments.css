@@ -993,19 +993,121 @@
   z-index: 1000;
 }
 
-/* Responsive circle sizes */
+/* ── Mobile: bottom-sheet layout ──────────────────────────────────────────
+   Below 768px the side-by-side panel + map stops working: a fixed-width
+   panel next to the map leaves the map a useless sliver. Instead the map
+   goes full-screen behind everything, and the panel (list or detail view —
+   both render into the same .sidebar element) becomes a sheet docked to
+   the bottom edge that the driver can drag open or collapse with a single
+   thumb, one-handed, without losing sight of the map. */
 @media (max-width: 768px) {
   .sidebar {
-    width: 300px;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 64vh;
+    max-height: 64vh;
+    border-right: none;
+    border-top: 1px solid var(--color-border);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.2);
+    transition: height 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.32s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  .sidebar-content {
-    padding: 0;
+  .sidebar.collapsed {
+    width: 100%;
+    height: 60px;
+    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.12);
+  }
+
+  /* The handle relocates from the panel's right edge to a centered grab-bar
+     sitting above the sheet, and its chevrons rotate 90° so the affordance
+     reads as "drag down/up" rather than the desktop "push left/right".
+     Sized to a full 44x44 tap target per touch-target guidelines even
+     though the visible pill stays slim. */
+  .collapse-btn {
+    top: -22px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%) rotate(90deg);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+  }
+
+  .collapse-btn:hover {
+    transform: translateX(-50%) rotate(90deg) scale(1.05);
+  }
+
+  .collapse-btn:active {
+    transform: translateX(-50%) rotate(90deg) scale(0.94);
+  }
+
+  /* Collapsed state reads as a horizontal bottom bar, not a vertical rail */
+  .sidebar-rail {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 18px;
+    gap: 14px;
+  }
+
+  .sidebar-rail-divider {
+    width: 1px;
+    height: 26px;
+    margin: 0;
+  }
+
+  .sidebar-rail-count {
+    margin-right: auto;
+  }
+
+  .sidebar-rail-btn,
+  .sidebar-rail-logo {
+    width: 40px;
+    height: 40px;
+  }
+
+  .sidebar-header {
+    padding: 18px 16px 0;
+  }
+
+  .sidebar-header h2 {
+    font-size: 1.35rem;
+  }
+
+  /* Bigger, thumb-friendly tap areas without disturbing surrounding spacing */
+  .checkbox-container {
+    padding: 8px 0;
+    margin: -8px 0;
+  }
+
+  .checkbox-container input {
+    width: 16px;
+    height: 16px;
+  }
+
+  .search-clear-btn {
+    padding: 8px;
+    right: 4px;
+  }
+
+  .shipment-item {
+    padding: 14px 16px;
   }
 
   .btn-new, .btn-delete {
-    padding: 8px 10px;
-    font-size: 12px;
+    padding: 10px 12px;
+    font-size: 13px;
+    min-height: 40px;
+  }
+
+  .tab-btn {
+    padding: 12px 4px;
+    min-height: 44px;
   }
 
   .sf-form-row {
@@ -1019,6 +1121,28 @@
 
   .sf-modal-overlay {
     padding: 12px;
+  }
+}
+
+/* Small phones: the sheet needs more of the screen since everything inside
+   it (route timeline, chips, tabs, charts) still needs to breathe */
+@media (max-width: 420px) {
+  .sidebar {
+    height: 72vh;
+    max-height: 72vh;
+  }
+
+  .info-chips {
+    flex-wrap: wrap;
+  }
+
+  .info-chip {
+    flex: 0 0 calc(50% - 3px);
+    min-width: 0;
+  }
+
+  .detail-header-id {
+    font-size: 1.4rem;
   }
 }
 
