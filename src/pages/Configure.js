@@ -5,12 +5,17 @@ import './Page.css';
 const Configure = () => {
   const { user, updateSettings } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
 
   const gpsFilterEnabled = user?.gps_noise_filter_enabled ?? true;
 
   const handleToggleGpsFilter = async () => {
     setSaving(true);
-    await updateSettings({ gps_noise_filter_enabled: !gpsFilterEnabled });
+    setError(null);
+    const result = await updateSettings({ gps_noise_filter_enabled: !gpsFilterEnabled });
+    if (!result.success) {
+      setError(result.error || 'Failed to update setting');
+    }
     setSaving(false);
   };
 
@@ -43,6 +48,7 @@ const Configure = () => {
               <span className="settings-toggle-knob" />
             </button>
           </div>
+          {error && <p className="settings-error">{error}</p>}
         </div>
       </div>
     </div>

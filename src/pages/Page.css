@@ -116,6 +116,12 @@
   transform: translateX(20px);
 }
 
+.settings-error {
+  margin: 0.75rem 0 0 0;
+  color: var(--color-destructive);
+  font-size: 0.85rem;
+}
+
 .loading-container {
   text-align: center;
   padding: 2rem;
