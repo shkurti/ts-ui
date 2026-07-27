@@ -2213,10 +2213,12 @@ const Shipments = () => {
           ref={mapRef}
           center={[20, 0]} // Default world view
           zoom={2}
-          minZoom={1}
+          minZoom={2}
           maxZoom={18}
           style={{ height: '100%', width: '100%' }}
-          worldCopyJump={true}
+          worldCopyJump={false}
+          maxBounds={[[-90, -180], [90, 180]]}
+          maxBoundsViscosity={1.0}
           preferCanvas={true}
           key={selectedShipmentDetail ? `detail-${selectedShipmentDetail.trackerId}` : 'overview'}
         >
@@ -2225,10 +2227,11 @@ const Shipments = () => {
             url={`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_API_KEY}`}
             tileSize={512}
             zoomOffset={-1}
-            minZoom={1}
+            minZoom={2}
             attribution='<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a>, <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>'
             crossOrigin={true}
             maxZoom={19}
+            noWrap={true}
           />
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
           <MapBoundsHandler />
