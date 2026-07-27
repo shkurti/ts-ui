@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { Package, ChevronDown, Wifi, WifiOff } from 'lucide-react';
 import UserMenu from './UserMenu';
 import { useWebSocketContext } from '../context/WebSocketContext';
 import './Navbar.css';
@@ -45,7 +46,12 @@ const Navbar = () => {
     <nav className="navbar">
       <div className="navbar-container">
         <div className="navbar-brand">
-          <Link to="/" onClick={closeMobileMenu}>LogiTrack</Link>
+          <Link to="/" onClick={closeMobileMenu}>
+            <span className="navbar-brand-mark">
+              <Package size={18} strokeWidth={2.25} />
+            </span>
+            <span className="navbar-brand-text">LogiTrack</span>
+          </Link>
         </div>
         
         <button 
@@ -93,7 +99,7 @@ const Navbar = () => {
               onClick={toggleConfigureDropdown}
             >
               Configure
-              <span className="dropdown-arrow">▼</span>
+              <ChevronDown size={14} strokeWidth={2.5} className="dropdown-arrow" />
             </a>
             <ul className="dropdown-menu">
               <li>
@@ -119,8 +125,8 @@ const Navbar = () => {
         </ul>
         
         {/* WebSocket Status Indicator */}
-        <div className="ws-status" title={`Real-time updates: ${wsConnected ? 'Connected' : 'Disconnected'}`}>
-          <span className={`status-dot ${wsConnected ? 'connected' : 'disconnected'}`}></span>
+        <div className={`ws-status ${wsConnected ? 'connected' : 'disconnected'}`} title={`Real-time updates: ${wsConnected ? 'Connected' : 'Disconnected'}`}>
+          {wsConnected ? <Wifi size={13} strokeWidth={2.5} /> : <WifiOff size={13} strokeWidth={2.5} />}
           <span className="status-text">{wsConnected ? 'Live' : 'Offline'}</span>
         </div>
         

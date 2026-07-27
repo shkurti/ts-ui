@@ -1,20 +1,4 @@
-/* ── Plus Jakarta Sans (ui-ux-pro-max design system) ─────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
-
-/* ── Design tokens ────────────────────────────────────────────────── */
-:root {
-  --color-primary:    #2563EB;
-  --color-secondary:  #3B82F6;
-  --color-accent:     #EA580C;
-  --color-bg:         #EFF6FF;
-  --color-foreground: #1E40AF;
-  --color-muted:      #E9EFF8;
-  --color-border:     #BFDBFE;
-  --color-destructive:#DC2626;
-  --color-text:       #1e293b;
-  --color-text-muted: #64748b;
-  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
-}
+/* ── Design tokens live in src/theme.css (imported globally) ────── */
 
 .shipments-container {
   position: fixed;
@@ -31,41 +15,66 @@
   width: 370px;
   background: var(--color-bg);
   box-shadow: 2px 0 16px rgba(37, 99, 235, 0.08);
-  transition: all 0.3s ease;
+  transition: width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.32s cubic-bezier(0.4, 0, 0.2, 1);
   position: absolute;
   z-index: 1000;
   height: 100%;
   display: flex;
   flex-direction: column;
   font-family: var(--font-sans);
+  border-right: 1px solid var(--color-border);
 }
 
 .sidebar.collapsed {
-  width: 50px;
+  width: 60px;
+  box-shadow: 2px 0 10px rgba(37, 99, 235, 0.06);
 }
 
+/* ── Collapse/expand handle ───────────────────────────────────────────
+   A pill-shaped edge handle (not a floating circle) so it reads as part
+   of the panel itself rather than a bolted-on control. */
 .collapse-btn {
   position: absolute;
-  top: 20px;
-  right: -15px;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  color: white;
-  border: none;
+  top: 50%;
+  right: -12px;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 46px;
+  border-radius: 11px;
+  background: #fff;
+  color: var(--color-primary);
+  border: 1.5px solid var(--color-border);
   font-size: 12px;
   cursor: pointer;
   z-index: 1001;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
-  transition: background 0.15s ease;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.12), 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition: background 0.18s ease, border-color 0.18s ease,
+              box-shadow 0.18s ease, transform 0.18s ease, color 0.18s ease;
 }
 
 .collapse-btn:hover {
-  background: #1d4ed8;
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+  transform: translateY(-50%) scale(1.05);
+}
+
+.collapse-btn:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+.collapse-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+.collapse-btn svg {
+  transition: transform 0.2s ease;
 }
 
 .sidebar-content {
@@ -74,6 +83,107 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  animation: sidebar-panel-in 0.2s ease both;
+}
+
+/* ── Collapsed rail ────────────────────────────────────────────────────
+   Rather than going blank, the collapsed state keeps a slim icon rail
+   alive: a brand mark, the live shipment count, and quick actions that
+   re-expand the panel focused on that task. */
+.sidebar-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 0;
+  height: 100%;
+  animation: sidebar-panel-in 0.2s ease both;
+}
+
+.sidebar-rail-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  flex-shrink: 0;
+}
+
+.sidebar-rail-count {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--color-primary);
+  background: #fff;
+  border: 1.5px solid var(--color-border);
+  border-radius: 20px;
+  padding: 2px 8px;
+  min-width: 18px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.sidebar-rail-divider {
+  width: 26px;
+  height: 1px;
+  background: var(--color-border);
+  margin: 2px 0 4px;
+  flex-shrink: 0;
+}
+
+.sidebar-rail-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1.5px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.sidebar-rail-btn:hover {
+  background: #fff;
+  color: var(--color-primary);
+  border-color: var(--color-border);
+}
+
+.sidebar-rail-btn:active {
+  transform: scale(0.94);
+}
+
+.sidebar-rail-btn:focus-visible,
+.sidebar-rail-logo:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@keyframes sidebar-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .collapse-btn,
+  .sidebar-content,
+  .sidebar-rail {
+    transition: none;
+    animation: none;
+  }
 }
 
 /* ── List view header ──────────────────────────────────────────────── */
@@ -319,47 +429,38 @@
 }
 
 /* ── Shipments list ────────────────────────────────────────────────── */
+/* Flat, hairline-divided rows — same language as the detail view's tabs */
 .shipments-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 10px;
+  background: #fff;
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
-/* Cards float on the blue-tinted background */
 .shipment-item {
   background: #ffffff;
-  border: 1.5px solid var(--color-border);
-  border-left: 3px solid var(--color-border);
-  border-radius: 10px;
-  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-border);
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color 0.15s ease;
   width: 100%;
   box-sizing: border-box;
   cursor: pointer;
 }
 
-/* Status accent left border */
-.shipment-item[data-status="in-transit"] { border-left-color: var(--color-accent); }
-.shipment-item[data-status="delivered"]  { border-left-color: #16a34a; }
-.shipment-item[data-status="pending"]    { border-left-color: var(--color-border); }
+.shipment-item:last-child {
+  border-bottom: none;
+}
 
 .shipment-item:hover {
-  border-color: var(--color-secondary);
-  border-left-color: var(--color-primary);
-  box-shadow: 0 2px 12px rgba(37, 99, 235, 0.1);
+  background: #f8fafc;
 }
 
 .shipment-item.selected {
-  border-color: var(--color-primary);
-  border-left-color: var(--color-primary);
   background: #eff6ff;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
 
 .shipment-details {
@@ -514,114 +615,385 @@
   right: 0;
 }
 
-.modal-overlay {
-  position: fixed;
+/* Keep the required MapTiler/OSM attribution present but unobtrusive
+   rather than removing it (removal breaches their tile usage terms).
+   Collapsed to a small "i" badge by default; hover reveals the full,
+   legible text — same pattern most commercial map UIs use. */
+.map-container .leaflet-control-attribution {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  overflow: hidden;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--color-text-muted, #6b7280);
+  white-space: nowrap;
+  transition: width 0.15s ease, border-radius 0.15s ease, background 0.15s ease;
+}
+
+.map-container .leaflet-control-attribution::before {
+  content: "i";
+  position: absolute;
+  left: 0;
   top: 0;
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
+  font-weight: 700;
+  font-style: italic;
+  text-align: center;
+  line-height: 14px;
+}
+
+.map-container .leaflet-control-attribution a,
+.map-container .leaflet-control-attribution span {
+  opacity: 0;
+  font-size: 9px;
+  transition: opacity 0.1s ease;
+}
+
+.map-container .leaflet-control-attribution:hover {
+  width: auto;
+  border-radius: 3px;
+  padding: 1px 6px 1px 16px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.map-container .leaflet-control-attribution:hover::before {
+  opacity: 0;
+}
+
+.map-container .leaflet-control-attribution:hover a,
+.map-container .leaflet-control-attribution:hover span {
+  opacity: 1;
+}
+
+.map-container .leaflet-control-attribution a {
+  color: inherit;
+}
+
+/* Prefixed "sf-" (shipment form) throughout: several pages (Page.css,
+   Trackers.css) declare their own global .modal-overlay/.form-group/.btn-*
+   with no CSS-module scoping, so whichever stylesheet's <style> tag is
+   injected into the DOM last wins the cascade regardless of source order
+   here. Unique names sidestep that entirely. */
+.sf-modal-overlay {
+  position: fixed;
+  top: 64px; /* sits below the sticky navbar instead of centering across it */
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(15, 23, 42, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2000;
+  padding: 24px;
+  box-sizing: border-box;
 }
 
-.modal-content {
-  background: white;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 800px;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+.sf-modal-content {
+  background: #fff;
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 640px;
+  max-height: calc(100vh - 64px - 48px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-sans);
+  overflow: hidden;
 }
 
-.modal-header {
-  padding: 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
+.sf-modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
-.modal-header h3 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #2d3748;
+.sf-modal-header h3 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--color-foreground);
   margin: 0;
 }
 
-.modal-body {
-  padding: 1.5rem;
+.sf-modal-subtitle {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
 }
 
-.leg-section {
-  margin-bottom: 2rem;
-  padding: 1rem;
-  background: #f8fafc;
-  border-radius: 8px;
+.sf-modal-close-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: var(--color-muted);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-pill);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.leg-section h4 {
-  color: #2d3748;
-  font-weight: 600;
-  margin-bottom: 1rem;
-  font-size: 1.1rem;
+.sf-modal-close-btn:hover {
+  background: var(--color-destructive-bg);
+  color: var(--color-destructive);
 }
 
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+.sf-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
 }
 
-.form-group {
+.sf-leg-section {
+  margin-bottom: 18px;
+  padding: 14px 16px 16px;
+  background: #fafbfc;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.sf-leg-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.sf-leg-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.sf-leg-badge {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sf-leg-section h4 {
+  color: var(--color-foreground);
+  font-weight: 700;
+  margin: 0;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sf-form-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sf-form-row:last-child {
+  margin-bottom: 0;
+}
+
+.sf-form-row-dates .sf-form-group {
+  min-width: 0;
+}
+
+.sf-form-group {
+  flex: 1;
+  min-width: 140px;
   display: flex;
   flex-direction: column;
 }
 
-.form-group label {
+.sf-form-group label {
   font-weight: 600;
-  color: #4a5568;
-  margin-bottom: 0.5rem;
-  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+  font-size: 12px;
 }
 
-.form-group input,
-.form-group select {
-  padding: 0.75rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 0.9rem;
+.sf-form-group input,
+.sf-form-group select {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: var(--font-sans);
   background: white;
-  transition: border-color 0.2s ease;
+  color: var(--color-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  min-width: 0;
 }
 
-.form-group input:focus,
-.form-group select:focus {
-  border-color: #667eea;
+.sf-form-group input:focus,
+.sf-form-group select:focus {
+  border-color: var(--color-primary);
   outline: none;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
-.add-stop-btn {
-  margin-top: 1rem;
+.sf-add-stop-btn {
+  width: 100%;
+  margin-bottom: 20px;
+  padding: 10px;
+  background: transparent;
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sf-add-stop-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-bg);
+}
+
+.sf-tracker-section {
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.sf-tracker-section .sf-form-group select {
   width: 100%;
 }
 
-.btn-secondary {
-  background: #e2e8f0;
-  color: #4a5568;
+.sf-btn {
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 0.9rem;
+  font-family: var(--font-sans);
+  flex: 0 0 auto;
+  min-width: 130px;
 }
 
-.btn-secondary:hover {
-  background: #cbd5e0;
+.sf-btn-primary {
+  background: var(--color-primary);
+  color: white;
 }
 
-.modal-footer {
-  padding: 1.5rem;
-  border-top: 1px solid #e2e8f0;
+.sf-btn-primary:hover {
+  background: var(--color-primary-hover);
+}
+
+.sf-btn-secondary {
+  background: var(--color-muted);
+  color: var(--color-text);
+}
+
+.sf-btn-secondary:hover {
+  background: var(--color-border);
+}
+
+.sf-modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--color-border);
   display: flex;
   justify-content: flex-end;
-  gap: 1rem;
+  gap: 10px;
+  flex-shrink: 0;
+  background: #fff;
+}
+
+/* Geofence panel — ties into the app's blue "spatial" tint */
+.sf-geofence-panel {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.sf-geofence-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 4px;
+}
+
+.sf-geofence-toggle-row input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.sf-geofence-toggle-row label {
+  margin: 0;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.sf-geofence-radius-label {
+  display: block;
+  margin: 10px 0 8px;
+  font-size: 12.5px;
+  color: var(--color-text);
+}
+
+.sf-geofence-radius-hint {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  margin-left: 6px;
+}
+
+.sf-geofence-slider {
+  width: 100%;
+  accent-color: var(--color-primary);
+}
+
+.sf-geofence-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.sf-geofence-destination {
+  margin-top: 10px;
+  padding: 7px 10px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--color-primary-dark);
+}
+
+.sf-geofence-pending-hint {
+  margin-top: 10px;
+  padding: 7px 10px;
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--color-warning);
 }
 
 /* Loading animation */
@@ -646,33 +1018,189 @@
   }
 }
 
+/* Pulsing ring behind the live tracker marker */
+@keyframes live-marker-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.live-marker-pulse {
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  background: #2563eb;
+  opacity: 0.28;
+  animation: live-marker-pulse 2s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-marker-pulse {
+    animation: none;
+    opacity: 0.16;
+  }
+}
+
 /* Hover marker specific styling */
 .route-marker.hover-marker {
   z-index: 1000;
 }
 
-/* Responsive circle sizes */
+/* ── Mobile: bottom-sheet layout ──────────────────────────────────────────
+   Below 768px the side-by-side panel + map stops working: a fixed-width
+   panel next to the map leaves the map a useless sliver. Instead the map
+   goes full-screen behind everything, and the panel (list or detail view —
+   both render into the same .sidebar element) becomes a sheet docked to
+   the bottom edge that the driver can drag open or collapse with a single
+   thumb, one-handed, without losing sight of the map. */
 @media (max-width: 768px) {
   .sidebar {
-    width: 300px;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: 64vh;
+    max-height: 64vh;
+    border-right: none;
+    border-top: 1px solid var(--color-border);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.2);
+    transition: height 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.32s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  .sidebar-content {
-    padding: 0;
+  .sidebar.collapsed {
+    width: 100%;
+    height: 60px;
+    box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.12);
+  }
+
+  /* The handle relocates from the panel's right edge to a centered grab-bar
+     sitting above the sheet, and its chevrons rotate 90° so the affordance
+     reads as "drag down/up" rather than the desktop "push left/right".
+     Sized to a full 44x44 tap target per touch-target guidelines even
+     though the visible pill stays slim. */
+  .collapse-btn {
+    top: -22px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%) rotate(90deg);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+  }
+
+  .collapse-btn:hover {
+    transform: translateX(-50%) rotate(90deg) scale(1.05);
+  }
+
+  .collapse-btn:active {
+    transform: translateX(-50%) rotate(90deg) scale(0.94);
+  }
+
+  /* Collapsed state reads as a horizontal bottom bar, not a vertical rail */
+  .sidebar-rail {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 18px;
+    gap: 14px;
+  }
+
+  .sidebar-rail-divider {
+    width: 1px;
+    height: 26px;
+    margin: 0;
+  }
+
+  .sidebar-rail-count {
+    margin-right: auto;
+  }
+
+  .sidebar-rail-btn,
+  .sidebar-rail-logo {
+    width: 40px;
+    height: 40px;
+  }
+
+  .sidebar-header {
+    padding: 18px 16px 0;
+  }
+
+  .sidebar-header h2 {
+    font-size: 1.35rem;
+  }
+
+  /* Bigger, thumb-friendly tap areas without disturbing surrounding spacing */
+  .checkbox-container {
+    padding: 8px 0;
+    margin: -8px 0;
+  }
+
+  .checkbox-container input {
+    width: 16px;
+    height: 16px;
+  }
+
+  .search-clear-btn {
+    padding: 8px;
+    right: 4px;
+  }
+
+  .shipment-item {
+    padding: 14px 16px;
   }
 
   .btn-new, .btn-delete {
-    padding: 8px 10px;
-    font-size: 12px;
+    padding: 10px 12px;
+    font-size: 13px;
+    min-height: 40px;
   }
 
-  .form-grid {
-    grid-template-columns: 1fr;
+  .tab-btn {
+    padding: 12px 4px;
+    min-height: 44px;
   }
 
-  .modal-content {
-    width: 95%;
-    margin: 1rem;
+  .sf-form-row {
+    flex-direction: column;
+  }
+
+  .sf-modal-content {
+    max-width: 100%;
+    max-height: 92vh;
+  }
+
+  .sf-modal-overlay {
+    padding: 12px;
+  }
+}
+
+/* Small phones: the sheet needs more of the screen since everything inside
+   it (route timeline, chips, tabs, charts) still needs to breathe */
+@media (max-width: 420px) {
+  .sidebar {
+    height: 72vh;
+    max-height: 72vh;
+  }
+
+  .info-chips {
+    flex-wrap: wrap;
+  }
+
+  .info-chip {
+    flex: 0 0 calc(50% - 3px);
+    min-width: 0;
+  }
+
+  .detail-header-id {
+    font-size: 1.4rem;
   }
 }
 
@@ -938,42 +1466,39 @@
 }
 
 /* ── Sensor Charts ─────────────────────────────────────────────────────── */
+/* Flat instrument-panel layout: hairline-divided rows, no cards, charts bleed edge-to-edge */
 .sensors-content {
   height: 100%;
-  background: var(--color-bg);
+  background: #fff;
+  padding-bottom: 24px;
 }
 
 .sensor-charts {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 10px 10px;
 }
 
-/* Base card */
+/* Base row — flat, no border/radius/shadow; a hairline divider separates rows */
 .sensor-card {
   background: #fff;
-  border: 1.5px solid var(--color-border);
-  border-top: 3px solid var(--color-border);
-  border-radius: 10px;
-  overflow: hidden;
+  border-bottom: 1px solid var(--color-border);
 }
 
-/* Sensor color accent on top border */
-.sensor-card--temp     { border-top-color: #ef4444; }
-.sensor-card--humidity { border-top-color: #3b82f6; }
-.sensor-card--battery  { border-top-color: #22c55e; }
-.sensor-card--speed    { border-top-color: #ea580c; }
-.sensor-card--light    { border-top-color: #ca8a04; }
+.sensor-card:last-child {
+  border-bottom: none;
+}
 
 .sensor-card-header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  padding: 10px 12px 6px;
+  padding: 14px 16px 0;
 }
 
 .sensor-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -981,6 +1506,20 @@
   color: var(--color-text-muted);
   font-family: var(--font-sans);
 }
+
+/* Label dot replaces the old top-border accent bar */
+.sensor-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sensor-dot--temp     { background: #ef4444; }
+.sensor-dot--humidity { background: #3b82f6; }
+.sensor-dot--battery  { background: #22c55e; }
+.sensor-dot--speed    { background: #ea580c; }
+.sensor-dot--light    { background: #ca8a04; }
 
 /* Live reading — the hero number per Exaggerated Minimalism */
 .sensor-value {
@@ -997,10 +1536,13 @@
 .sensor-card--speed    .sensor-value { color: #ea580c; }
 .sensor-card--light    .sensor-value { color: #ca8a04; }
 
+/* No horizontal padding here — the chart spans the row's full width,
+   flush with the panel's left and right edges. */
 .sensor-chart-area {
   width: 100%;
-  height: 56px;
-  overflow: hidden;
+  height: 64px;
+  margin-top: 2px;
+  padding-bottom: 10px;
 }
 
 .sensor-chart-area svg {
@@ -1016,20 +1558,22 @@
 
 /* Alerts Content */
 /* ── Alerts tab ────────────────────────────────────────────────────────── */
+/* Flat, hairline-divided rows — same language as the Sensors tab */
 .alerts-content {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  background: var(--color-bg);
-  padding: 10px;
+  background: #fff;
   height: 100%;
 }
 
 .alerts-section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 14px;
+}
+
+/* Pale gutter between Configured / Triggered groups instead of card gaps */
+.alerts-section + .alerts-section {
+  border-top: 8px solid var(--color-bg);
 }
 
 .alerts-section-title {
@@ -1039,36 +1583,45 @@
   text-transform: uppercase;
   color: var(--color-text-muted);
   font-family: var(--font-sans);
-  margin: 0 0 4px 2px;
+  margin: 0;
+  padding: 14px 16px 8px;
 }
 
-/* Alert card base */
+/* Alert row — flat, no card box, hairline divider only */
 .alert-card {
   background: #fff;
-  border: 1.5px solid var(--color-border);
-  border-left: 3px solid var(--color-border);
-  border-radius: 10px;
-  padding: 11px 13px;
+  border-bottom: 1px solid var(--color-border);
+  padding: 11px 16px;
   font-family: var(--font-sans);
-  transition: box-shadow 0.15s ease;
+  transition: background-color 0.15s ease;
+}
+
+.alert-card:last-child {
+  border-bottom: none;
 }
 
 .alert-card:hover {
-  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.08);
+  background: #f8fafc;
 }
-
-/* Left border by type */
-.alert-card--configured { border-left-color: var(--color-primary); }
-.alert-card--warning    { border-left-color: var(--color-accent); }
-.alert-card--critical   { border-left-color: var(--color-destructive); }
 
 .alert-card-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   margin-bottom: 6px;
   gap: 8px;
 }
+
+/* Severity/type dot replaces the old left-border accent */
+.alert-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.alert-dot--configured { background: var(--color-primary); }
+.alert-dot--warning    { background: var(--color-accent); }
+.alert-dot--critical   { background: var(--color-destructive); }
 
 .alert-card-name {
   font-size: 13px;
@@ -1114,89 +1667,81 @@
 .alerts-empty {
   font-size: 12px;
   color: var(--color-text-muted);
-  padding: 16px 4px;
+  padding: 16px 16px;
   font-family: var(--font-sans);
 }
 
 .no-messages {
   font-size: 13px;
   color: var(--color-text-muted);
-  padding: 20px 4px;
+  padding: 20px 16px;
   font-family: var(--font-sans);
 }
 
 /* Reports Content */
+/* ── Reports tab ───────────────────────────────────────────────────────── */
+/* Flat, hairline-divided rows — same language as the Sensors tab */
 .reports-content {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px;
-  background: var(--color-bg);
+  background: #fff;
 }
 
 .report-item {
   background: #fff;
-  border-radius: 10px;
-  padding: 14px 16px;
-  border: 1.5px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  padding: 16px;
   font-family: var(--font-sans);
+}
+
+.report-item:last-child {
+  border-bottom: none;
 }
 
 .report-item h4 {
   margin: 0 0 10px 0;
   color: var(--color-foreground);
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 700;
-  border-bottom: 2px solid var(--color-border);
-  padding-bottom: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .report-item p {
   margin: 6px 0;
-  color: var(--color-text-muted);
+  color: var(--color-text);
   font-size: 13px;
 }
 
-/* Make shipment items clickable */
-.shipment-item {
-  transition: all 0.2s ease;
-}
-
-.shipment-item:hover {
-  background: #f8f9fa;
-  transform: translateX(2px);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+.report-item p:first-of-type {
+  margin-top: 0;
 }
 
 /* ===== Trips Tab ===== */
 /* ── Trips tab ─────────────────────────────────────────────────────────── */
+/* Flat, hairline-divided rows — same language as the Sensors tab */
 .trips-content {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  background: var(--color-bg);
-  padding: 10px;
+  background: #fff;
   font-family: var(--font-sans);
 }
 
-/* Leg card — floats like sensor/alert cards */
+/* Leg row — flat, no card box, hairline divider only; status is carried by the dot/badge, not a border */
 .trip-item {
   background: #fff;
-  border: 1.5px solid var(--color-border);
-  border-left: 3px solid var(--color-border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  transition: box-shadow 0.15s ease;
+  border-bottom: 1px solid var(--color-border);
+  padding: 14px 16px;
+  transition: background-color 0.15s ease;
+}
+
+.trip-item:last-child {
+  border-bottom: none;
 }
 
 .trip-item:hover {
-  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.08);
+  background: #f8fafc;
 }
-
-/* Status left-border accent */
-.trip-item.trip-completed   { border-left-color: #22c55e; }
-.trip-item.trip-in-progress { border-left-color: var(--color-accent); }
-.trip-item.trip-pending     { border-left-color: var(--color-border); }
 
 /* Status bar */
 .trip-status-bar {

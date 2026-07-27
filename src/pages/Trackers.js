@@ -43,13 +43,6 @@ const Trackers = () => {
     ...realTimeLocations
   };
 
-  // Debug realtime location updates
-  useEffect(() => {
-    console.log('🔄 RealTime Locations Updated:', realTimeLocations);
-    console.log('📍 Merged Tracker Locations:', mergedTrackerLocations);
-    console.log('🔗 WebSocket Connected:', wsConnected);
-  }, [realTimeLocations, wsConnected]);
-
   useEffect(() => {
     let mounted = true;
     const fetchData = async () => {
@@ -108,8 +101,7 @@ const Trackers = () => {
     setError(null);
 
     try {
-      const result = await trackerApi.create(formData);
-      console.log('Success:', result);
+      await trackerApi.create(formData);
 
       // Reset form and close modal
       setFormData({
@@ -145,19 +137,15 @@ const Trackers = () => {
 
   // Handle tracker selection
   const handleTrackerSelect = (trackerId) => {
-    console.log('Selecting tracker:', trackerId); // Debug log
-    setSelectedTrackers(prev => {
-      const newSelection = prev.includes(trackerId)
+    setSelectedTrackers(prev =>
+      prev.includes(trackerId)
         ? prev.filter(id => id !== trackerId)
-        : [...prev, trackerId];
-      console.log('New selection:', newSelection); // Debug log
-      return newSelection;
-    });
+        : [...prev, trackerId]
+    );
   };
 
   // Handle select all
   const handleSelectAll = () => {
-    console.log('Select all clicked'); // Debug log
     if (selectedTrackers.length === trackers.length && trackers.length > 0) {
       setSelectedTrackers([]);
     } else {
@@ -180,8 +168,7 @@ const Trackers = () => {
     setError(null);
 
     try {
-      const result = await trackerApi.delete(selectedTrackers);
-      console.log('Delete success:', result);
+      await trackerApi.delete(selectedTrackers);
 
       // Clear selected trackers and refresh the list
       setSelectedTrackers([]);
@@ -240,6 +227,12 @@ const Trackers = () => {
   const deviceTypes = ['All', ...new Set(trackers.map(t => t.device_type).filter(Boolean))];
   const activeCount = trackers.filter(t => getTrackerData(t.tracker_id).battery > 0).length;
   const offlineCount = trackers.filter(t => getTrackerData(t.tracker_id).battery === null).length;
+  const batteryValues = trackers
+    .map(t => getTrackerData(t.tracker_id).battery)
+    .filter(b => b !== null);
+  const avgBattery = batteryValues.length
+    ? Math.round(batteryValues.reduce((sum, b) => sum + b, 0) / batteryValues.length)
+    : null;
 
   return (
     <div className="trackers-layout">
@@ -247,16 +240,29 @@ const Trackers = () => {
       <div className="trackers-panel">
         {/* Header */}
         <div className="panel-header">
-          <h1>Trackers</h1>
-          <button 
-            onClick={() => setShowModal(true)} 
+          <div className="panel-title-group">
+            <div className="panel-title-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/>
+              </svg>
+            </div>
+            <div className="panel-title-text">
+              <h1>Trackers</h1>
+              <p>Monitor and manage your fleet's devices</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
             className="create-btn"
             disabled={loading}
           >
-            Create New Tracker
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+            </svg>
+            New Tracker
           </button>
           <div className="header-controls">
-            <button className="control-btn" title="Settings">
+            <button className="control-btn" title="Settings" aria-label="Settings">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
               </svg>
@@ -270,6 +276,26 @@ const Trackers = () => {
           </div>
         </div>
 
+        {/* Stat Tiles */}
+        <div className="stats-row">
+          <div className="stat-tile">
+            <span className="stat-tile-label"><span className="stat-dot total" />Total</span>
+            <span className="stat-tile-value">{trackers.length}</span>
+          </div>
+          <div className="stat-tile">
+            <span className="stat-tile-label"><span className="stat-dot active" />Active</span>
+            <span className="stat-tile-value">{activeCount}</span>
+          </div>
+          <div className="stat-tile">
+            <span className="stat-tile-label"><span className="stat-dot offline" />Offline</span>
+            <span className="stat-tile-value">{offlineCount}</span>
+          </div>
+          <div className="stat-tile">
+            <span className="stat-tile-label"><span className="stat-dot battery" />Avg. Battery</span>
+            <span className="stat-tile-value">{avgBattery !== null ? `${avgBattery}%` : '—'}</span>
+          </div>
+        </div>
+
         {/* Search Bar */}
         <div className="search-section">
           <div className="search-input-container">
@@ -278,11 +304,24 @@ const Trackers = () => {
             </svg>
             <input
               type="text"
-              placeholder="Search"
+              placeholder="Search by tracker ID or name"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="search-input"
+              aria-label="Search trackers"
             />
+            {searchTerm && (
+              <button
+                className="search-clear"
+                onClick={() => setSearchTerm('')}
+                aria-label="Clear search"
+                type="button"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
@@ -361,38 +400,100 @@ const Trackers = () => {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="6" className="loading-row">Loading trackers...</td></tr>
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i} className="skeleton-row">
+                    <td><div className="skeleton-bar" style={{ width: 16, height: 16 }} /></td>
+                    <td><div className="skeleton-bar" style={{ width: '70%' }} /></td>
+                    <td><div className="skeleton-bar" style={{ width: '50%' }} /></td>
+                    <td><div className="skeleton-bar" style={{ width: '60%' }} /></td>
+                    <td><div className="skeleton-bar" style={{ width: '55%' }} /></td>
+                    <td><div className="skeleton-bar" style={{ width: '65%' }} /></td>
+                  </tr>
+                ))
               ) : error ? (
-                <tr><td colSpan="6" className="error-row">Error: {error}</td></tr>
+                <tr>
+                  <td colSpan="6" className="error-row">
+                    <div className="state-panel">
+                      <div className="state-panel-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                          <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <h4>Couldn't load trackers</h4>
+                      <p>{error}</p>
+                      <button className="state-panel-action" onClick={fetchTrackers}>Try again</button>
+                    </div>
+                  </td>
+                </tr>
               ) : filteredTrackers.length === 0 ? (
-                <tr><td colSpan="6" className="empty-row">No trackers found</td></tr>
+                <tr>
+                  <td colSpan="6" className="empty-row">
+                    <div className="state-panel">
+                      <div className="state-panel-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                          <path d="M21 21L16.514 16.506M19 10.5C19 15.194 15.194 19 10.5 19C5.806 19 2 15.194 2 10.5C2 5.806 5.806 2 10.5 2C15.194 2 19 5.806 19 10.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </div>
+                      <h4>No trackers found</h4>
+                      <p>{searchTerm || deviceTypeFilter !== 'All' ? 'Try adjusting your search or filters.' : 'Register your first tracker to start monitoring your fleet.'}</p>
+                      {!searchTerm && deviceTypeFilter === 'All' && (
+                        <button className="state-panel-action" onClick={() => setShowModal(true)}>Create New Tracker</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
               ) : (
                 filteredTrackers.map((tracker) => {
                   const trackerData = getTrackerData(tracker.tracker_id);
                   const isActive = trackerData.battery !== null && trackerData.battery > 0;
-                  
+                  const isSelected = selectedTrackers.includes(tracker.tracker_id);
+                  const batteryTier = trackerData.battery === null ? null :
+                    trackerData.battery < 30 ? 'critical' : trackerData.battery < 70 ? 'low' : 'good';
+
                   return (
-                    <tr key={tracker.tracker_id} className="tracker-row">
+                    <tr key={tracker.tracker_id} className={`tracker-row ${isSelected ? 'is-selected' : ''}`}>
                       <td>
                         <input
                           type="checkbox"
-                          checked={selectedTrackers.includes(tracker.tracker_id)}
+                          checked={isSelected}
                           onChange={() => handleTrackerSelect(tracker.tracker_id)}
+                          aria-label={`Select tracker ${tracker.tracker_id}`}
                         />
                       </td>
-                      <td className="tracker-id-cell">{tracker.tracker_id}</td>
-                      <td className="device-type-cell">{tracker.device_type || 'Unknown'}</td>
+                      <td className="tracker-id-cell">
+                        <div className="tracker-avatar">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/>
+                          </svg>
+                        </div>
+                        <div className="tracker-id-text">
+                          <span className="tracker-id-value">{tracker.tracker_id}</span>
+                          {tracker.tracker_name && (
+                            <span className="tracker-name-value">{tracker.tracker_name}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="device-type-cell">
+                        <span className="device-type-badge">{tracker.device_type || 'Unknown'}</span>
+                      </td>
                       <td className="battery-cell">
                         {trackerData.battery !== null ? (
-                          <span className={`battery-level ${trackerData.battery < 30 ? 'critical' : trackerData.battery < 70 ? 'low' : 'good'}`}>
-                            {trackerData.battery}%
-                          </span>
+                          <div className="battery-meter">
+                            <div className="battery-track">
+                              <div
+                                className={`battery-fill ${batteryTier}`}
+                                style={{ width: `${trackerData.battery}%` }}
+                              />
+                            </div>
+                            <span className="battery-value">{trackerData.battery}%</span>
+                          </div>
                         ) : (
                           <span className="battery-unknown">—</span>
                         )}
                       </td>
                       <td className="status-cell">
                         <span className={`status-badge ${isActive ? 'active' : 'offline'}`}>
+                          <span className="status-dot" />
                           {isActive ? 'Active' : 'Offline'}
                         </span>
                       </td>
@@ -405,16 +506,26 @@ const Trackers = () => {
           </table>
         </div>
 
-        {/* Bulk Actions - Add debug info */}
-        {console.log('Selected trackers count:', selectedTrackers.length)}
+        {/* Bulk Actions */}
         {selectedTrackers.length > 0 && (
           <div className="bulk-actions-bar">
-            <span>{selectedTrackers.length} tracker{selectedTrackers.length !== 1 ? 's' : ''} selected</span>
-            <button 
+            <div className="bulk-actions-left">
+              <span className="bulk-selected-count">
+                <span className="count-badge">{selectedTrackers.length}</span>
+                tracker{selectedTrackers.length !== 1 ? 's' : ''} selected
+              </span>
+              <button className="bulk-clear-btn" onClick={() => setSelectedTrackers([])} type="button">
+                Clear
+              </button>
+            </div>
+            <button
               onClick={handleDeleteSelected}
               className="delete-selected-btn"
               disabled={deleting}
             >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
               {deleting ? 'Deleting...' : 'Delete Selected'}
             </button>
           </div>
@@ -425,37 +536,39 @@ const Trackers = () => {
       <div className="map-panel">
         <div className="map-content">
           {(() => {
-            console.log('Tracker Locations Debug:', mergedTrackerLocations);
-            console.log('Number of tracker locations:', Object.keys(mergedTrackerLocations).length);
-            
             const validLocations = Object.values(mergedTrackerLocations).filter(
-              location => location.latitude && location.longitude && 
+              location => location.latitude && location.longitude &&
                          !isNaN(location.latitude) && !isNaN(location.longitude)
             );
-            
-            console.log('Valid locations:', validLocations);
-            
+
             if (validLocations.length > 0) {
               // Calculate map center based on tracker locations
               const avgLat = validLocations.reduce((sum, loc) => sum + loc.latitude, 0) / validLocations.length;
               const avgLng = validLocations.reduce((sum, loc) => sum + loc.longitude, 0) / validLocations.length;
-              
-              console.log('Map center calculated:', [avgLat, avgLng]);
-              
+
               return (
-                <MapContainer
-                  center={[avgLat, avgLng]}
-                  zoom={13}
-                  style={{ height: '100%', width: '100%' }}
-                  key={`map-${validLocations.length}`} // Force remount when locations change
-                >
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  />
-                  {validLocations.map((location) => {
-                    console.log('Rendering marker for:', location.tracker_id, [location.latitude, location.longitude]);
-                    return (
+                <>
+                  <div className="map-overlay-card">
+                    <div className="map-overlay-stat">
+                      <span className="map-overlay-stat-value">{validLocations.length}</span>
+                      <span className="map-overlay-stat-label">On map</span>
+                    </div>
+                    <div className="map-overlay-legend">
+                      <span className={`status-dot`} style={{ width: 8, height: 8, borderRadius: '50%', background: wsConnected ? 'var(--color-success)' : 'var(--color-text-muted)', display: 'inline-block' }} />
+                      {wsConnected ? 'Live' : 'Cached'}
+                    </div>
+                  </div>
+                  <MapContainer
+                    center={[avgLat, avgLng]}
+                    zoom={13}
+                    style={{ height: '100%', width: '100%' }}
+                    key={`map-${validLocations.length}`} // Force remount when locations change
+                  >
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
+                    {validLocations.map((location) => (
                       <Marker
                         key={location.tracker_id}
                         position={[parseFloat(location.latitude), parseFloat(location.longitude)]}
@@ -471,12 +584,12 @@ const Trackers = () => {
                           </div>
                         </Popup>
                       </Marker>
-                    );
-                  })}
-                </MapContainer>
+                    ))}
+                  </MapContainer>
+                </>
               );
             }
-            
+
             return (
               <div className="map-placeholder">
                 <div className="map-loading">
@@ -484,14 +597,13 @@ const Trackers = () => {
                     <div className="loading-spinner">Loading map data...</div>
                   ) : (
                     <div className="no-data">
+                      <div className="no-data-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="currentColor"/>
+                        </svg>
+                      </div>
                       <h3>No tracker locations available</h3>
-                      <p>Tracker location data will appear here when available</p>
-                      {Object.keys(mergedTrackerLocations).length > 0 && (
-                        <div style={{marginTop: '10px', fontSize: '12px', color: 'rgba(255,255,255,0.7)'}}>
-                          Debug: {Object.keys(mergedTrackerLocations).length} locations found, but coordinates invalid
-                          <br />WebSocket: {wsConnected ? 'Connected ✅' : 'Disconnected ❌'}
-                        </div>
-                      )}
+                      <p>Location data will appear here as soon as a device reports in.</p>
                     </div>
                   )}
                 </div>
@@ -506,17 +618,28 @@ const Trackers = () => {
         <div className="modal-overlay" onClick={handleCancel}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Register New Tracker</h2>
-              <button className="modal-close" onClick={handleCancel} type="button">×</button>
+              <div className="modal-header-title">
+                <div className="modal-header-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h2>Register New Tracker</h2>
+                  <p>Add a device to start monitoring it</p>
+                </div>
+              </div>
+              <button className="modal-close" onClick={handleCancel} type="button" aria-label="Close">×</button>
             </div>
             
             <form onSubmit={handleSubmit} className="tracker-form">
               <div className="form-group">
-                <label htmlFor="tracker_name">Tracker Name:</label>
+                <label htmlFor="tracker_name">Tracker Name</label>
                 <input
                   type="text"
                   id="tracker_name"
                   name="tracker_name"
+                  placeholder="e.g. Truck 12 Trailer"
                   value={formData.tracker_name}
                   onChange={handleInputChange}
                   required
@@ -525,11 +648,12 @@ const Trackers = () => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="tracker_id">Tracker ID:</label>
+                <label htmlFor="tracker_id">Tracker ID</label>
                 <input
                   type="text"
                   id="tracker_id"
                   name="tracker_id"
+                  placeholder="e.g. J95720"
                   value={formData.tracker_id}
                   onChange={handleInputChange}
                   required
@@ -538,11 +662,12 @@ const Trackers = () => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="device_type">Device Type:</label>
+                <label htmlFor="device_type">Device Type</label>
                 <input
                   type="text"
                   id="device_type"
                   name="device_type"
+                  placeholder="e.g. GPS Beacon"
                   value={formData.device_type}
                   onChange={handleInputChange}
                   required
@@ -551,11 +676,12 @@ const Trackers = () => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="model_number">Model Number:</label>
+                <label htmlFor="model_number">Model Number</label>
                 <input
                   type="text"
                   id="model_number"
                   name="model_number"
+                  placeholder="e.g. GL300-2024"
                   value={formData.model_number}
                   onChange={handleInputChange}
                   required
@@ -563,7 +689,14 @@ const Trackers = () => {
                 />
               </div>
 
-              {error && <div className="error-message">{error}</div>}
+              {error && (
+                <div className="error-message">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  <span>{error}</span>
+                </div>
+              )}
 
               <div className="form-buttons">
                 <button 

@@ -2,8 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+import 'leaflet.markercluster';
 import './Shipments.css';
-import { TriangleAlert } from 'lucide-react';
+import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
@@ -17,10 +20,112 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
+// A single, non-clustered shipment on the overview map. Scheduled-but-not-started
+// shipments get a distinct gray/clock treatment (matching the "pending" status
+// badge elsewhere in this page) so they read as "not moving yet" at a glance,
+// not just by color — the icon itself changes too.
+const createShipmentPointIcon = (isPending = false) => {
+  const iconSvg = isPending
+    ? renderToStaticMarkup(<Clock size={13} color="#fff" strokeWidth={2.4} />)
+    : renderToStaticMarkup(<Package size={13} color="#fff" strokeWidth={2.4} />);
+  const background = isPending ? '#64748b' : '#2563eb';
+  return L.divIcon({
+    className: `shipment-point-marker${isPending ? ' shipment-point-marker--pending' : ''}`,
+    html: `
+      <div style="
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: ${background};
+        box-shadow: 0 2px 6px rgba(0,0,0,0.32), 0 0 0 2px rgba(255,255,255,0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      ">${iconSvg}</div>
+    `,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -13],
+  });
+};
+
+// Cluster bubble: size scales with how many shipments it represents, so a
+// glance at the map communicates relative density before anyone zooms in.
+const createShipmentClusterIcon = (count) => {
+  let size = 38, fontSize = 13;
+  if (count >= 50) {
+    size = 56; fontSize = 18;
+  } else if (count >= 10) {
+    size = 46; fontSize = 15;
+  }
+  return L.divIcon({
+    className: 'shipment-cluster-marker',
+    html: `
+      <div style="
+        width: ${size}px;
+        height: ${size}px;
+        border-radius: 50%;
+        background: rgba(37, 99, 235, 0.9);
+        border: 3px solid #fff;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 700;
+        font-family: Arial, sans-serif;
+        font-size: ${fontSize}px;
+      ">${count}</div>
+    `,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+};
+
+// Imperative Leaflet layer: react-leaflet has no first-class clustering
+// primitive, so this drives leaflet.markercluster directly via useMap()
+// and rebuilds its markers whenever the point set changes.
+const ShipmentClusterLayer = ({ points, onSelect }) => {
+  const map = useMap();
+  const clusterGroupRef = useRef(null);
+
+  useEffect(() => {
+    const clusterGroup = L.markerClusterGroup({
+      maxClusterRadius: 60,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      iconCreateFunction: (cluster) => createShipmentClusterIcon(cluster.getChildCount()),
+    });
+    clusterGroupRef.current = clusterGroup;
+    map.addLayer(clusterGroup);
+    return () => {
+      map.removeLayer(clusterGroup);
+      clusterGroupRef.current = null;
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const clusterGroup = clusterGroupRef.current;
+    if (!clusterGroup) return;
+    clusterGroup.clearLayers();
+    points.forEach(({ shipment, lat, lng, isPending }) => {
+      const marker = L.marker([lat, lng], { icon: createShipmentPointIcon(isPending) });
+      marker.on('click', () => onSelect(shipment));
+      clusterGroup.addLayer(marker);
+    });
+  }, [points, onSelect]);
+
+  return null;
+};
+
 const Shipments = () => {
   const { user, isAuthenticated, loading } = useAuth();
   const { connected: wsConnected, sensorData } = useWebSocketContext();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // On phones, start with the panel collapsed to a bottom bar so the map is
+  // visible immediately; desktop/tablet keeps the panel open as before.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth <= 768
+  );
   const [selectAll, setSelectAll] = useState(false);
   const [selectedShipments, setSelectedShipments] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,6 +133,8 @@ const Shipments = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [shipments, setShipments] = useState([]);
   const [trackers, setTrackers] = useState([]);
+  // Latest known {lat, lng} per trackerId, used to plot all shipments on the overview map
+  const [trackerLocations, setTrackerLocations] = useState({});
   const [selectedTracker, setSelectedTracker] = useState('');
   const [formData, setFormData] = useState({
     legs: [{
@@ -63,6 +170,7 @@ const Shipments = () => {
   // Add state for geocoded leg coordinates and geofence radii
   const [legCoordinates, setLegCoordinates] = useState({});
   const [geofenceRadii, setGeofenceRadii] = useState({});
+  const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
   
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -127,17 +235,203 @@ const Shipments = () => {
     fetchTrackers();
   }, [loading]); // Only depend on loading from AuthContext
 
+  // Bulk-fetch the latest GPS position for every tracker, so the overview map
+  // can plot where all shipments currently are without opening each one.
+  useEffect(() => {
+    if (loading) return;
+
+    let cancelled = false;
+    const fetchTrackerLocations = async () => {
+      try {
+        const data = await trackerApi.getLocations();
+        if (!cancelled) setTrackerLocations(data || {});
+      } catch (error) {
+        console.error('Error fetching tracker locations:', error);
+      }
+    };
+
+    fetchTrackerLocations();
+    const intervalId = setInterval(fetchTrackerLocations, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [loading]);
+
+  // Keep overview positions fresh in real time from the same WebSocket feed
+  // used for the single-shipment detail view (sensorData is keyed by trackerId for ALL trackers).
+  useEffect(() => {
+    const trackerIds = Object.keys(sensorData || {});
+    if (trackerIds.length === 0) return;
+
+    setTrackerLocations(prev => {
+      let changed = false;
+      const next = { ...prev };
+      trackerIds.forEach(trackerId => {
+        const payload = sensorData[trackerId];
+        const reading = Array.isArray(payload?.data) && payload.data.length > 0
+          ? payload.data[payload.data.length - 1]
+          : payload;
+        const lat = reading?.Lat ?? reading?.latitude;
+        const lng = reading?.Lng ?? reading?.longitude;
+        if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
+          next[trackerId] = {
+            tracker_id: trackerId,
+            latitude: parseFloat(lat),
+            longitude: parseFloat(lng),
+            timestamp: reading?.DT ?? reading?.timestamp ?? new Date().toISOString(),
+          };
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [sensorData]);
+
   // Filter shipments based on search term
-  const filteredShipments = shipments.filter(shipment => {
+  const filteredShipments = useMemo(() => shipments.filter(shipment => {
     const trackerId = shipment.trackerId?.toString().toLowerCase() || '';
     const shipFromAddress = shipment.legs?.[0]?.shipFromAddress?.toLowerCase() || '';
     const stopAddress = shipment.legs?.[shipment.legs.length - 1]?.stopAddress?.toLowerCase() || '';
     const searchLower = searchTerm.toLowerCase();
-    
+
     return trackerId.includes(searchLower) ||
            shipFromAddress.includes(searchLower) ||
            stopAddress.includes(searchLower);
-  });
+  }), [shipments, searchTerm]);
+
+  // Helper function to get shipment status
+  const getShipmentStatus = (shipment) => {
+    // Simple logic to determine status based on dates
+    const now = new Date();
+    const shipDate = new Date(shipment.legs?.[0]?.shipDate);
+    const arrivalDate = new Date(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate);
+
+    if (now < shipDate) return 'Pending';
+    if (now >= shipDate && now < arrivalDate) return 'In Transit';
+    return 'Delivered';
+  };
+
+  // Delivered shipments don't have a "current" GPS fix worth showing (their
+  // tracker has likely moved on to a new shipment), so each one is anchored
+  // to its own last-known position from its own ship/arrival window instead
+  // of the tracker's live location. Cached per shipment id since it never
+  // changes once fetched.
+  const [deliveredShipmentPositions, setDeliveredShipmentPositions] = useState({});
+  const fetchedDeliveredPositionIdsRef = useRef(new Set());
+
+  useEffect(() => {
+    const toFetch = filteredShipments.filter(shipment => {
+      if (getShipmentStatus(shipment) !== 'Delivered') return false;
+      if (fetchedDeliveredPositionIdsRef.current.has(shipment._id)) return false;
+      const trackerId = shipment.trackerId;
+      const shipDate = shipment.legs?.[0]?.shipDate;
+      const arrivalDate = shipment.legs?.[shipment.legs.length - 1]?.arrivalDate;
+      return Boolean(trackerId && shipDate && arrivalDate);
+    });
+    if (toFetch.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(toFetch.map(async shipment => {
+        const trackerId = shipment.trackerId;
+        const shipDate = shipment.legs?.[0]?.shipDate;
+        const arrivalDate = shipment.legs?.[shipment.legs.length - 1]?.arrivalDate;
+        try {
+          const data = await shipmentApi.getRouteData(trackerId, shipDate, arrivalDate, userTimezone);
+          const lastRecord = Array.isArray(data) && data.length > 0 ? data[data.length - 1] : null;
+          const lat = parseFloat(lastRecord?.latitude ?? lastRecord?.Lat ?? lastRecord?.lat);
+          const lng = parseFloat(lastRecord?.longitude ?? lastRecord?.Lng ?? lastRecord?.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          // Only mark as fetched once we actually have a position — a failed
+          // or empty response shouldn't permanently suppress retries, or the
+          // shipment gets stuck falling back to the tracker's live location.
+          fetchedDeliveredPositionIdsRef.current.add(shipment._id);
+          return [shipment._id, { latitude: lat, longitude: lng }];
+        } catch (error) {
+          console.error(`Error fetching last position for shipment ${shipment._id}:`, error);
+          return null;
+        }
+      }));
+      if (cancelled) return;
+      const validEntries = entries.filter(Boolean);
+      if (validEntries.length === 0) return;
+      setDeliveredShipmentPositions(prev => ({ ...prev, ...Object.fromEntries(validEntries) }));
+    })();
+
+    return () => { cancelled = true; };
+  }, [filteredShipments, userTimezone]);
+
+  // Scheduled-but-not-started shipments haven't produced any GPS fix yet, so
+  // their tracker's "live" location is really wherever the device sat after
+  // its *previous* shipment — misleading. Anchor them to their planned origin
+  // address instead (geocoded via MapTiler, same as the leg pins in the
+  // detail view). Cached per shipment id since the origin address is static.
+  const [pendingShipmentPositions, setPendingShipmentPositions] = useState({});
+  const fetchedPendingPositionIdsRef = useRef(new Set());
+
+  useEffect(() => {
+    const toFetch = filteredShipments.filter(shipment => {
+      if (getShipmentStatus(shipment) !== 'Pending') return false;
+      if (fetchedPendingPositionIdsRef.current.has(shipment._id)) return false;
+      return Boolean(shipment.legs?.[0]?.shipFromAddress);
+    });
+    if (toFetch.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(toFetch.map(async shipment => {
+        const address = shipment.legs[0].shipFromAddress;
+        try {
+          const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(address)}.json?key=${MAPTILER_API_KEY}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          const feature = data?.features?.[0];
+          if (!feature) return null;
+          // Only mark as fetched once we actually have a position — a failed
+          // or empty response shouldn't permanently suppress retries, or the
+          // shipment gets stuck falling back to the tracker's live location.
+          fetchedPendingPositionIdsRef.current.add(shipment._id);
+          return [shipment._id, { latitude: feature.geometry.coordinates[1], longitude: feature.geometry.coordinates[0] }];
+        } catch (error) {
+          console.error(`Error geocoding origin for shipment ${shipment._id}:`, error);
+          return null;
+        }
+      }));
+      if (cancelled) return;
+      const validEntries = entries.filter(Boolean);
+      if (validEntries.length === 0) return;
+      setPendingShipmentPositions(prev => ({ ...prev, ...Object.fromEntries(validEntries) }));
+    })();
+
+    return () => { cancelled = true; };
+  }, [filteredShipments]);
+
+  // Shipments with a known position, for the clustered overview map.
+  // - Delivered: own historical last-known position (avoids collapsing onto
+  //   a reused tracker's current spot).
+  // - Pending: geocoded planned origin (the tracker hasn't started moving on
+  //   this shipment yet, so its live position isn't relevant).
+  // - In Transit: tracker's live location.
+  // Any of these fall back to the tracker's live location if their preferred
+  // position isn't available yet, rather than hiding the shipment.
+  const shipmentMapPoints = useMemo(() => {
+    return filteredShipments
+      .map(shipment => {
+        const status = getShipmentStatus(shipment);
+        if (status === 'Delivered') {
+          const pos = deliveredShipmentPositions[shipment._id];
+          if (pos) return { shipment, lat: pos.latitude, lng: pos.longitude, isPending: false };
+        } else if (status === 'Pending') {
+          const pos = pendingShipmentPositions[shipment._id];
+          if (pos) return { shipment, lat: pos.latitude, lng: pos.longitude, isPending: true };
+        }
+        const loc = trackerLocations[shipment.trackerId] ?? trackerLocations[String(shipment.trackerId)];
+        if (!loc) return null;
+        return { shipment, lat: loc.latitude, lng: loc.longitude, isPending: status === 'Pending' };
+      })
+      .filter(Boolean);
+  }, [filteredShipments, trackerLocations, deliveredShipmentPositions, pendingShipmentPositions]);
 
   const handleSelectAll = () => {
     if (selectAll) {
@@ -319,7 +613,7 @@ const Shipments = () => {
       handleCancelForm();
     } catch (error) {
       console.error('Error:', error);
-      alert('An error occurred while creating the shipment.');
+      alert(error.message || 'An error occurred while creating the shipment.');
     }
   };
 
@@ -349,17 +643,6 @@ const Shipments = () => {
     } catch {
       return 'Invalid Date';
     }
-  };
-  // Helper function to get shipment status
-  const getShipmentStatus = (shipment) => {
-    // Simple logic to determine status based on dates
-    const now = new Date();
-    const shipDate = new Date(shipment.legs?.[0]?.shipDate);
-    const arrivalDate = new Date(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate);
-    
-    if (now < shipDate) return 'Pending';
-    if (now >= shipDate && now < arrivalDate) return 'In Transit';
-    return 'Delivered';
   };
   // Handle shipment detail view
   const handleShipmentClick = async (shipment) => {
@@ -766,6 +1049,25 @@ const Shipments = () => {
     
     return points;
   };
+
+  // Helper function to get the coordinates of the last (current) data point,
+  // used to draw the endpoint marker on each sparkline
+  const getLastPoint = (data, valueKey, maxHeight = 60, maxWidth = 300) => {
+    if (!data || data.length === 0) return null;
+
+    const values = data.map(item => item[valueKey]).filter(val => val !== null && !isNaN(val));
+    if (values.length === 0) return null;
+
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const range = maxValue - minValue || 1;
+    const lastIndex = values.length - 1;
+
+    const x = values.length > 1 ? (lastIndex / (values.length - 1)) * maxWidth : maxWidth;
+    const y = maxHeight - ((values[lastIndex] - minValue) / range) * (maxHeight - 10) - 5;
+
+    return { x, y };
+  };
   // Helper function to get current value
   const getCurrentValue = (data, valueKey) => {
     if (!data || data.length === 0) return 'N/A';
@@ -1040,6 +1342,38 @@ const Shipments = () => {
     return null;
   };
 
+  // Keeps the world map filling the container width with no gaps on either side
+  const MapFitWidthHandler = () => {
+    const map = useMap();
+
+    useEffect(() => {
+      const applyMinZoom = () => {
+        const width = map.getSize().x;
+        if (!width) return;
+        // Fractional zoom so the world map's pixel width matches the
+        // container width exactly (no gaps, no cropping from over-zooming).
+        const minZoom = Math.max(2, Math.log2(width / 256));
+        map.setMinZoom(minZoom);
+        if (map.getZoom() < minZoom) {
+          map.setZoom(minZoom);
+        }
+      };
+
+      applyMinZoom();
+      map.on('resize', applyMinZoom);
+
+      const handleWindowResize = () => map.invalidateSize();
+      window.addEventListener('resize', handleWindowResize);
+
+      return () => {
+        map.off('resize', applyMinZoom);
+        window.removeEventListener('resize', handleWindowResize);
+      };
+    }, [map]);
+
+    return null;
+  };
+
   // MapTiler Geocoding Control React wrapper
   const MapTilerGeocodingControl = ({ apiKey }) => {
     const map = useMap();
@@ -1069,36 +1403,87 @@ const Shipments = () => {
     return null;
   };
 
-  // Helper to create a numbered marker icon for legs (origin, stops, destination)
-  const createNumberedMarkerIcon = (number, isFirst, isLast) => {
-    let bg = "#1976d2";
-    if (isFirst) bg = "#28a745";
-    if (isLast) bg = "#dc3545";
+  // Teardrop pin for fixed points (origin/destination) — icon names the role instead of relying on color alone
+  const createPinIcon = (role) => {
+    const { bg, Icon } = role === 'origin'
+      ? { bg: '#16a34a', Icon: Package }
+      : { bg: '#dc2626', Icon: Flag };
+    const iconSvg = renderToStaticMarkup(<Icon size={15} color="#fff" strokeWidth={2.4} />);
+
     return L.divIcon({
-      className: 'numbered-marker',
+      className: `pin-marker pin-${role}`,
+      html: `
+        <div style="
+          width: 32px;
+          height: 32px;
+          transform: rotate(-45deg);
+          border-radius: 50% 50% 50% 0;
+          background: ${bg};
+          box-shadow: 0 3px 8px rgba(0,0,0,0.28), 0 0 0 2px rgba(255,255,255,0.85);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">
+          <div style="transform: rotate(45deg); display: flex;">${iconSvg}</div>
+        </div>
+      `,
+      iconSize: [32, 32],
+      iconAnchor: [16, 32],
+      popupAnchor: [0, -30],
+    });
+  };
+
+  // Small numbered dot for intermediate stops between origin and destination
+  const createWaypointIcon = (number) => {
+    return L.divIcon({
+      className: 'waypoint-marker',
       html: `<div style="
-        background: ${bg};
+        background: #64748b;
         color: #fff;
         border-radius: 50%;
-        width: 28px;
-        height: 28px;
+        width: 22px;
+        height: 22px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: bold;
-        font-size: 15px;
+        font-size: 11px;
         border: 2px solid #fff;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         font-family: Arial, sans-serif;
       ">${number}</div>`,
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
-      popupAnchor: [0, -14],
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+      popupAnchor: [0, -11],
+    });
+  };
+
+  // Pulsing dot for the tracker's live GPS position — the one marker on the map that actually moves
+  const createLiveMarkerIcon = () => {
+    const iconSvg = renderToStaticMarkup(<Truck size={11} color="#fff" strokeWidth={2.6} />);
+    return L.divIcon({
+      className: 'live-marker',
+      html: `
+        <div class="live-marker-pulse"></div>
+        <div style="
+          position: relative;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: #2563eb;
+          box-shadow: 0 0 0 3px rgba(255,255,255,0.9), 0 3px 8px rgba(0,0,0,0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">${iconSvg}</div>
+      `,
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
+      popupAnchor: [0, -10],
     });
   };
 
   // Geocode all legs for selectedShipmentDetail (fix: use MapTiler API for better reliability)
-  const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
   const [legPoints, setLegPoints] = useState([]);
 
   useEffect(() => {
@@ -1307,13 +1692,40 @@ const Shipments = () => {
       </div>
 
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
-        <button 
+        <button
           className="collapse-btn"
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          aria-label={sidebarCollapsed ? 'Expand panel' : 'Collapse panel'}
+          aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed ? 'Expand panel' : 'Collapse panel'}
         >
-          {sidebarCollapsed ? '→' : '←'}
-        </button>        
-        {!sidebarCollapsed && (
+          {sidebarCollapsed ? <ChevronRight size={14} strokeWidth={2.5} /> : <ChevronLeft size={14} strokeWidth={2.5} />}
+        </button>
+        {sidebarCollapsed ? (
+          <div className="sidebar-rail">
+            <div className="sidebar-rail-logo" title="Shipments">
+              <Package size={17} strokeWidth={2.2} />
+            </div>
+            <span className="sidebar-rail-count">{filteredShipments.length}</span>
+            <div className="sidebar-rail-divider" />
+            <button
+              className="sidebar-rail-btn"
+              onClick={() => setSidebarCollapsed(false)}
+              title="New shipment"
+              aria-label="New shipment"
+            >
+              <Plus size={16} strokeWidth={2.3} />
+            </button>
+            <button
+              className="sidebar-rail-btn"
+              onClick={() => setSidebarCollapsed(false)}
+              title="Search shipments"
+              aria-label="Search shipments"
+            >
+              <Search size={16} strokeWidth={2.3} />
+            </button>
+          </div>
+        ) : (
           <div className="sidebar-content">
             {selectedShipmentDetail ? (
               // Shipment Detail View
@@ -1409,180 +1821,71 @@ const Shipments = () => {
                       Trips
                     </button>
                   </div>                  <div className="tab-content">
-                    {activeTab === 'sensors' && (
-                      <div className="sensors-content">
-                        {isLoadingSensorData ? (
-                          <div className="list-state-msg">
-                            <div className="list-spinner"></div>
-                            Loading sensor data…
-                          </div>
-                        ) : (
-                          <div className="sensor-charts">
+                    {activeTab === 'sensors' && (() => {
+                      const sensorRows = [
+                        { key: 'temp', label: 'Temperature', data: temperatureData, field: 'temperature', unit: '°C', color: '#ef4444', fill: 'rgba(239,68,68,0.08)' },
+                        { key: 'humidity', label: 'Humidity', data: humidityData, field: 'humidity', unit: '%', color: '#3b82f6', fill: 'rgba(59,130,246,0.08)' },
+                        { key: 'battery', label: 'Battery', data: batteryData, field: 'battery', unit: '%', color: '#22c55e', fill: 'rgba(34,197,94,0.08)' },
+                        { key: 'speed', label: 'Speed', data: speedData, field: 'speed', unit: ' km/h', color: '#ea580c', fill: 'rgba(234,88,12,0.08)' },
+                        { key: 'light', label: 'Light', data: lightData, field: 'light', unit: ' Lux', color: '#ca8a04', fill: 'rgba(202,138,4,0.08)' },
+                      ];
+                      const CHART_H = 64;
 
-                            {/* Temperature */}
-                            <div className="sensor-card sensor-card--temp">
-                              <div className="sensor-card-header">
-                                <span className="sensor-name">Temperature</span>
-                                <span className="sensor-value">
-                                  {typeof getCurrentValue(temperatureData, 'temperature') === 'number'
-                                    ? getCurrentValue(temperatureData, 'temperature').toFixed(1) + '°C'
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="sensor-chart-area">
-                                <svg
-                                  width="100%" height="56" viewBox="0 0 300 56"
-                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                  onMouseMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Temperature', e)}
-                                  onTouchStart={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                  onTouchMove={(e) => handleChartInteraction(e, temperatureData, 'temperature', 'Temperature', '°C')}
-                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Temperature', e)}
-                                >
-                                  {temperatureData.length > 0 ? (
-                                    <>
-                                      <polygon fill="rgba(239,68,68,0.12)" points={generateSVGPath(temperatureData, 'temperature') + ' 300,56 0,56'} />
-                                      <polyline fill="none" stroke="#ef4444" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(temperatureData, 'temperature')} />
-                                    </>
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
-                                  )}
-                                </svg>
-                              </div>
+                      return (
+                        <div className="sensors-content">
+                          {isLoadingSensorData ? (
+                            <div className="list-state-msg">
+                              <div className="list-spinner"></div>
+                              Loading sensor data…
                             </div>
-
-                            {/* Humidity */}
-                            <div className="sensor-card sensor-card--humidity">
-                              <div className="sensor-card-header">
-                                <span className="sensor-name">Humidity</span>
-                                <span className="sensor-value">
-                                  {typeof getCurrentValue(humidityData, 'humidity') === 'number'
-                                    ? getCurrentValue(humidityData, 'humidity').toFixed(1) + '%'
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="sensor-chart-area">
-                                <svg
-                                  width="100%" height="56" viewBox="0 0 300 56"
-                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                  onMouseMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Humidity', e)}
-                                  onTouchStart={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                  onTouchMove={(e) => handleChartInteraction(e, humidityData, 'humidity', 'Humidity', '%')}
-                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Humidity', e)}
-                                >
-                                  {humidityData.length > 0 ? (
-                                    <>
-                                      <polygon fill="rgba(59,130,246,0.12)" points={generateSVGPath(humidityData, 'humidity') + ' 300,56 0,56'} />
-                                      <polyline fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(humidityData, 'humidity')} />
-                                    </>
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
-                                  )}
-                                </svg>
-                              </div>
+                          ) : (
+                            <div className="sensor-charts">
+                              {sensorRows.map((row) => {
+                                const lastPoint = getLastPoint(row.data, row.field, CHART_H);
+                                const currentValue = getCurrentValue(row.data, row.field);
+                                return (
+                                  <div key={row.key} className={`sensor-card sensor-card--${row.key}`}>
+                                    <div className="sensor-card-header">
+                                      <span className="sensor-name">
+                                        <span className={`sensor-dot sensor-dot--${row.key}`}></span>
+                                        {row.label}
+                                      </span>
+                                      <span className="sensor-value">
+                                        {typeof currentValue === 'number' ? currentValue.toFixed(1) + row.unit : '—'}
+                                      </span>
+                                    </div>
+                                    <div className="sensor-chart-area">
+                                      <svg
+                                        width="100%" height={CHART_H} viewBox={`0 0 300 ${CHART_H}`} preserveAspectRatio="none"
+                                        style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
+                                        onMouseMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
+                                        onMouseLeave={(e) => handleChartLeaveOrEnd(row.label, e)}
+                                        onTouchStart={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
+                                        onTouchMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
+                                        onTouchEnd={(e) => handleChartLeaveOrEnd(row.label, e)}
+                                      >
+                                        {row.data.length > 0 ? (
+                                          <>
+                                            <line x1="0" y1={CHART_H - 1} x2="300" y2={CHART_H - 1} stroke="var(--color-border)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                                            <polygon fill={row.fill} points={generateSVGPath(row.data, row.field, CHART_H) + ` 300,${CHART_H} 0,${CHART_H}`} />
+                                            <polyline fill="none" stroke={row.color} strokeWidth="1" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" points={generateSVGPath(row.data, row.field, CHART_H)} />
+                                            {lastPoint && (
+                                              <circle cx={lastPoint.x} cy={lastPoint.y} r="2.25" fill={row.color} stroke="#fff" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                                            )}
+                                          </>
+                                        ) : (
+                                          <text x="150" y={CHART_H / 2} textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
+                                        )}
+                                      </svg>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-
-                            {/* Battery */}
-                            <div className="sensor-card sensor-card--battery">
-                              <div className="sensor-card-header">
-                                <span className="sensor-name">Battery</span>
-                                <span className="sensor-value">
-                                  {typeof getCurrentValue(batteryData, 'battery') === 'number'
-                                    ? getCurrentValue(batteryData, 'battery').toFixed(1) + '%'
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="sensor-chart-area">
-                                <svg
-                                  width="100%" height="56" viewBox="0 0 300 56"
-                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                  onMouseMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Battery', e)}
-                                  onTouchStart={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                  onTouchMove={(e) => handleChartInteraction(e, batteryData, 'battery', 'Battery', '%')}
-                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Battery', e)}
-                                >
-                                  {batteryData.length > 0 ? (
-                                    <>
-                                      <polygon fill="rgba(34,197,94,0.12)" points={generateSVGPath(batteryData, 'battery') + ' 300,56 0,56'} />
-                                      <polyline fill="none" stroke="#22c55e" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(batteryData, 'battery')} />
-                                    </>
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
-                                  )}
-                                </svg>
-                              </div>
-                            </div>
-
-                            {/* Speed */}
-                            <div className="sensor-card sensor-card--speed">
-                              <div className="sensor-card-header">
-                                <span className="sensor-name">Speed</span>
-                                <span className="sensor-value">
-                                  {typeof getCurrentValue(speedData, 'speed') === 'number'
-                                    ? getCurrentValue(speedData, 'speed').toFixed(1) + ' km/h'
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="sensor-chart-area">
-                                <svg
-                                  width="100%" height="56" viewBox="0 0 300 56"
-                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                  onMouseMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Speed', e)}
-                                  onTouchStart={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                  onTouchMove={(e) => handleChartInteraction(e, speedData, 'speed', 'Speed', ' km/h')}
-                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Speed', e)}
-                                >
-                                  {speedData.length > 0 ? (
-                                    <>
-                                      <polygon fill="rgba(234,88,12,0.12)" points={generateSVGPath(speedData, 'speed') + ' 300,56 0,56'} />
-                                      <polyline fill="none" stroke="#ea580c" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(speedData, 'speed')} />
-                                    </>
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
-                                  )}
-                                </svg>
-                              </div>
-                            </div>
-
-                            {/* Light */}
-                            <div className="sensor-card sensor-card--light">
-                              <div className="sensor-card-header">
-                                <span className="sensor-name">Light</span>
-                                <span className="sensor-value">
-                                  {typeof getCurrentValue(lightData, 'light') === 'number'
-                                    ? getCurrentValue(lightData, 'light').toFixed(1) + ' Lux'
-                                    : '—'}
-                                </span>
-                              </div>
-                              <div className="sensor-chart-area">
-                                <svg
-                                  width="100%" height="56" viewBox="0 0 300 56"
-                                  style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                  onMouseMove={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
-                                  onMouseLeave={(e) => handleChartLeaveOrEnd('Light', e)}
-                                  onTouchStart={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
-                                  onTouchMove={(e) => handleChartInteraction(e, lightData, 'light', 'Light', ' Lux')}
-                                  onTouchEnd={(e) => handleChartLeaveOrEnd('Light', e)}
-                                >
-                                  {lightData.length > 0 ? (
-                                    <>
-                                      <polygon fill="rgba(202,138,4,0.12)" points={generateSVGPath(lightData, 'light') + ' 300,56 0,56'} />
-                                      <polyline fill="none" stroke="#ca8a04" strokeWidth="2" strokeLinejoin="round" points={generateSVGPath(lightData, 'light')} />
-                                    </>
-                                  ) : (
-                                    <text x="150" y="30" textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="var(--font-sans)">No data</text>
-                                  )}
-                                </svg>
-                              </div>
-                            </div>
-
-                          </div>
-                        )}
-                      </div>
-                    )}
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {activeTab === 'alerts' && (
                       <div className="alerts-content">
@@ -1593,6 +1896,7 @@ const Shipments = () => {
                             {selectedShipmentDetail.legs[0].alertPresets.map((preset, index) => (
                               <div key={index} className="alert-card alert-card--configured">
                                 <div className="alert-card-header">
+                                  <span className="alert-dot alert-dot--configured"></span>
                                   <span className="alert-card-name">{preset.name}</span>
                                   <span className="alert-badge alert-badge--active">Active</span>
                                 </div>
@@ -1625,6 +1929,7 @@ const Shipments = () => {
                                 }`}
                               >
                                 <div className="alert-card-header">
+                                  <span className={`alert-dot ${alert.severity === 'critical' ? 'alert-dot--critical' : 'alert-dot--warning'}`}></span>
                                   <span className="alert-card-name">{alert.alertName}</span>
                                   <span className={`alert-badge ${alert.severity === 'critical' ? 'alert-badge--critical' : 'alert-badge--warning'}`}>
                                     {alert.severity === 'critical' ? 'Critical' : 'Warning'}
@@ -1940,10 +2245,14 @@ const Shipments = () => {
           ref={mapRef}
           center={[20, 0]} // Default world view
           zoom={2}
-          minZoom={1}
+          minZoom={2}
           maxZoom={18}
+          zoomSnap={0.1}
+          zoomDelta={1}
           style={{ height: '100%', width: '100%' }}
-          worldCopyJump={true}
+          worldCopyJump={false}
+          maxBounds={[[-90, -180], [90, 180]]}
+          maxBoundsViscosity={1.0}
           preferCanvas={true}
           key={selectedShipmentDetail ? `detail-${selectedShipmentDetail.trackerId}` : 'overview'}
         >
@@ -1952,13 +2261,22 @@ const Shipments = () => {
             url={`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_API_KEY}`}
             tileSize={512}
             zoomOffset={-1}
-            minZoom={1}
+            minZoom={2}
             attribution='<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a>, <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>'
             crossOrigin={true}
             maxZoom={19}
+            noWrap={true}
           />
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
           <MapBoundsHandler />
+          <MapFitWidthHandler />
+
+          {/* Overview mode: cluster every shipment by current location. Clicking a
+              lone marker drills into that shipment; clicking a cluster zooms in,
+              splitting it into smaller clusters (e.g. by state) as you zoom. */}
+          {!selectedShipmentDetail && shipmentMapPoints.length > 0 && (
+            <ShipmentClusterLayer points={shipmentMapPoints} onSelect={handleShipmentClick} />
+          )}
 
           {/* Show geofence circles for each leg with alertPresets */}
           {selectedShipmentDetail && selectedShipmentDetail.legs && selectedShipmentDetail.legs.map((leg, legIndex) => {
@@ -1996,24 +2314,34 @@ const Shipments = () => {
             );
           })}
 
-          {/* Show all leg markers */}
-          {selectedShipmentDetail && legPoints.length > 0 && legPoints.map((point, idx) => (
-            <Marker
-              key={`leg-marker-${idx}`}
-              position={[point.lat, point.lng]}
-              icon={createNumberedMarkerIcon(point.number, idx === 0, idx === legPoints.length - 1)}
-            >
-              <Popup>
-                <div>
-                  <strong>
-                    {idx === 0 ? 'Origin' : (idx === legPoints.length - 1 ? 'Destination' : `Stop ${idx}`)}
-                  </strong>
-                  <br />
-                  {point.address}
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+          {/* Show all leg markers: origin + destination as role pins, intermediate stops as numbered waypoints */}
+          {selectedShipmentDetail && legPoints.length > 0 && legPoints.map((point, idx) => {
+            const isFirst = idx === 0;
+            const isLast = idx === legPoints.length - 1;
+            return (
+              <Marker
+                key={`leg-marker-${idx}`}
+                position={[point.lat, point.lng]}
+                icon={isFirst ? createPinIcon('origin') : isLast ? createPinIcon('destination') : createWaypointIcon(idx)}
+              >
+                <Popup>
+                  <div>
+                    <strong>
+                      {isFirst ? 'Origin' : (isLast ? 'Destination' : `Stop ${idx}`)}
+                    </strong>
+                    <br />
+                    {point.address}
+                    {isFirst && locationData.length > 0 && (
+                      <>
+                        <br />
+                        First reading: {formatTimestamp(locationData[0].timestamp)}
+                      </>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
 
           {/* Show dashed planned route ONLY if no GPS data */}
           {selectedShipmentDetail && legPoints.length > 1 && locationData.length === 0 && (
@@ -2071,22 +2399,10 @@ const Shipments = () => {
                     }}
                   />
                 )}
-                {/* Red dot at current GPS */}
+                {/* Live position: origin/destination are already drawn as pins above, so only the moving tracker needs a marker here */}
                 <Marker
                   position={gpsPos}
-                  icon={L.divIcon({
-                    className: 'current-gps-dot',
-                    html: `<div style="
-                      width: 18px;
-                      height: 18px;
-                      background: #ff4444;
-                      border: 3px solid #fff;
-                      border-radius: 50%;
-                      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                    "></div>`,
-                    iconSize: [18, 18],
-                    iconAnchor: [9, 9]
-                  })}
+                  icon={createLiveMarkerIcon()}
                 >
                   <Popup>
                     <div>
@@ -2096,65 +2412,9 @@ const Shipments = () => {
                     </div>
                   </Popup>
                 </Marker>
-                {/* Green dot at start (origin) */}
-                <Marker
-                  position={[legPoints[0].lat, legPoints[0].lng]}
-                  icon={L.divIcon({
-                    className: 'origin-dot',
-                    html: `<div style="
-                      width: 18px;
-                      height: 18px;
-                      background: #28a745;
-                      border: 3px solid #fff;
-                      border-radius: 50%;
-                      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                    "></div>`,
-                    iconSize: [18, 18],
-                    iconAnchor: [9, 9]
-                  })}
-                >
-                  <Popup>
-                    <div>
-                      <strong>Origin</strong><br />
-                      {legPoints[0].address}
-                    </div>
-                  </Popup>
-                </Marker>
               </>
             );
           })()}
-
-          {/* Remove this: Show all leg markers and polyline for selected shipment (always, even if no sensor data) */}
-          {/* {selectedShipmentDetail && legPoints.length >  0 && (
-            <>
-              <Polyline
-                positions={legPoints.map(p => [p.lat, p.lng])}
-                pathOptions={{
-                  color: '#1976d2',
-                  weight: 3,
-                  opacity: 0.7,
-                  dashArray: '8, 8'
-                }}
-              />
-              {legPoints.map((point, idx) => (
-                <Marker
-                  key={`leg-marker-${idx}`}
-                  position={[point.lat, point.lng]}
-                  icon={createNumberedMarkerIcon(point.number, idx === 0, idx === legPoints.length - 1)}
-                >
-                  <Popup>
-                    <div>
-                      <strong>
-                        {idx === 0 ? 'Origin' : (idx === legPoints.length - 1 ? 'Destination' : `Stop ${idx}`)}
-                      </strong>
-                      <br />
-                      {point.address}
-                    </div>
-                  </Popup>
-                </Marker>
-              ))}
-            </>
-          )} */}
 
           {/* Show polyline for selected shipment */}
           {selectedShipmentDetail && locationData.length > 0 && (
@@ -2201,25 +2461,12 @@ const Shipments = () => {
                 </Marker>
               )}
               
-              {/* Start marker */}
-              {locationData.length > 0 && (
-                <Marker 
+              {/* Fallback start/end pins — only needed when there's no geocoded address to anchor the
+                  origin/destination pins above (e.g. a shipment with raw GPS but no leg addresses) */}
+              {legPoints.length === 0 && locationData.length > 0 && (
+                <Marker
                   position={[locationData[0].latitude, locationData[0].longitude]}
-                  icon={L.divIcon({
-                    className: 'route-marker start-marker',
-                    html: `
-                      <div style="
-                        width: 20px;
-                        height: 20px;
-                        background: #28a745;
-                        border: 3px solid #fff;
-                        border-radius: 50%;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                      "></div>
-                    `,
-                    iconSize: [20, 20],
-                    iconAnchor: [10, 10]
-                  })}
+                  icon={createPinIcon('origin')}
                 >
                   <Popup>
                     <div>
@@ -2230,26 +2477,11 @@ const Shipments = () => {
                   </Popup>
                 </Marker>
               )}
-              
-              {/* End marker */}
-              {locationData.length > 1 && (
-                <Marker 
+
+              {legPoints.length === 0 && locationData.length > 1 && (
+                <Marker
                   position={[locationData[locationData.length - 1].latitude, locationData[locationData.length - 1].longitude]}
-                  icon={L.divIcon({
-                    className: 'route-marker end-marker',
-                    html: `
-                      <div style="
-                        width: 20px;
-                        height: 20px;
-                        background: #dc3545;
-                        border: 3px solid #fff;
-                        border-radius: 50%;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                      "></div>
-                    `,
-                    iconSize: [20, 20],
-                    iconAnchor: [10, 10]
-                  })}
+                  icon={createPinIcon('destination')}
                 >
                   <Popup>
                     <div>
@@ -2289,19 +2521,29 @@ const Shipments = () => {
 
       {/* Modal for new shipment form */}
       {showNewShipmentForm && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3>Create New Shipment</h3>
+        <div className="sf-modal-overlay">
+          <div className="sf-modal-content">
+            <div className="sf-modal-header">
+              <div>
+                <h3>Create New Shipment</h3>
+                <p className="sf-modal-subtitle">Define the route, timing and tracker for this shipment</p>
+              </div>
+              <button type="button" className="sf-modal-close-btn" onClick={handleCancelForm} aria-label="Close">
+                ×
+              </button>
             </div>
-            <div className="modal-body">
+            <div className="sf-modal-body">
               {formData.legs.map((leg, index) => (
-                <div key={index} className="leg-section">
-                  <h4>Leg {index + 1}</h4>
-                  <div className="form-grid">
+                <div key={index} className="sf-leg-section">
+                  <div className="sf-leg-header">
+                    <span className="sf-leg-badge">{index + 1}</span>
+                    <h4>{index === 0 ? 'Leg 1 — Origin' : `Leg ${index + 1} — Stop`}</h4>
+                  </div>
+
+                  <div className="sf-form-row">
                     {index === 0 ? (
                       <>
-                        <div className="form-group">
+                        <div className="sf-form-group">
                           <label>Ship From Address *</label>
                           <input
                             type="text"
@@ -2310,7 +2552,7 @@ const Shipments = () => {
                             required
                           />
                         </div>
-                        <div className="form-group">
+                        <div className="sf-form-group">
                           <label>Stop Address *</label>
                           <input
                             type="text"
@@ -2321,7 +2563,7 @@ const Shipments = () => {
                         </div>
                       </>
                     ) : (
-                      <div className="form-group">
+                      <div className="sf-form-group">
                         <label>Ship To Address *</label>
                         <input
                           type="text"
@@ -2331,7 +2573,10 @@ const Shipments = () => {
                         />
                       </div>
                     )}
-                    <div className="form-group">
+                  </div>
+
+                  <div className="sf-form-row sf-form-row-dates">
+                    <div className="sf-form-group">
                       <label>Ship Date *</label>
                       <input
                         type="datetime-local"
@@ -2340,7 +2585,28 @@ const Shipments = () => {
                         required
                       />
                     </div>
-                    <div className="form-group">
+                    <div className="sf-form-group">
+                      <label>Arrival Date *</label>
+                      <input
+                        type="datetime-local"
+                        value={leg.arrivalDate}
+                        onChange={(e) => handleLegChange(index, 'arrivalDate', e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="sf-form-group">
+                      <label>Departure Date *</label>
+                      <input
+                        type="datetime-local"
+                        value={leg.departureDate}
+                        onChange={(e) => handleLegChange(index, 'departureDate', e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="sf-form-row">
+                    <div className="sf-form-group">
                       <label>Transport Mode *</label>
                       <select
                         value={leg.transportMode}
@@ -2353,7 +2619,7 @@ const Shipments = () => {
                         <option value="Sea">Sea</option>
                       </select>
                     </div>
-                    <div className="form-group">
+                    <div className="sf-form-group">
                       <label>Carrier *</label>
                       <input
                         type="text"
@@ -2362,52 +2628,28 @@ const Shipments = () => {
                         required
                       />
                     </div>
-                    <div className="form-group">
-                      <label>Arrival Date *</label>
-                      <input
-                        type="datetime-local"
-                        value={leg.arrivalDate}
-                        onChange={(e) => handleLegChange(index, 'arrivalDate', e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Departure Date *</label>
-                      <input
-                        type="datetime-local"
-                        value={leg.departureDate}
-                        onChange={(e) => handleLegChange(index, 'departureDate', e.target.value)}
-                        required
-                      />
-                    </div>
                   </div>
-                  
+
                   {/* Geofence Toggle and Configuration */}
                   {legCoordinates[index] && (
-                    <div className="form-group" style={{ marginTop: '15px', padding: '15px', background: '#f8f9fa', borderRadius: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                    <div className="sf-geofence-panel">
+                      <div className="sf-geofence-toggle-row">
                         <input
                           type="checkbox"
                           id={`geofence-toggle-${index}`}
                           checked={geofenceRadii[index] !== undefined}
                           onChange={() => toggleGeofence(index)}
-                          style={{ marginRight: '10px', width: '18px', height: '18px', cursor: 'pointer' }}
                         />
-                        <label 
-                          htmlFor={`geofence-toggle-${index}`}
-                          style={{ margin: 0, cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}
-                        >
-                          Enable Geofence Alert for this destination
+                        <label htmlFor={`geofence-toggle-${index}`}>
+                          Enable geofence alert for this destination
                         </label>
                       </div>
-                      
+
                       {geofenceRadii[index] !== undefined && (
                         <>
-                          <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px' }}>
-                            Geofence Radius: {geofenceRadii[index]}m
-                            <span style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
-                              (Alert when within this distance)
-                            </span>
+                          <label className="sf-geofence-radius-label">
+                            Geofence radius: <strong>{geofenceRadii[index]}m</strong>
+                            <span className="sf-geofence-radius-hint">(alert when within this distance)</span>
                           </label>
                           <input
                             type="range"
@@ -2416,57 +2658,58 @@ const Shipments = () => {
                             step="100"
                             value={geofenceRadii[index]}
                             onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
-                            style={{ width: '100%' }}
+                            className="sf-geofence-slider"
                           />
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#999', marginTop: '4px' }}>
+                          <div className="sf-geofence-scale">
                             <span>100m</span>
                             <span>2.5km</span>
                             <span>5km</span>
                           </div>
-                          <div style={{ marginTop: '10px', padding: '8px', background: '#e3f2fd', borderRadius: '4px', fontSize: '12px', color: '#1976d2' }}>
+                          <div className="sf-geofence-destination">
                             📍 Destination: {index === 0 ? leg.stopAddress : leg.shipTo}
                           </div>
                         </>
                       )}
                     </div>
                   )}
-                  
+
                   {/* Show message if address not geocoded yet */}
                   {!legCoordinates[index] && (index === 0 ? leg.stopAddress : leg.shipTo) && (
-                    <div style={{ marginTop: '10px', padding: '8px', background: '#fff3cd', borderRadius: '4px', fontSize: '12px', color: '#856404' }}>
+                    <div className="sf-geofence-pending-hint">
                       ⏳ Enter and blur the address field to enable geofence configuration
                     </div>
                   )}
                 </div>
               ))}
-              
-              {/* Tracker selection and buttons */}
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label>Select Tracker *</label>
-                <select
-                  value={selectedTracker}
-                  onChange={(e) => setSelectedTracker(e.target.value)}
-                  required
-                  style={{ width: '100%' }}
-                >
-                  <option value="">Choose a tracker device</option>
-                  {trackers.map((tracker) => (
-                    <option key={tracker.tracker_id} value={tracker.tracker_id}>
-                      {tracker.tracker_name} (ID: {tracker.tracker_id})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <button className="btn btn-secondary add-stop-btn" onClick={handleAddStop}>
-                Add Stop
+
+              <button type="button" className="sf-add-stop-btn" onClick={handleAddStop}>
+                + Add Stop
               </button>
+
+              {/* Tracker selection */}
+              <div className="sf-tracker-section">
+                <div className="sf-form-group">
+                  <label>Select Tracker *</label>
+                  <select
+                    value={selectedTracker}
+                    onChange={(e) => setSelectedTracker(e.target.value)}
+                    required
+                  >
+                    <option value="">Choose a tracker device</option>
+                    {trackers.map((tracker) => (
+                      <option key={tracker.tracker_id} value={tracker.tracker_id}>
+                        {tracker.tracker_name} (ID: {tracker.tracker_id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={handleCancelForm}>
+            <div className="sf-modal-footer">
+              <button className="sf-btn sf-btn-secondary" onClick={handleCancelForm}>
                 Cancel
               </button>
-              <button className="btn btn-primary" onClick={handleCreateShipment}>
+              <button className="sf-btn sf-btn-primary" onClick={handleCreateShipment}>
                 Create Shipment
               </button>
             </div>
