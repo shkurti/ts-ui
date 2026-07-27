@@ -6,7 +6,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import './Shipments.css';
-import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck } from 'lucide-react';
+import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi } from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
@@ -20,17 +20,23 @@ L.Icon.Default.mergeOptions({
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
 });
 
-// A single, non-clustered shipment on the overview map
-const createShipmentPointIcon = () => {
-  const iconSvg = renderToStaticMarkup(<Package size={13} color="#fff" strokeWidth={2.4} />);
+// A single, non-clustered shipment on the overview map. Scheduled-but-not-started
+// shipments get a distinct gray/clock treatment (matching the "pending" status
+// badge elsewhere in this page) so they read as "not moving yet" at a glance,
+// not just by color — the icon itself changes too.
+const createShipmentPointIcon = (isPending = false) => {
+  const iconSvg = isPending
+    ? renderToStaticMarkup(<Clock size={13} color="#fff" strokeWidth={2.4} />)
+    : renderToStaticMarkup(<Package size={13} color="#fff" strokeWidth={2.4} />);
+  const background = isPending ? '#64748b' : '#2563eb';
   return L.divIcon({
-    className: 'shipment-point-marker',
+    className: `shipment-point-marker${isPending ? ' shipment-point-marker--pending' : ''}`,
     html: `
       <div style="
         width: 26px;
         height: 26px;
         border-radius: 50%;
-        background: #2563eb;
+        background: ${background};
         box-shadow: 0 2px 6px rgba(0,0,0,0.32), 0 0 0 2px rgba(255,255,255,0.9);
         display: flex;
         align-items: center;
@@ -102,8 +108,8 @@ const ShipmentClusterLayer = ({ points, onSelect }) => {
     const clusterGroup = clusterGroupRef.current;
     if (!clusterGroup) return;
     clusterGroup.clearLayers();
-    points.forEach(({ shipment, lat, lng }) => {
-      const marker = L.marker([lat, lng], { icon: createShipmentPointIcon() });
+    points.forEach(({ shipment, lat, lng, isPending }) => {
+      const marker = L.marker([lat, lng], { icon: createShipmentPointIcon(isPending) });
       marker.on('click', () => onSelect(shipment));
       clusterGroup.addLayer(marker);
     });
@@ -164,6 +170,7 @@ const Shipments = () => {
   // Add state for geocoded leg coordinates and geofence radii
   const [legCoordinates, setLegCoordinates] = useState({});
   const [geofenceRadii, setGeofenceRadii] = useState({});
+  const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
   
   // User timezone (you can make this configurable)
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -353,24 +360,74 @@ const Shipments = () => {
     return () => { cancelled = true; };
   }, [filteredShipments, userTimezone]);
 
-  // Shipments with a known position, for the clustered overview map. Active
-  // shipments use their tracker's live location; delivered shipments use
-  // their own historical last-known position so shipments that share a
-  // reused tracker don't all collapse onto that tracker's current spot.
+  // Scheduled-but-not-started shipments haven't produced any GPS fix yet, so
+  // their tracker's "live" location is really wherever the device sat after
+  // its *previous* shipment — misleading. Anchor them to their planned origin
+  // address instead (geocoded via MapTiler, same as the leg pins in the
+  // detail view). Cached per shipment id since the origin address is static.
+  const [pendingShipmentPositions, setPendingShipmentPositions] = useState({});
+  const fetchedPendingPositionIdsRef = useRef(new Set());
+
+  useEffect(() => {
+    const toFetch = filteredShipments.filter(shipment => {
+      if (getShipmentStatus(shipment) !== 'Pending') return false;
+      if (fetchedPendingPositionIdsRef.current.has(shipment._id)) return false;
+      return Boolean(shipment.legs?.[0]?.shipFromAddress);
+    });
+    if (toFetch.length === 0) return;
+
+    toFetch.forEach(shipment => fetchedPendingPositionIdsRef.current.add(shipment._id));
+
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(toFetch.map(async shipment => {
+        const address = shipment.legs[0].shipFromAddress;
+        try {
+          const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(address)}.json?key=${MAPTILER_API_KEY}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          const feature = data?.features?.[0];
+          if (!feature) return null;
+          return [shipment._id, { latitude: feature.geometry.coordinates[1], longitude: feature.geometry.coordinates[0] }];
+        } catch (error) {
+          console.error(`Error geocoding origin for shipment ${shipment._id}:`, error);
+          return null;
+        }
+      }));
+      if (cancelled) return;
+      const validEntries = entries.filter(Boolean);
+      if (validEntries.length === 0) return;
+      setPendingShipmentPositions(prev => ({ ...prev, ...Object.fromEntries(validEntries) }));
+    })();
+
+    return () => { cancelled = true; };
+  }, [filteredShipments]);
+
+  // Shipments with a known position, for the clustered overview map.
+  // - Delivered: own historical last-known position (avoids collapsing onto
+  //   a reused tracker's current spot).
+  // - Pending: geocoded planned origin (the tracker hasn't started moving on
+  //   this shipment yet, so its live position isn't relevant).
+  // - In Transit: tracker's live location.
+  // Any of these fall back to the tracker's live location if their preferred
+  // position isn't available yet, rather than hiding the shipment.
   const shipmentMapPoints = useMemo(() => {
     return filteredShipments
       .map(shipment => {
-        if (getShipmentStatus(shipment) === 'Delivered') {
+        const status = getShipmentStatus(shipment);
+        if (status === 'Delivered') {
           const pos = deliveredShipmentPositions[shipment._id];
-          if (!pos) return null;
-          return { shipment, lat: pos.latitude, lng: pos.longitude };
+          if (pos) return { shipment, lat: pos.latitude, lng: pos.longitude, isPending: false };
+        } else if (status === 'Pending') {
+          const pos = pendingShipmentPositions[shipment._id];
+          if (pos) return { shipment, lat: pos.latitude, lng: pos.longitude, isPending: true };
         }
         const loc = trackerLocations[shipment.trackerId] ?? trackerLocations[String(shipment.trackerId)];
         if (!loc) return null;
-        return { shipment, lat: loc.latitude, lng: loc.longitude };
+        return { shipment, lat: loc.latitude, lng: loc.longitude, isPending: status === 'Pending' };
       })
       .filter(Boolean);
-  }, [filteredShipments, trackerLocations, deliveredShipmentPositions]);
+  }, [filteredShipments, trackerLocations, deliveredShipmentPositions, pendingShipmentPositions]);
 
   const handleSelectAll = () => {
     if (selectAll) {
@@ -1391,7 +1448,6 @@ const Shipments = () => {
   };
 
   // Geocode all legs for selectedShipmentDetail (fix: use MapTiler API for better reliability)
-  const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
   const [legPoints, setLegPoints] = useState([]);
 
   useEffect(() => {
