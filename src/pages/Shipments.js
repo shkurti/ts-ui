@@ -2414,18 +2414,6 @@ const Shipments = () => {
             />
           )}
 
-          {/* Draw actual GPS path as solid line */}
-          {selectedShipmentDetail && locationData.length > 1 && (
-            <Polyline
-              positions={locationData.map(p => [p.latitude, p.longitude])}
-              pathOptions={{
-                color: '#ff4444',
-                weight: 4,
-                opacity: 0.95
-              }}
-            />
-          )}
-
           {/* Red marker at current GPS, connected to next destination marker by dashed line */}
           {selectedShipmentDetail && locationData.length > 0 && legPoints.length > 1 && (() => {
             const lastGps = locationData[locationData.length - 1];
