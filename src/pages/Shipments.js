@@ -759,7 +759,12 @@ const Shipments = () => {
                   : record.lon !== undefined
                     ? parseFloat(record.lon)
                     : null,
-          })).filter(item => 
+            speed: record.speed !== undefined
+              ? parseFloat(record.speed)
+              : record.Speed !== undefined
+                ? parseFloat(record.Speed)
+                : null,
+          })).filter(item =>
             item.latitude !== null && 
             item.longitude !== null && 
             !isNaN(item.latitude) && 
@@ -1329,15 +1334,49 @@ const Shipments = () => {
   // into a single point instead of the little loops/spikes that noise draws.
   const MAX_PLAUSIBLE_SPEED_MPS = 55; // ~198 km/h
   const STATIONARY_RADIUS_METERS = 25;
+  const STATIONARY_SPEED_KMH = 5; // tracker-reported speed at/below this = parked
+
+  const averagePoint = (cluster) => ({
+    ...cluster[0],
+    latitude: cluster.reduce((sum, p) => sum + p.latitude, 0) / cluster.length,
+    longitude: cluster.reduce((sum, p) => sum + p.longitude, 0) / cluster.length,
+  });
 
   const filterGpsNoise = (points) => {
     if (points.length < 3) return points;
 
-    const filtered = [points[0]];
+    // Pass 1: collapse runs where the tracker itself reports near-zero speed.
+    // GPS position can hop tens (even hundreds) of meters from multipath
+    // reflections off buildings while genuinely parked — a ping-pong between
+    // a couple of cached fixes that still "looks" like a plausible speed
+    // point-to-point. The tracker's own speed reading isn't fooled by that,
+    // so it catches noise that pure distance/time inference misses.
+    const speedCollapsed = [];
+    let i = 0;
+    while (i < points.length) {
+      const isStationary = (p) => typeof p.speed === 'number' && !isNaN(p.speed) && p.speed <= STATIONARY_SPEED_KMH;
+      if (isStationary(points[i])) {
+        const stayCluster = [points[i]];
+        let j = i + 1;
+        while (j < points.length && isStationary(points[j])) {
+          stayCluster.push(points[j]);
+          j++;
+        }
+        speedCollapsed.push(averagePoint(stayCluster));
+        i = j;
+      } else {
+        speedCollapsed.push(points[i]);
+        i++;
+      }
+    }
 
-    for (let i = 1; i < points.length; i++) {
+    // Pass 2: for the remaining points (actually moving, or no speed field
+    // reported at all), fall back to distance/time based rejection.
+    const filtered = [speedCollapsed[0]];
+
+    for (let k = 1; k < speedCollapsed.length; k++) {
       const prev = filtered[filtered.length - 1];
-      const point = points[i];
+      const point = speedCollapsed[k];
 
       const distance = distanceMeters(
         prev.latitude, prev.longitude,
