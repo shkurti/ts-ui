@@ -615,6 +615,20 @@
   right: 0;
 }
 
+/* Keep the required MapTiler/OSM attribution present but unobtrusive
+   rather than removing it (removal breaches their tile usage terms). */
+.map-container .leaflet-control-attribution {
+  font-size: 9px;
+  line-height: 1.2;
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--color-text-muted, #6b7280);
+}
+
+.map-container .leaflet-control-attribution a {
+  color: inherit;
+}
+
 /* Prefixed "sf-" (shipment form) throughout: several pages (Page.css,
    Trackers.css) declare their own global .modal-overlay/.form-group/.btn-*
    with no CSS-module scoping, so whichever stylesheet's <style> tag is
