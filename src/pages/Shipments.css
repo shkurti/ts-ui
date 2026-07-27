@@ -616,13 +616,57 @@
 }
 
 /* Keep the required MapTiler/OSM attribution present but unobtrusive
-   rather than removing it (removal breaches their tile usage terms). */
+   rather than removing it (removal breaches their tile usage terms).
+   Collapsed to a small "i" badge by default; hover reveals the full,
+   legible text — same pattern most commercial map UIs use. */
 .map-container .leaflet-control-attribution {
-  font-size: 9px;
-  line-height: 1.2;
-  padding: 1px 5px;
-  background: rgba(255, 255, 255, 0.55);
+  position: relative;
+  width: 14px;
+  height: 14px;
+  overflow: hidden;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
   color: var(--color-text-muted, #6b7280);
+  white-space: nowrap;
+  transition: width 0.15s ease, border-radius 0.15s ease, background 0.15s ease;
+}
+
+.map-container .leaflet-control-attribution::before {
+  content: "i";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
+  font-weight: 700;
+  font-style: italic;
+  text-align: center;
+  line-height: 14px;
+}
+
+.map-container .leaflet-control-attribution a,
+.map-container .leaflet-control-attribution span {
+  opacity: 0;
+  font-size: 9px;
+  transition: opacity 0.1s ease;
+}
+
+.map-container .leaflet-control-attribution:hover {
+  width: auto;
+  border-radius: 3px;
+  padding: 1px 6px 1px 16px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.map-container .leaflet-control-attribution:hover::before {
+  opacity: 0;
+}
+
+.map-container .leaflet-control-attribution:hover a,
+.map-container .leaflet-control-attribution:hover span {
+  opacity: 1;
 }
 
 .map-container .leaflet-control-attribution a {
