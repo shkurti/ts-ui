@@ -289,16 +289,16 @@ const Shipments = () => {
   }, [sensorData]);
 
   // Filter shipments based on search term
-  const filteredShipments = shipments.filter(shipment => {
+  const filteredShipments = useMemo(() => shipments.filter(shipment => {
     const trackerId = shipment.trackerId?.toString().toLowerCase() || '';
     const shipFromAddress = shipment.legs?.[0]?.shipFromAddress?.toLowerCase() || '';
     const stopAddress = shipment.legs?.[shipment.legs.length - 1]?.stopAddress?.toLowerCase() || '';
     const searchLower = searchTerm.toLowerCase();
-    
+
     return trackerId.includes(searchLower) ||
            shipFromAddress.includes(searchLower) ||
            stopAddress.includes(searchLower);
-  });
+  }), [shipments, searchTerm]);
 
   // Helper function to get shipment status
   const getShipmentStatus = (shipment) => {
@@ -331,8 +331,6 @@ const Shipments = () => {
     });
     if (toFetch.length === 0) return;
 
-    toFetch.forEach(shipment => fetchedDeliveredPositionIdsRef.current.add(shipment._id));
-
     let cancelled = false;
     (async () => {
       const entries = await Promise.all(toFetch.map(async shipment => {
@@ -345,6 +343,10 @@ const Shipments = () => {
           const lat = parseFloat(lastRecord?.latitude ?? lastRecord?.Lat ?? lastRecord?.lat);
           const lng = parseFloat(lastRecord?.longitude ?? lastRecord?.Lng ?? lastRecord?.lng);
           if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          // Only mark as fetched once we actually have a position — a failed
+          // or empty response shouldn't permanently suppress retries, or the
+          // shipment gets stuck falling back to the tracker's live location.
+          fetchedDeliveredPositionIdsRef.current.add(shipment._id);
           return [shipment._id, { latitude: lat, longitude: lng }];
         } catch (error) {
           console.error(`Error fetching last position for shipment ${shipment._id}:`, error);
@@ -376,8 +378,6 @@ const Shipments = () => {
     });
     if (toFetch.length === 0) return;
 
-    toFetch.forEach(shipment => fetchedPendingPositionIdsRef.current.add(shipment._id));
-
     let cancelled = false;
     (async () => {
       const entries = await Promise.all(toFetch.map(async shipment => {
@@ -388,6 +388,10 @@ const Shipments = () => {
           const data = await res.json();
           const feature = data?.features?.[0];
           if (!feature) return null;
+          // Only mark as fetched once we actually have a position — a failed
+          // or empty response shouldn't permanently suppress retries, or the
+          // shipment gets stuck falling back to the tracker's live location.
+          fetchedPendingPositionIdsRef.current.add(shipment._id);
           return [shipment._id, { latitude: feature.geometry.coordinates[1], longitude: feature.geometry.coordinates[0] }];
         } catch (error) {
           console.error(`Error geocoding origin for shipment ${shipment._id}:`, error);
