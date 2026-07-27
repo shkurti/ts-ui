@@ -1342,6 +1342,36 @@ const Shipments = () => {
     return null;
   };
 
+  // Keeps the world map filling the container width with no gaps on either side
+  const MapFitWidthHandler = () => {
+    const map = useMap();
+
+    useEffect(() => {
+      const applyMinZoom = () => {
+        const width = map.getSize().x;
+        if (!width) return;
+        const minZoom = Math.max(2, Math.ceil(Math.log2(width / 256)));
+        map.setMinZoom(minZoom);
+        if (map.getZoom() < minZoom) {
+          map.setZoom(minZoom);
+        }
+      };
+
+      applyMinZoom();
+      map.on('resize', applyMinZoom);
+
+      const handleWindowResize = () => map.invalidateSize();
+      window.addEventListener('resize', handleWindowResize);
+
+      return () => {
+        map.off('resize', applyMinZoom);
+        window.removeEventListener('resize', handleWindowResize);
+      };
+    }, [map]);
+
+    return null;
+  };
+
   // MapTiler Geocoding Control React wrapper
   const MapTilerGeocodingControl = ({ apiKey }) => {
     const map = useMap();
@@ -2235,6 +2265,7 @@ const Shipments = () => {
           />
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
           <MapBoundsHandler />
+          <MapFitWidthHandler />
 
           {/* Overview mode: cluster every shipment by current location. Clicking a
               lone marker drills into that shipment; clicking a cluster zooms in,
