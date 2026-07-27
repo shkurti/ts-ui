@@ -1312,16 +1312,74 @@ const Shipments = () => {
     }, delay);
   };
 
+  // Haversine distance between two lat/lng points, in meters
+  const distanceMeters = (lat1, lon1, lat2, lon2) => {
+    const R = 6371000;
+    const toRad = (deg) => (deg * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  // Drops GPS fixes that imply an unrealistic speed from the last kept point,
+  // and collapses near-stationary jitter (e.g. sitting at a delivery stop)
+  // into a single point instead of the little loops/spikes that noise draws.
+  const MAX_PLAUSIBLE_SPEED_MPS = 55; // ~198 km/h
+  const STATIONARY_RADIUS_METERS = 25;
+
+  const filterGpsNoise = (points) => {
+    if (points.length < 3) return points;
+
+    const filtered = [points[0]];
+
+    for (let i = 1; i < points.length; i++) {
+      const prev = filtered[filtered.length - 1];
+      const point = points[i];
+
+      const distance = distanceMeters(
+        prev.latitude, prev.longitude,
+        point.latitude, point.longitude
+      );
+      const dtSeconds = (new Date(point.timestamp) - new Date(prev.timestamp)) / 1000;
+
+      if (distance <= STATIONARY_RADIUS_METERS) {
+        // Within jitter range of the last kept point: treat as the same spot,
+        // skip plotting the wobble.
+        continue;
+      }
+
+      if (dtSeconds > 0) {
+        const impliedSpeed = distance / dtSeconds;
+        if (impliedSpeed > MAX_PLAUSIBLE_SPEED_MPS) {
+          // Physically implausible jump — almost certainly a bad fix, drop it.
+          continue;
+        }
+      }
+
+      filtered.push(point);
+    }
+
+    return filtered;
+  };
+
   // Create polyline coordinates from location data
   const getPolylineCoordinates = () => {
     if (!locationData || locationData.length === 0) return [];
-    
+
     // Sort by timestamp to ensure correct order
-    const sortedData = [...locationData].sort((a, b) => 
+    const sortedData = [...locationData].sort((a, b) =>
       new Date(a.timestamp) - new Date(b.timestamp)
     );
-    
-    return sortedData.map(point => [point.latitude, point.longitude]);
+
+    const gpsNoiseFilterEnabled = user?.gps_noise_filter_enabled ?? true;
+    const pointsToRender = gpsNoiseFilterEnabled
+      ? filterGpsNoise(sortedData)
+      : sortedData;
+
+    return pointsToRender.map(point => [point.latitude, point.longitude]);
   };
 
   // Component to handle map bounds fitting
