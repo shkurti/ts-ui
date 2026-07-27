@@ -293,16 +293,84 @@ const Shipments = () => {
            stopAddress.includes(searchLower);
   });
 
-  // Shipments with a known current position, for the clustered overview map
+  // Helper function to get shipment status
+  const getShipmentStatus = (shipment) => {
+    // Simple logic to determine status based on dates
+    const now = new Date();
+    const shipDate = new Date(shipment.legs?.[0]?.shipDate);
+    const arrivalDate = new Date(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate);
+
+    if (now < shipDate) return 'Pending';
+    if (now >= shipDate && now < arrivalDate) return 'In Transit';
+    return 'Delivered';
+  };
+
+  // Delivered shipments don't have a "current" GPS fix worth showing (their
+  // tracker has likely moved on to a new shipment), so each one is anchored
+  // to its own last-known position from its own ship/arrival window instead
+  // of the tracker's live location. Cached per shipment id since it never
+  // changes once fetched.
+  const [deliveredShipmentPositions, setDeliveredShipmentPositions] = useState({});
+  const fetchedDeliveredPositionIdsRef = useRef(new Set());
+
+  useEffect(() => {
+    const toFetch = filteredShipments.filter(shipment => {
+      if (getShipmentStatus(shipment) !== 'Delivered') return false;
+      if (fetchedDeliveredPositionIdsRef.current.has(shipment._id)) return false;
+      const trackerId = shipment.trackerId;
+      const shipDate = shipment.legs?.[0]?.shipDate;
+      const arrivalDate = shipment.legs?.[shipment.legs.length - 1]?.arrivalDate;
+      return Boolean(trackerId && shipDate && arrivalDate);
+    });
+    if (toFetch.length === 0) return;
+
+    toFetch.forEach(shipment => fetchedDeliveredPositionIdsRef.current.add(shipment._id));
+
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(toFetch.map(async shipment => {
+        const trackerId = shipment.trackerId;
+        const shipDate = shipment.legs?.[0]?.shipDate;
+        const arrivalDate = shipment.legs?.[shipment.legs.length - 1]?.arrivalDate;
+        try {
+          const data = await shipmentApi.getRouteData(trackerId, shipDate, arrivalDate, userTimezone);
+          const lastRecord = Array.isArray(data) && data.length > 0 ? data[data.length - 1] : null;
+          const lat = parseFloat(lastRecord?.latitude ?? lastRecord?.Lat ?? lastRecord?.lat);
+          const lng = parseFloat(lastRecord?.longitude ?? lastRecord?.Lng ?? lastRecord?.lng);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          return [shipment._id, { latitude: lat, longitude: lng }];
+        } catch (error) {
+          console.error(`Error fetching last position for shipment ${shipment._id}:`, error);
+          return null;
+        }
+      }));
+      if (cancelled) return;
+      const validEntries = entries.filter(Boolean);
+      if (validEntries.length === 0) return;
+      setDeliveredShipmentPositions(prev => ({ ...prev, ...Object.fromEntries(validEntries) }));
+    })();
+
+    return () => { cancelled = true; };
+  }, [filteredShipments, userTimezone]);
+
+  // Shipments with a known position, for the clustered overview map. Active
+  // shipments use their tracker's live location; delivered shipments use
+  // their own historical last-known position so shipments that share a
+  // reused tracker don't all collapse onto that tracker's current spot.
   const shipmentMapPoints = useMemo(() => {
     return filteredShipments
       .map(shipment => {
+        if (getShipmentStatus(shipment) === 'Delivered') {
+          const pos = deliveredShipmentPositions[shipment._id];
+          if (!pos) return null;
+          return { shipment, lat: pos.latitude, lng: pos.longitude };
+        }
         const loc = trackerLocations[shipment.trackerId] ?? trackerLocations[String(shipment.trackerId)];
         if (!loc) return null;
         return { shipment, lat: loc.latitude, lng: loc.longitude };
       })
       .filter(Boolean);
-  }, [filteredShipments, trackerLocations]);
+  }, [filteredShipments, trackerLocations, deliveredShipmentPositions]);
 
   const handleSelectAll = () => {
     if (selectAll) {
@@ -514,17 +582,6 @@ const Shipments = () => {
     } catch {
       return 'Invalid Date';
     }
-  };
-  // Helper function to get shipment status
-  const getShipmentStatus = (shipment) => {
-    // Simple logic to determine status based on dates
-    const now = new Date();
-    const shipDate = new Date(shipment.legs?.[0]?.shipDate);
-    const arrivalDate = new Date(shipment.legs?.[shipment.legs.length - 1]?.arrivalDate);
-    
-    if (now < shipDate) return 'Pending';
-    if (now >= shipDate && now < arrivalDate) return 'In Transit';
-    return 'Delivered';
   };
   // Handle shipment detail view
   const handleShipmentClick = async (shipment) => {
