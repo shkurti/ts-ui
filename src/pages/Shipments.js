@@ -1350,7 +1350,9 @@ const Shipments = () => {
       const applyMinZoom = () => {
         const width = map.getSize().x;
         if (!width) return;
-        const minZoom = Math.max(2, Math.ceil(Math.log2(width / 256)));
+        // Fractional zoom so the world map's pixel width matches the
+        // container width exactly (no gaps, no cropping from over-zooming).
+        const minZoom = Math.max(2, Math.log2(width / 256));
         map.setMinZoom(minZoom);
         if (map.getZoom() < minZoom) {
           map.setZoom(minZoom);
@@ -2245,6 +2247,8 @@ const Shipments = () => {
           zoom={2}
           minZoom={2}
           maxZoom={18}
+          zoomSnap={0.1}
+          zoomDelta={1}
           style={{ height: '100%', width: '100%' }}
           worldCopyJump={false}
           maxBounds={[[-90, -180], [90, 180]]}
