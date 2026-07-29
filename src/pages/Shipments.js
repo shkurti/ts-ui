@@ -275,11 +275,25 @@ const Shipments = () => {
         const lat = reading?.Lat ?? reading?.latitude;
         const lng = reading?.Lng ?? reading?.longitude;
         if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
+          const newLat = parseFloat(lat);
+          const newLng = parseFloat(lng);
+          const timestamp = reading?.DT ?? reading?.timestamp ?? new Date().toISOString();
+          const previous = prev[trackerId];
+          // Reject implausible jumps from the last known-good overview position —
+          // a single noisy WebSocket tick would otherwise instantly re-plant
+          // this tracker (and every shipment falling back to it) at a bad fix.
+          if (previous) {
+            const distance = distanceMeters(previous.latitude, previous.longitude, newLat, newLng);
+            const dtSeconds = (new Date(timestamp) - new Date(previous.timestamp)) / 1000;
+            if (dtSeconds > 0 && (distance / dtSeconds) > MAX_PLAUSIBLE_SPEED_MPS) {
+              return;
+            }
+          }
           next[trackerId] = {
             tracker_id: trackerId,
-            latitude: parseFloat(lat),
-            longitude: parseFloat(lng),
-            timestamp: reading?.DT ?? reading?.timestamp ?? new Date().toISOString(),
+            latitude: newLat,
+            longitude: newLng,
+            timestamp,
           };
           changed = true;
         }
@@ -339,7 +353,11 @@ const Shipments = () => {
         const arrivalDate = shipment.legs?.[shipment.legs.length - 1]?.arrivalDate;
         try {
           const data = await shipmentApi.getRouteData(trackerId, shipDate, arrivalDate, userTimezone);
-          const lastRecord = Array.isArray(data) && data.length > 0 ? data[data.length - 1] : null;
+          // Route data is raw GPS, same as the detail-view polyline — a single
+          // noisy fix as the very last record would otherwise become this
+          // shipment's plotted position on the overview map.
+          const cleaned = Array.isArray(data) && data.length > 0 ? filterGpsNoise(data) : data;
+          const lastRecord = Array.isArray(cleaned) && cleaned.length > 0 ? cleaned[cleaned.length - 1] : null;
           const lat = parseFloat(lastRecord?.latitude ?? lastRecord?.Lat ?? lastRecord?.lat);
           const lng = parseFloat(lastRecord?.longitude ?? lastRecord?.Lng ?? lastRecord?.lng);
           if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
