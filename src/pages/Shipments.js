@@ -1354,6 +1354,38 @@ const Shipments = () => {
     }
   };
 
+  // How much longer a routed hop is allowed to be than the straight-line
+  // distance between its two (already road-snapped) endpoints before we
+  // treat it as a bogus one-way-grid detour and just draw a straight line
+  // instead. Routing only two adjacent points at a time — rather than the
+  // whole trip like /match did — keeps any single bad hop small and local
+  // instead of dragging a whole city block into a loop.
+  const ROUTE_DETOUR_MAX_RATIO = 2.5;
+  // Skip routing hops shorter than this; a curve isn't visually meaningful
+  // over a few meters and it's one less request.
+  const MIN_HOP_METERS_TO_ROUTE = 15;
+
+  const routeBetween = async (a, b) => {
+    const straight = distanceMeters(a[0], a[1], b[0], b[1]);
+    if (straight < MIN_HOP_METERS_TO_ROUTE) return [a, b];
+    try {
+      const url = `${OSRM_BASE_URL}/route/v1/driving/${a[1]},${a[0]};${b[1]},${b[0]}?geometries=geojson&overview=full`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`OSRM responded ${response.status}`);
+      const data = await response.json();
+      const route = data.routes?.[0];
+      if (data.code !== 'Ok' || !route) throw new Error(data.message || 'No route for this hop');
+      if (route.distance > straight * ROUTE_DETOUR_MAX_RATIO) {
+        // Almost certainly a forced detour around a one-way block rather
+        // than the path actually taken — not worth showing.
+        return [a, b];
+      }
+      return route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+    } catch {
+      return [a, b];
+    }
+  };
+
   const snapPointsToRoad = async (points) => {
     const snapped = new Array(points.length);
     let firstError = null;
@@ -1365,7 +1397,27 @@ const Shipments = () => {
         firstError = firstError || r.error;
       });
     }
-    return { coordinates: snapped, error: firstError };
+
+    if (snapped.length < 2) return { coordinates: snapped, error: firstError };
+
+    // Connect each pair of adjacent snapped points with a short road-hugging
+    // curve where that's trustworthy, falling back to a straight hop where
+    // it isn't. Segments overlap at their shared endpoint, so drop the
+    // duplicate when stitching them together.
+    const hops = [];
+    for (let i = 0; i < snapped.length - 1; i += OSRM_NEAREST_CONCURRENCY) {
+      const batchPairs = [];
+      for (let j = i; j < Math.min(i + OSRM_NEAREST_CONCURRENCY, snapped.length - 1); j++) {
+        batchPairs.push([snapped[j], snapped[j + 1]]);
+      }
+      const results = await Promise.all(batchPairs.map(([a, b]) => routeBetween(a, b)));
+      hops.push(...results);
+    }
+
+    const coordinates = [snapped[0]];
+    hops.forEach((segment) => coordinates.push(...segment.slice(1)));
+
+    return { coordinates, error: firstError };
   };
 
   const routeSnapEnabled = user?.route_snap_enabled ?? false;
