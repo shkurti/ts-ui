@@ -1579,6 +1579,12 @@ const Shipments = () => {
   // the whole route, and it keeps each request well under OSRM's
   // coordinate-count limits.
   const MATCH_CHUNK_SIZE = 20;
+  // /match rejects with 400 "TooBig" above ~45m per-point radius (confirmed
+  // against the public server) — a much tighter cap than /nearest's, since
+  // matching searches the road network around every point in the chunk
+  // jointly rather than one independent lookup at a time. Do not reuse
+  // OSRM_NEAREST_RADIUS_METERS here.
+  const MATCH_RADIUS_METERS = 40;
 
   // OSRM requires non-decreasing timestamps; nudge duplicates/invalid values
   // forward by a second so every chunk has a strictly increasing sequence.
@@ -1599,7 +1605,7 @@ const Shipments = () => {
     if (points.length < 2) return null;
     try {
       const coordsParam = points.map((p) => `${p.longitude},${p.latitude}`).join(';');
-      const radiusesParam = points.map(() => OSRM_NEAREST_RADIUS_METERS).join(';');
+      const radiusesParam = points.map(() => MATCH_RADIUS_METERS).join(';');
       const timestampsParam = toEpochSecondsSequence(points).join(';');
       const url = `${OSRM_BASE_URL}/match/v1/driving/${coordsParam}` +
         `?geometries=geojson&overview=full&gaps=split&tidy=true` +
