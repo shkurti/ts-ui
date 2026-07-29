@@ -1320,14 +1320,37 @@ const Shipments = () => {
   // lookup per point (unlike /match), so this is just a concurrency cap to
   // be polite to the server, not a hard protocol limit.
   const OSRM_NEAREST_CONCURRENCY = Number(process.env.REACT_APP_OSRM_MAX_POINTS) || 8;
-  // Wide enough to still find the correct carriageway at highway
-  // interchanges/ramps, where the nearest road edge can be further from the
-  // raw fix than on a typical surface street.
-  const OSRM_NEAREST_RADIUS_METERS = 100;
 
   const [snappedCoordinates, setSnappedCoordinates] = useState([]);
   const [isSnappingRoute, setIsSnappingRoute] = useState(false);
   const [snapRouteError, setSnapRouteError] = useState(null);
+
+  // --- Snap tuning (adjustable live from the debug panel) ----------------
+  // Wide enough to still find the correct carriageway at highway
+  // interchanges/ramps, where the nearest road edge can be further from the
+  // raw fix than on a typical surface street. Widening this pulls in
+  // farther-away roads as snap candidates for point-by-point fallback.
+  const [nearestRadiusMeters, setNearestRadiusMeters] = useState(100);
+  // /match rejects with 400 "TooBig" above ~45m per-point radius on the
+  // public server. Widening it lets /match consider road edges further from
+  // each raw fix (e.g. deeper into a parking lot), at the cost of being more
+  // likely to grab the wrong one.
+  const [matchRadiusMeters, setMatchRadiusMeters] = useState(40);
+  // /match returns a 0-1 confidence per matching. 0 = accept anything (OSRM
+  // default). Raising this rejects low-confidence matchings and falls back
+  // to legacySnapChunk for that stretch instead of trusting a bad snap.
+  const [matchConfidenceThreshold, setMatchConfidenceThreshold] = useState(0);
+  // If > 0, any snapped/matched point within this many meters of the raw
+  // first or last GPS fix is dropped and replaced with a straight segment to
+  // that raw fix instead — prevents the start/end of the drawn trace from
+  // being dragged onto a nearby street when the true position (e.g. deep in
+  // a parking lot) has no routable road edge nearby.
+  const [endpointExclusionRadiusMeters, setEndpointExclusionRadiusMeters] = useState(0);
+  // The point-by-point fallback (legacySnapChunk) prefers a named street
+  // over a closer-but-unnamed road (parking aisle/driveway) — turn off to
+  // test whether that bias is what's pulling a fix onto the wrong road.
+  const [preferNamedRoads, setPreferNamedRoads] = useState(true);
+  const [showSnapTuningPanel, setShowSnapTuningPanel] = useState(false);
 
   // Snaps a single fix to the nearest road edge via OSRM's /nearest service.
   // We deliberately snap point-by-point instead of asking /match to connect
@@ -1374,22 +1397,24 @@ const Shipments = () => {
     try {
       let waypoint;
       try {
-        waypoint = await fetchNearest(point, OSRM_NEAREST_RADIUS_METERS, bearing);
+        waypoint = await fetchNearest(point, nearestRadiusMeters, bearing);
       } catch (err) {
         // A bearing-constrained search can legitimately come up empty right
         // where the road curves sharply — retry without it rather than
         // losing the point entirely.
         if (bearing == null) throw err;
-        waypoint = await fetchNearest(point, OSRM_NEAREST_RADIUS_METERS, null);
+        waypoint = await fetchNearest(point, nearestRadiusMeters, null);
       }
       // Parking-lot aisles and driveways are almost always unnamed in OSM,
       // while real streets almost always have a name — that's exactly what
       // was pulling the trace onto small loop/driveway roads. If the
       // closest hit is unnamed, look further out for an actual named
-      // street instead of trusting it.
-      if (!waypoint.name) {
+      // street instead of trusting it. (Toggle off via preferNamedRoads to
+      // test whether this bias is itself dragging a fix onto the wrong road
+      // when the true position has no named street nearby, e.g. a parking lot.)
+      if (preferNamedRoads && !waypoint.name) {
         try {
-          const namedWaypoint = await fetchNearest(point, OSRM_NEAREST_RADIUS_METERS * 3, bearing);
+          const namedWaypoint = await fetchNearest(point, nearestRadiusMeters * 3, bearing);
           if (namedWaypoint.name) waypoint = namedWaypoint;
         } catch {
           // No named road found further out either — keep the unnamed hit.
@@ -1582,12 +1607,12 @@ const Shipments = () => {
   // coordinates" above 10 points per request (confirmed empirically — 10
   // succeeds, 11 fails) — a much tighter cap than /route or /nearest.
   const MATCH_CHUNK_SIZE = 10;
-  // /match rejects with 400 "TooBig" above ~45m per-point radius (confirmed
-  // against the public server) — a much tighter cap than /nearest's, since
-  // matching searches the road network around every point in the chunk
-  // jointly rather than one independent lookup at a time. Do not reuse
-  // OSRM_NEAREST_RADIUS_METERS here.
-  const MATCH_RADIUS_METERS = 40;
+  // Note: /match rejects with 400 "TooBig" above ~45m per-point radius on
+  // the public server — a much tighter cap than /nearest's, since matching
+  // searches the road network around every point in the chunk jointly
+  // rather than one independent lookup at a time. Don't push
+  // matchRadiusMeters past that via the tuning panel against the public
+  // demo server.
 
   // OSRM requires non-decreasing timestamps; nudge duplicates/invalid values
   // forward by a second so every chunk has a strictly increasing sequence.
@@ -1608,7 +1633,7 @@ const Shipments = () => {
     if (points.length < 2) return null;
     try {
       const coordsParam = points.map((p) => `${p.longitude},${p.latitude}`).join(';');
-      const radiusesParam = points.map(() => MATCH_RADIUS_METERS).join(';');
+      const radiusesParam = points.map(() => matchRadiusMeters).join(';');
       const timestampsParam = toEpochSecondsSequence(points).join(';');
       const url = `${OSRM_BASE_URL}/match/v1/driving/${coordsParam}` +
         `?geometries=geojson&overview=full&gaps=split&tidy=true` +
@@ -1628,6 +1653,16 @@ const Shipments = () => {
       const confidences = data.matchings.map((m) => m.confidence);
       console.debug(`[route-snap] /match ok for chunk ${chunkDesc}: ${data.matchings.length} matching(s), confidences=${confidences.join(',')}`);
 
+      // A low-confidence matching means OSRM itself isn't sure the trace
+      // followed the roads it snapped to (e.g. no real road near part of the
+      // chunk, like a parking lot) — treat the whole chunk as untrustworthy
+      // rather than draw a confidently-wrong line, and let legacySnapChunk's
+      // per-hop sanity checks handle it instead.
+      if (matchConfidenceThreshold > 0 && confidences.some((c) => c < matchConfidenceThreshold)) {
+        console.warn(`[route-snap] /match confidence below threshold (${matchConfidenceThreshold}) for chunk ${chunkDesc}: ${confidences.join(',')}; falling back to legacy snap for this chunk`);
+        return null;
+      }
+
       const coordinates = [];
       data.matchings.forEach((matching) => {
         coordinates.push(...matching.geometry.coordinates.map(([lon, lat]) => [lat, lon]));
@@ -1637,6 +1672,40 @@ const Shipments = () => {
       console.warn('[route-snap] /match request threw, falling back to legacy snap for this chunk:', err);
       return null;
     }
+  };
+
+  // Drops any leading/trailing snapped coordinates that ended up within
+  // exclusionRadiusMeters of the corresponding raw first/last GPS fix, and
+  // replaces them with a single straight segment to that raw fix. Guards
+  // against the start/end of the drawn trace being dragged onto a nearby
+  // street when the true position (e.g. deep in a parking lot) has no
+  // routable road edge nearby for OSRM to snap to.
+  const trimSnapEndpoints = (coords, rawFirstPoint, rawLastPoint, exclusionRadiusMeters) => {
+    if (exclusionRadiusMeters <= 0 || coords.length < 2) return coords;
+
+    const rawFirst = [rawFirstPoint.latitude, rawFirstPoint.longitude];
+    const rawLast = [rawLastPoint.latitude, rawLastPoint.longitude];
+
+    let startIdx = 0;
+    while (
+      startIdx < coords.length - 1 &&
+      distanceMeters(coords[startIdx][0], coords[startIdx][1], rawFirst[0], rawFirst[1]) < exclusionRadiusMeters
+    ) {
+      startIdx++;
+    }
+
+    let endIdx = coords.length - 1;
+    while (
+      endIdx > startIdx &&
+      distanceMeters(coords[endIdx][0], coords[endIdx][1], rawLast[0], rawLast[1]) < exclusionRadiusMeters
+    ) {
+      endIdx--;
+    }
+
+    const trimmed = coords.slice(startIdx, endIdx + 1);
+    const withStart = startIdx > 0 ? [rawFirst, ...trimmed] : trimmed;
+    const withEnd = endIdx < coords.length - 1 ? [...withStart, rawLast] : withStart;
+    return withEnd;
   };
 
   const snapPointsToRoad = async (points) => {
@@ -1665,7 +1734,9 @@ const Shipments = () => {
       coordinates.push(...(idx === 0 ? segment : segment.slice(1)));
     });
 
-    return { coordinates: removeSmallLoops(coordinates), error: firstError };
+    const deLooped = removeSmallLoops(coordinates);
+    const trimmed = trimSnapEndpoints(deLooped, points[0], points[points.length - 1], endpointExclusionRadiusMeters);
+    return { coordinates: trimmed, error: firstError };
   };
 
   const routeSnapEnabled = user?.route_snap_enabled ?? false;
@@ -1706,7 +1777,10 @@ const Shipments = () => {
       });
 
     return () => { cancelled = true; };
-  }, [routeSnapEnabled, selectedShipmentDetail?._id, locationData, user?.gps_noise_filter_enabled]);
+  }, [
+    routeSnapEnabled, selectedShipmentDetail?._id, locationData, user?.gps_noise_filter_enabled,
+    nearestRadiusMeters, matchRadiusMeters, matchConfidenceThreshold, endpointExclusionRadiusMeters, preferNamedRoads,
+  ]);
 
   // Coordinates actually drawn on the map: road-snapped when the feature is
   // on and a snap succeeded, otherwise the raw (optionally noise-filtered) trace.
@@ -2681,6 +2755,98 @@ const Shipments = () => {
             }}
           >
             {isSnappingRoute ? 'Snapping route to roads…' : `Road snap failed — showing raw GPS (${snapRouteError})`}
+          </div>
+        )}
+        {routeSnapEnabled && selectedShipmentDetail && (
+          <div style={{ position: 'absolute', bottom: 10, right: 10, zIndex: 1000 }}>
+            <button
+              type="button"
+              onClick={() => setShowSnapTuningPanel((v) => !v)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: 'none',
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#fff',
+                background: '#424242',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+                cursor: 'pointer',
+              }}
+            >
+              {showSnapTuningPanel ? 'Hide snap tuning' : 'Snap tuning'}
+            </button>
+            {showSnapTuningPanel && (
+              <div
+                style={{
+                  marginTop: 6,
+                  width: 260,
+                  padding: 12,
+                  borderRadius: 8,
+                  background: '#fff',
+                  color: '#333',
+                  fontSize: 12,
+                  boxShadow: '0 1px 6px rgba(0,0,0,0.4)',
+                }}
+              >
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Match radius</span>
+                    <span>{matchRadiusMeters} m</span>
+                  </label>
+                  <input
+                    type="range" min={10} max={100} step={5}
+                    value={matchRadiusMeters}
+                    onChange={(e) => setMatchRadiusMeters(Number(e.target.value))}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Nearest radius</span>
+                    <span>{nearestRadiusMeters} m</span>
+                  </label>
+                  <input
+                    type="range" min={20} max={300} step={10}
+                    value={nearestRadiusMeters}
+                    onChange={(e) => setNearestRadiusMeters(Number(e.target.value))}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Match confidence min</span>
+                    <span>{matchConfidenceThreshold === 0 ? 'off' : matchConfidenceThreshold.toFixed(2)}</span>
+                  </label>
+                  <input
+                    type="range" min={0} max={0.95} step={0.05}
+                    value={matchConfidenceThreshold}
+                    onChange={(e) => setMatchConfidenceThreshold(Number(e.target.value))}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Endpoint exclusion</span>
+                    <span>{endpointExclusionRadiusMeters === 0 ? 'off' : `${endpointExclusionRadiusMeters} m`}</span>
+                  </label>
+                  <input
+                    type="range" min={0} max={150} step={5}
+                    value={endpointExclusionRadiusMeters}
+                    onChange={(e) => setEndpointExclusionRadiusMeters(Number(e.target.value))}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={preferNamedRoads}
+                    onChange={(e) => setPreferNamedRoads(e.target.checked)}
+                  />
+                  <span>Prefer named roads (fallback snap)</span>
+                </label>
+              </div>
+            )}
           </div>
         )}
         <MapContainer
