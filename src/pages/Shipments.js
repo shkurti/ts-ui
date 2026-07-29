@@ -1990,9 +1990,16 @@ const Shipments = () => {
   // below). It's intentionally a plain straight line rather than a routed
   // one: routing it through OSRM had the same one-way-grid problem as the
   // main trace (looping detours, and occasionally failing to reach the pin
-  // at all). A straight line always reaches the destination and can't loop;
-  // it just starts from the last *snapped* point instead of the raw GPS fix
-  // so it lines up with where the road-snapped polyline actually ends.
+  // at all). A straight line always reaches the destination and can't loop.
+  // It starts from the raw GPS fix (the live marker's actual position), not
+  // the last *snapped* point — starting from the snapped point meant that
+  // whenever the main trace mis-snapped near the end (e.g. dragged onto a
+  // street bordering a parking lot the vehicle was actually in), this
+  // connector inherited that same wrong point and ran past the marker
+  // instead of starting at it. Any visual gap between where the solid trace
+  // ends and where this dashed line begins is the snapping error made
+  // visible — see endpointExclusionRadiusMeters, which trims the trace back
+  // toward this same raw fix instead of masking the gap here.
   const connectorCoordinates = useMemo(() => {
     if (!routeSnapEnabled || !selectedShipmentDetail || locationData.length === 0 || legPoints.length < 2 || snappedCoordinates.length === 0) {
       return [];
@@ -2013,8 +2020,7 @@ const Shipments = () => {
     const showDashedToNext = nextIdx !== 0 && (rawPos[0] !== nextPoint.lat || rawPos[1] !== nextPoint.lng);
     if (!showDashedToNext) return [];
 
-    const snappedPos = snappedCoordinates[snappedCoordinates.length - 1];
-    return [snappedPos, [nextPoint.lat, nextPoint.lng]];
+    return [rawPos, [nextPoint.lat, nextPoint.lng]];
   }, [routeSnapEnabled, selectedShipmentDetail?._id, locationData, legPoints, snappedCoordinates]);
 
   // Persisted set of processed message IDs to avoid duplicates
