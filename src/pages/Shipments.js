@@ -1311,20 +1311,122 @@ const Shipments = () => {
     return pointsToRender.map(point => [point.latitude, point.longitude]);
   };
 
+  // --- Road snapping (OSRM map matching) ---------------------------------
+  // Public demo server by default; point REACT_APP_OSRM_URL at a self-hosted
+  // OSRM instance for production (no rate limits, no dependency on OSRM's
+  // shared demo server).
+  const OSRM_BASE_URL = (process.env.REACT_APP_OSRM_URL || 'https://router.project-osrm.org').replace(/\/$/, '');
+  const OSRM_MAX_POINTS_PER_REQUEST = 90; // demo server caps /match at 100 coords
+
+  const [snappedCoordinates, setSnappedCoordinates] = useState([]);
+  const [isSnappingRoute, setIsSnappingRoute] = useState(false);
+  const [snapRouteError, setSnapRouteError] = useState(null);
+
+  // Calls OSRM's /match service (map matching), which is built for exactly
+  // this: a sequence of noisy GPS fixes snapped onto the road graph, as
+  // opposed to /route which only cares about start/end. Chunks long traces
+  // since the service caps how many coordinates it accepts per request.
+  const snapPointsToRoad = async (points) => {
+    const chunks = [];
+    for (let i = 0; i < points.length; i += OSRM_MAX_POINTS_PER_REQUEST) {
+      chunks.push(points.slice(i, i + OSRM_MAX_POINTS_PER_REQUEST));
+    }
+
+    const snapped = [];
+    let firstError = null;
+    for (const chunk of chunks) {
+      if (chunk.length < 2) {
+        snapped.push(...chunk.map(p => [p.latitude, p.longitude]));
+        continue;
+      }
+      const coordsParam = chunk.map(p => `${p.longitude},${p.latitude}`).join(';');
+      const radiusesParam = chunk.map(() => '25').join(';');
+      const url = `${OSRM_BASE_URL}/match/v1/driving/${coordsParam}?geometries=geojson&overview=full&radiuses=${radiusesParam}&gaps=split&tidy=true`;
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`OSRM responded ${response.status}`);
+        const data = await response.json();
+        if (data.code !== 'Ok' || !data.matchings || data.matchings.length === 0) {
+          throw new Error(data.message || 'No match found for this segment');
+        }
+        for (const matching of data.matchings) {
+          for (const [lon, lat] of matching.geometry.coordinates) {
+            snapped.push([lat, lon]);
+          }
+        }
+      } catch (err) {
+        // Fall back to the raw (unsnapped) points for this chunk rather than
+        // dropping the segment entirely; keep going so the rest of the trace
+        // can still be snapped.
+        snapped.push(...chunk.map(p => [p.latitude, p.longitude]));
+        firstError = firstError || err;
+      }
+    }
+    return { coordinates: snapped, error: firstError };
+  };
+
+  const routeSnapEnabled = user?.route_snap_enabled ?? false;
+
+  useEffect(() => {
+    if (!routeSnapEnabled || !selectedShipmentDetail || locationData.length < 2) {
+      setSnappedCoordinates([]);
+      setSnapRouteError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const sortedData = [...locationData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const gpsNoiseFilterEnabled = user?.gps_noise_filter_enabled ?? true;
+    const pointsToSnap = gpsNoiseFilterEnabled ? filterGpsNoise(sortedData) : sortedData;
+
+    setIsSnappingRoute(true);
+    setSnapRouteError(null);
+
+    snapPointsToRoad(pointsToSnap)
+      .then(({ coordinates, error }) => {
+        if (cancelled) return;
+        setSnappedCoordinates(coordinates);
+        if (error) {
+          console.error('Road snapping failed for part of the route:', error);
+          setSnapRouteError(error.message || 'Road snapping failed for part of the route');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Road snapping failed:', err);
+          setSnapRouteError(err.message || 'Road snapping failed');
+          setSnappedCoordinates([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsSnappingRoute(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [routeSnapEnabled, selectedShipmentDetail?._id, locationData, user?.gps_noise_filter_enabled]);
+
+  // Coordinates actually drawn on the map: road-snapped when the feature is
+  // on and a snap succeeded, otherwise the raw (optionally noise-filtered) trace.
+  const getDisplayPolylineCoordinates = () => {
+    if (routeSnapEnabled && snappedCoordinates.length > 0) return snappedCoordinates;
+    return getPolylineCoordinates();
+  };
+
   // Component to handle map bounds fitting
   const MapBoundsHandler = () => {
     const map = useMap();
     
     useEffect(() => {
       if (!selectedShipmentDetail) return;
-      const routeCoordinates = getPolylineCoordinates();
+      const routeCoordinates = getDisplayPolylineCoordinates();
       const alertCoordinates = combinedAlertMarkers.map((m) => [m.lat, m.lng]);
       const coordinates = [...routeCoordinates, ...alertCoordinates];
       if (coordinates.length > 0) {
         const bounds = L.latLngBounds(coordinates);
         map.fitBounds(bounds, { padding: [20, 20], maxZoom: 15 });
       }
-    }, [map, selectedShipmentDetail?._id, locationData, combinedAlertMarkers]);
+    }, [map, selectedShipmentDetail?._id, locationData, combinedAlertMarkers, snappedCoordinates]);
 
     return null;
   };
@@ -2228,6 +2330,25 @@ const Shipments = () => {
       </div>
 
       <div className="map-container">
+        {routeSnapEnabled && selectedShipmentDetail && (isSnappingRoute || snapRouteError) && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 10,
+              right: 10,
+              zIndex: 1000,
+              padding: '6px 12px',
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#fff',
+              background: isSnappingRoute ? '#667eea' : '#d32f2f',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+            }}
+          >
+            {isSnappingRoute ? 'Snapping route to roads…' : `Road snap failed — showing raw GPS (${snapRouteError})`}
+          </div>
+        )}
         <MapContainer
           ref={mapRef}
           center={[20, 0]} // Default world view
@@ -2395,7 +2516,7 @@ const Shipments = () => {
           {selectedShipmentDetail && locationData.length > 0 && (
             <>
               <Polyline
-                positions={getPolylineCoordinates()}
+                positions={getDisplayPolylineCoordinates()}
                 pathOptions={{
                   color: '#667eea',
                   weight: 4,
