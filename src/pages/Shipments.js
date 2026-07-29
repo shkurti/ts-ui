@@ -1453,6 +1453,60 @@ const Shipments = () => {
     return getPolylineCoordinates();
   };
 
+  // The map also draws a short dashed segment connecting the last GPS fix to
+  // the next destination pin (see the "Red marker at current GPS" block
+  // below). That's normally a straight as-the-crow-flies line, which is what
+  // was cutting diagonally across parking lots/blocks at the end of a trip
+  // even with road snapping on. When snapping is enabled, route that segment
+  // too via OSRM's /route (just two points, not a match) so it follows roads.
+  const [connectorCoordinates, setConnectorCoordinates] = useState([]);
+
+  useEffect(() => {
+    if (!routeSnapEnabled || !selectedShipmentDetail || locationData.length === 0 || legPoints.length < 2) {
+      setConnectorCoordinates([]);
+      return;
+    }
+
+    const lastGps = locationData[locationData.length - 1];
+    const gpsPos = [lastGps.latitude, lastGps.longitude];
+    let minDist = Infinity, closestIdx = 0;
+    for (let i = 0; i < legPoints.length; i++) {
+      const d = Math.hypot(legPoints[i].lat - gpsPos[0], legPoints[i].lng - gpsPos[1]);
+      if (d < minDist) {
+        minDist = d;
+        closestIdx = i;
+      }
+    }
+    const nextIdx = Math.min(closestIdx + 1, legPoints.length - 1);
+    const nextPoint = legPoints[nextIdx];
+    const showDashedToNext = nextIdx !== 0 && (gpsPos[0] !== nextPoint.lat || gpsPos[1] !== nextPoint.lng);
+    if (!showDashedToNext) {
+      setConnectorCoordinates([]);
+      return;
+    }
+
+    let cancelled = false;
+    const url = `${OSRM_BASE_URL}/route/v1/driving/${gpsPos[1]},${gpsPos[0]};${nextPoint.lng},${nextPoint.lat}?geometries=geojson&overview=full`;
+    fetch(url)
+      .then((response) => response.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
+          setConnectorCoordinates(data.routes[0].geometry.coordinates.map(([lon, lat]) => [lat, lon]));
+        } else {
+          setConnectorCoordinates([]);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Connector road routing failed:', err);
+          setConnectorCoordinates([]);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [routeSnapEnabled, selectedShipmentDetail?._id, locationData, legPoints]);
+
   // Component to handle map bounds fitting
   const MapBoundsHandler = () => {
     const map = useMap();
@@ -2526,7 +2580,11 @@ const Shipments = () => {
                 {/* Dashed line from current GPS to next destination marker */}
                 {showDashedToNext && (
                   <Polyline
-                    positions={[gpsPos, [legPoints[nextIdx].lat, legPoints[nextIdx].lng]]}
+                    positions={
+                      routeSnapEnabled && connectorCoordinates.length > 0
+                        ? connectorCoordinates
+                        : [gpsPos, [legPoints[nextIdx].lat, legPoints[nextIdx].lng]]
+                    }
                     pathOptions={{
                       color: '#1976d2',
                       weight: 3,
