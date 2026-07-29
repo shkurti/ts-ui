@@ -1340,11 +1340,11 @@ const Shipments = () => {
   // default). Raising this rejects low-confidence matchings and falls back
   // to legacySnapChunk for that stretch instead of trusting a bad snap.
   const [matchConfidenceThreshold, setMatchConfidenceThreshold] = useState(0);
-  // If > 0, any snapped/matched point within this many meters of the raw
-  // first or last GPS fix is dropped and replaced with a straight segment to
-  // that raw fix instead — prevents the start/end of the drawn trace from
-  // being dragged onto a nearby street when the true position (e.g. deep in
-  // a parking lot) has no routable road edge nearby.
+  // The drawn trace always ends exactly at the raw first/last GPS fix now
+  // (see trimSnapEndpoints) — this only controls extra cosmetic cleanup: any
+  // snapped/matched point within this many meters of that raw endpoint is
+  // also dropped first, so the final segment isn't a tiny zigzag right at
+  // the anchor. 0 = no extra cleanup, just connect straight to the raw fix.
   const [endpointExclusionRadiusMeters, setEndpointExclusionRadiusMeters] = useState(0);
   // The point-by-point fallback (legacySnapChunk) prefers a named street
   // over a closer-but-unnamed road (parking aisle/driveway) — turn off to
@@ -1681,31 +1681,35 @@ const Shipments = () => {
   // street when the true position (e.g. deep in a parking lot) has no
   // routable road edge nearby for OSRM to snap to.
   const trimSnapEndpoints = (coords, rawFirstPoint, rawLastPoint, exclusionRadiusMeters) => {
-    if (exclusionRadiusMeters <= 0 || coords.length < 2) return coords;
-
     const rawFirst = [rawFirstPoint.latitude, rawFirstPoint.longitude];
     const rawLast = [rawLastPoint.latitude, rawLastPoint.longitude];
+    if (coords.length === 0) return [rawFirst, rawLast];
 
+    // Optional cosmetic cleanup: drop any leading/trailing snapped points
+    // that are already within exclusionRadiusMeters of the raw endpoint, so
+    // the final straight segment isn't a tiny zigzag right at the anchor.
+    // This does NOT gate whether we connect to the raw endpoint at all —
+    // regardless of this radius (including 0/off), the line below always
+    // reaches the real first/last GPS fix, however far the snap drifted.
     let startIdx = 0;
-    while (
-      startIdx < coords.length - 1 &&
-      distanceMeters(coords[startIdx][0], coords[startIdx][1], rawFirst[0], rawFirst[1]) < exclusionRadiusMeters
-    ) {
-      startIdx++;
-    }
-
     let endIdx = coords.length - 1;
-    while (
-      endIdx > startIdx &&
-      distanceMeters(coords[endIdx][0], coords[endIdx][1], rawLast[0], rawLast[1]) < exclusionRadiusMeters
-    ) {
-      endIdx--;
+    if (exclusionRadiusMeters > 0) {
+      while (
+        startIdx < endIdx &&
+        distanceMeters(coords[startIdx][0], coords[startIdx][1], rawFirst[0], rawFirst[1]) < exclusionRadiusMeters
+      ) {
+        startIdx++;
+      }
+      while (
+        endIdx > startIdx &&
+        distanceMeters(coords[endIdx][0], coords[endIdx][1], rawLast[0], rawLast[1]) < exclusionRadiusMeters
+      ) {
+        endIdx--;
+      }
     }
 
     const trimmed = coords.slice(startIdx, endIdx + 1);
-    const withStart = startIdx > 0 ? [rawFirst, ...trimmed] : trimmed;
-    const withEnd = endIdx < coords.length - 1 ? [...withStart, rawLast] : withStart;
-    return withEnd;
+    return [rawFirst, ...trimmed, rawLast];
   };
 
   const snapPointsToRoad = async (points) => {
