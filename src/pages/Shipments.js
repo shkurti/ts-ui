@@ -1457,6 +1457,37 @@ const Shipments = () => {
     return result;
   };
 
+  // Last line of defense, applied to the final drawn path regardless of
+  // which step produced the problem: if the path comes back within
+  // REVISIT_RADIUS_METERS of somewhere it already was, within a short
+  // travel distance, that's a visual loop — a real trip essentially never
+  // doubles back on itself that tightly. Cut out everything between the two
+  // visits rather than trying to guess which upstream step caused it.
+  const LOOP_REVISIT_RADIUS_METERS = 20;
+  const LOOP_MAX_LOOKAHEAD_METERS = 200;
+
+  const removeSmallLoops = (coords) => {
+    const result = [];
+    let i = 0;
+    while (i < coords.length) {
+      let cumulative = 0;
+      let jumpTo = -1;
+      for (let k = i + 1; k < coords.length; k++) {
+        cumulative += distanceMeters(coords[k - 1][0], coords[k - 1][1], coords[k][0], coords[k][1]);
+        if (cumulative > LOOP_MAX_LOOKAHEAD_METERS) break;
+        // Require some real travel before treating a nearby point as a
+        // "revisit" rather than just the normal spacing of adjacent points.
+        if (cumulative > LOOP_REVISIT_RADIUS_METERS * 2 &&
+            distanceMeters(coords[i][0], coords[i][1], coords[k][0], coords[k][1]) < LOOP_REVISIT_RADIUS_METERS) {
+          jumpTo = k;
+        }
+      }
+      result.push(coords[i]);
+      i = jumpTo > i ? jumpTo + 1 : i + 1;
+    }
+    return result;
+  };
+
   const snapPointsToRoad = async (points) => {
     const snapped = new Array(points.length);
     let firstError = null;
@@ -1490,7 +1521,7 @@ const Shipments = () => {
     const coordinates = [pruned[0]];
     hops.forEach((segment) => coordinates.push(...segment.slice(1)));
 
-    return { coordinates, error: firstError };
+    return { coordinates: removeSmallLoops(coordinates), error: firstError };
   };
 
   const routeSnapEnabled = user?.route_snap_enabled ?? false;
