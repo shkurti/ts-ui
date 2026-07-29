@@ -1361,9 +1361,30 @@ const Shipments = () => {
   // whole trip like /match did — keeps any single bad hop small and local
   // instead of dragging a whole city block into a loop.
   const ROUTE_DETOUR_MAX_RATIO = 2.5;
+  // A loop that curls out and back to roughly the same spot can have a
+  // total distance not much bigger than the straight line (so the ratio
+  // check above misses it) while still swinging tens of meters sideways
+  // into a driveway or parking loop — that's the little square detours.
+  // Reject any hop whose path strays further than this from the straight
+  // line between its endpoints, independent of total distance.
+  const MAX_HOP_SIDEWAYS_DEVIATION_METERS = 40;
   // Skip routing hops shorter than this; a curve isn't visually meaningful
   // over a few meters and it's one less request.
   const MIN_HOP_METERS_TO_ROUTE = 15;
+
+  // Perpendicular distance from point p to the line segment a-b, in meters.
+  // Uses a flat-earth approximation, which is accurate enough over the
+  // few-hundred-meter span of a single hop.
+  const perpendicularDistanceMeters = (p, a, b) => {
+    const mPerDegLat = 111320;
+    const mPerDegLon = 111320 * Math.cos((a[0] * Math.PI) / 180);
+    const bx = (b[1] - a[1]) * mPerDegLon, by = (b[0] - a[0]) * mPerDegLat;
+    const px = (p[1] - a[1]) * mPerDegLon, py = (p[0] - a[0]) * mPerDegLat;
+    const abLenSq = bx * bx + by * by;
+    if (abLenSq === 0) return Math.hypot(px, py);
+    const t = Math.max(0, Math.min(1, (px * bx + py * by) / abLenSq));
+    return Math.hypot(px - t * bx, py - t * by);
+  };
 
   const routeBetween = async (a, b) => {
     const straight = distanceMeters(a[0], a[1], b[0], b[1]);
@@ -1380,7 +1401,12 @@ const Shipments = () => {
         // than the path actually taken — not worth showing.
         return [a, b];
       }
-      return route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+      const coords = route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+      const maxDeviation = Math.max(...coords.map(pt => perpendicularDistanceMeters(pt, a, b)));
+      if (maxDeviation > MAX_HOP_SIDEWAYS_DEVIATION_METERS) {
+        return [a, b];
+      }
+      return coords;
     } catch {
       return [a, b];
     }
