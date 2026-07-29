@@ -1341,11 +1341,27 @@ const Shipments = () => {
       }
       const coordsParam = chunk.map(p => `${p.longitude},${p.latitude}`).join(';');
       const radiusesParam = chunk.map(() => '25').join(';');
-      const url = `${OSRM_BASE_URL}/match/v1/driving/${coordsParam}?geometries=geojson&overview=full&radiuses=${radiusesParam}&gaps=split&tidy=true`;
+      // gaps=split needs timestamps to know where the real time gaps are —
+      // omitting them while gaps=split is set is a documented cause of a
+      // hard 400 from OSRM, so always send them alongside it. OSRM also
+      // requires them strictly increasing, so nudge apart any pings that
+      // landed in the same second.
+      let lastTs = -Infinity;
+      const timestamps = chunk.map(p => {
+        let ts = Math.floor(new Date(p.timestamp).getTime() / 1000);
+        if (ts <= lastTs) ts = lastTs + 1;
+        lastTs = ts;
+        return ts;
+      });
+      const timestampsParam = timestamps.join(';');
+      const url = `${OSRM_BASE_URL}/match/v1/driving/${coordsParam}?geometries=geojson&overview=full&radiuses=${radiusesParam}&timestamps=${timestampsParam}&gaps=split&tidy=true`;
 
       try {
         const response = await fetch(url);
-        if (!response.ok) throw new Error(`OSRM responded ${response.status}`);
+        if (!response.ok) {
+          const body = await response.json().catch(() => null);
+          throw new Error(body?.message || `OSRM responded ${response.status}`);
+        }
         const data = await response.json();
         if (data.code !== 'Ok' || !data.matchings || data.matchings.length === 0) {
           throw new Error(data.message || 'No match found for this segment');
