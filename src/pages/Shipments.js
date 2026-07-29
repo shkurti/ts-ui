@@ -1604,17 +1604,28 @@ const Shipments = () => {
       const url = `${OSRM_BASE_URL}/match/v1/driving/${coordsParam}` +
         `?geometries=geojson&overview=full&gaps=split&tidy=true` +
         `&radiuses=${radiusesParam}&timestamps=${timestampsParam}`;
+      const chunkDesc = `[${points[0].latitude},${points[0].longitude}] -> [${points[points.length - 1].latitude},${points[points.length - 1].longitude}] (${points.length} pts)`;
       const response = await fetch(url);
-      if (!response.ok) return null;
+      if (!response.ok) {
+        console.warn(`[route-snap] /match HTTP ${response.status} for chunk ${chunkDesc}; falling back to legacy snap for this chunk`);
+        return null;
+      }
       const data = await response.json();
-      if (data.code !== 'Ok' || !data.matchings?.length) return null;
+      if (data.code !== 'Ok' || !data.matchings?.length) {
+        console.warn(`[route-snap] /match code=${data.code} (${data.message || 'no matchings'}) for chunk ${chunkDesc}; falling back to legacy snap for this chunk`);
+        return null;
+      }
+
+      const confidences = data.matchings.map((m) => m.confidence);
+      console.debug(`[route-snap] /match ok for chunk ${chunkDesc}: ${data.matchings.length} matching(s), confidences=${confidences.join(',')}`);
 
       const coordinates = [];
       data.matchings.forEach((matching) => {
         coordinates.push(...matching.geometry.coordinates.map(([lon, lat]) => [lat, lon]));
       });
       return coordinates;
-    } catch {
+    } catch (err) {
+      console.warn('[route-snap] /match request threw, falling back to legacy snap for this chunk:', err);
       return null;
     }
   };
