@@ -133,8 +133,6 @@ const Shipments = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [shipments, setShipments] = useState([]);
   const [trackers, setTrackers] = useState([]);
-  // Latest known {lat, lng} per trackerId, used to plot all shipments on the overview map
-  const [trackerLocations, setTrackerLocations] = useState({});
   const [selectedTracker, setSelectedTracker] = useState('');
   const [formData, setFormData] = useState({
     legs: [{
@@ -235,73 +233,6 @@ const Shipments = () => {
     fetchTrackers();
   }, [loading]); // Only depend on loading from AuthContext
 
-  // Bulk-fetch the latest GPS position for every tracker, so the overview map
-  // can plot where all shipments currently are without opening each one.
-  useEffect(() => {
-    if (loading) return;
-
-    let cancelled = false;
-    const fetchTrackerLocations = async () => {
-      try {
-        const data = await trackerApi.getLocations();
-        if (!cancelled) setTrackerLocations(data || {});
-      } catch (error) {
-        console.error('Error fetching tracker locations:', error);
-      }
-    };
-
-    fetchTrackerLocations();
-    const intervalId = setInterval(fetchTrackerLocations, 60000);
-    return () => {
-      cancelled = true;
-      clearInterval(intervalId);
-    };
-  }, [loading]);
-
-  // Keep overview positions fresh in real time from the same WebSocket feed
-  // used for the single-shipment detail view (sensorData is keyed by trackerId for ALL trackers).
-  useEffect(() => {
-    const trackerIds = Object.keys(sensorData || {});
-    if (trackerIds.length === 0) return;
-
-    setTrackerLocations(prev => {
-      let changed = false;
-      const next = { ...prev };
-      trackerIds.forEach(trackerId => {
-        const payload = sensorData[trackerId];
-        const reading = Array.isArray(payload?.data) && payload.data.length > 0
-          ? payload.data[payload.data.length - 1]
-          : payload;
-        const lat = reading?.Lat ?? reading?.latitude;
-        const lng = reading?.Lng ?? reading?.longitude;
-        if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
-          const newLat = parseFloat(lat);
-          const newLng = parseFloat(lng);
-          const timestamp = reading?.DT ?? reading?.timestamp ?? new Date().toISOString();
-          const previous = prev[trackerId];
-          // Reject implausible jumps from the last known-good overview position —
-          // a single noisy WebSocket tick would otherwise instantly re-plant
-          // this tracker (and every shipment falling back to it) at a bad fix.
-          if (previous) {
-            const distance = distanceMeters(previous.latitude, previous.longitude, newLat, newLng);
-            const dtSeconds = (new Date(timestamp) - new Date(previous.timestamp)) / 1000;
-            if (dtSeconds > 0 && (distance / dtSeconds) > MAX_PLAUSIBLE_SPEED_MPS) {
-              return;
-            }
-          }
-          next[trackerId] = {
-            tracker_id: trackerId,
-            latitude: newLat,
-            longitude: newLng,
-            timestamp,
-          };
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-  }, [sensorData]);
-
   // Filter shipments based on search term
   const filteredShipments = useMemo(() => shipments.filter(shipment => {
     const trackerId = shipment.trackerId?.toString().toLowerCase() || '';
@@ -326,80 +257,36 @@ const Shipments = () => {
     return 'Delivered';
   };
 
-  // Delivered shipments don't have a "current" GPS fix worth showing (their
-  // tracker has likely moved on to a new shipment), so each one is anchored
-  // to its own last-known position from its own ship/arrival window instead
-  // of the tracker's live location. Cached per shipment id since it never
-  // changes once fetched.
-  const [deliveredShipmentPositions, setDeliveredShipmentPositions] = useState({});
-  const fetchedDeliveredPositionIdsRef = useRef(new Set());
+  // The overview map plots shipments by their declared address, not live GPS —
+  // trackers get reused across shipments, so a device's actual last fix often
+  // belongs to a completely different (and differently located) shipment.
+  // Geocoding the address is the only thing that reliably matches what the
+  // shipment list itself says. Delivered shipments use their destination
+  // (where they ended up); Pending/In Transit use their origin (the one
+  // address that's fixed and known before the tracker moves at all).
+  // Cached per address string via MapTiler, since many shipments reuse the
+  // same warehouse/stop addresses.
+  const [geocodedAddresses, setGeocodedAddresses] = useState({});
+  const fetchedAddressesRef = useRef(new Set());
+
+  const addressForShipment = (shipment) => {
+    const status = getShipmentStatus(shipment);
+    const legs = shipment.legs || [];
+    return status === 'Delivered'
+      ? legs[legs.length - 1]?.stopAddress
+      : legs[0]?.shipFromAddress;
+  };
 
   useEffect(() => {
-    const toFetch = filteredShipments.filter(shipment => {
-      if (getShipmentStatus(shipment) !== 'Delivered') return false;
-      if (fetchedDeliveredPositionIdsRef.current.has(shipment._id)) return false;
-      const trackerId = shipment.trackerId;
-      const shipDate = shipment.legs?.[0]?.shipDate;
-      const arrivalDate = shipment.legs?.[shipment.legs.length - 1]?.arrivalDate;
-      return Boolean(trackerId && shipDate && arrivalDate);
-    });
-    if (toFetch.length === 0) return;
+    const toFetch = filteredShipments
+      .map(shipment => addressForShipment(shipment))
+      .filter(address => address && !fetchedAddressesRef.current.has(address));
+    const uniqueToFetch = [...new Set(toFetch)];
+    if (uniqueToFetch.length === 0) return;
 
     let cancelled = false;
     (async () => {
-      const entries = await Promise.all(toFetch.map(async shipment => {
-        const trackerId = shipment.trackerId;
-        const shipDate = shipment.legs?.[0]?.shipDate;
-        const arrivalDate = shipment.legs?.[shipment.legs.length - 1]?.arrivalDate;
-        try {
-          const data = await shipmentApi.getRouteData(trackerId, shipDate, arrivalDate, userTimezone);
-          // Route data is raw GPS, same as the detail-view polyline — a single
-          // noisy fix as the very last record would otherwise become this
-          // shipment's plotted position on the overview map.
-          const cleaned = Array.isArray(data) && data.length > 0 ? filterGpsNoise(data) : data;
-          const lastRecord = Array.isArray(cleaned) && cleaned.length > 0 ? cleaned[cleaned.length - 1] : null;
-          const lat = parseFloat(lastRecord?.latitude ?? lastRecord?.Lat ?? lastRecord?.lat);
-          const lng = parseFloat(lastRecord?.longitude ?? lastRecord?.Lng ?? lastRecord?.lng);
-          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-          // Only mark as fetched once we actually have a position — a failed
-          // or empty response shouldn't permanently suppress retries, or the
-          // shipment gets stuck falling back to the tracker's live location.
-          fetchedDeliveredPositionIdsRef.current.add(shipment._id);
-          return [shipment._id, { latitude: lat, longitude: lng }];
-        } catch (error) {
-          console.error(`Error fetching last position for shipment ${shipment._id}:`, error);
-          return null;
-        }
-      }));
-      if (cancelled) return;
-      const validEntries = entries.filter(Boolean);
-      if (validEntries.length === 0) return;
-      setDeliveredShipmentPositions(prev => ({ ...prev, ...Object.fromEntries(validEntries) }));
-    })();
-
-    return () => { cancelled = true; };
-  }, [filteredShipments, userTimezone]);
-
-  // Scheduled-but-not-started shipments haven't produced any GPS fix yet, so
-  // their tracker's "live" location is really wherever the device sat after
-  // its *previous* shipment — misleading. Anchor them to their planned origin
-  // address instead (geocoded via MapTiler, same as the leg pins in the
-  // detail view). Cached per shipment id since the origin address is static.
-  const [pendingShipmentPositions, setPendingShipmentPositions] = useState({});
-  const fetchedPendingPositionIdsRef = useRef(new Set());
-
-  useEffect(() => {
-    const toFetch = filteredShipments.filter(shipment => {
-      if (getShipmentStatus(shipment) !== 'Pending') return false;
-      if (fetchedPendingPositionIdsRef.current.has(shipment._id)) return false;
-      return Boolean(shipment.legs?.[0]?.shipFromAddress);
-    });
-    if (toFetch.length === 0) return;
-
-    let cancelled = false;
-    (async () => {
-      const entries = await Promise.all(toFetch.map(async shipment => {
-        const address = shipment.legs[0].shipFromAddress;
+      const entries = await Promise.all(uniqueToFetch.map(async address => {
         try {
           const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(address)}.json?key=${MAPTILER_API_KEY}`;
           const res = await fetch(url);
@@ -407,49 +294,34 @@ const Shipments = () => {
           const feature = data?.features?.[0];
           if (!feature) return null;
           // Only mark as fetched once we actually have a position — a failed
-          // or empty response shouldn't permanently suppress retries, or the
-          // shipment gets stuck falling back to the tracker's live location.
-          fetchedPendingPositionIdsRef.current.add(shipment._id);
-          return [shipment._id, { latitude: feature.geometry.coordinates[1], longitude: feature.geometry.coordinates[0] }];
+          // or empty response shouldn't permanently suppress retries.
+          fetchedAddressesRef.current.add(address);
+          return [address, { latitude: feature.geometry.coordinates[1], longitude: feature.geometry.coordinates[0] }];
         } catch (error) {
-          console.error(`Error geocoding origin for shipment ${shipment._id}:`, error);
+          console.error(`Error geocoding address "${address}":`, error);
           return null;
         }
       }));
       if (cancelled) return;
       const validEntries = entries.filter(Boolean);
       if (validEntries.length === 0) return;
-      setPendingShipmentPositions(prev => ({ ...prev, ...Object.fromEntries(validEntries) }));
+      setGeocodedAddresses(prev => ({ ...prev, ...Object.fromEntries(validEntries) }));
     })();
 
     return () => { cancelled = true; };
   }, [filteredShipments]);
 
   // Shipments with a known position, for the clustered overview map.
-  // - Delivered: own historical last-known position (avoids collapsing onto
-  //   a reused tracker's current spot).
-  // - Pending: geocoded planned origin (the tracker hasn't started moving on
-  //   this shipment yet, so its live position isn't relevant).
-  // - In Transit: tracker's live location.
-  // Any of these fall back to the tracker's live location if their preferred
-  // position isn't available yet, rather than hiding the shipment.
   const shipmentMapPoints = useMemo(() => {
     return filteredShipments
       .map(shipment => {
-        const status = getShipmentStatus(shipment);
-        if (status === 'Delivered') {
-          const pos = deliveredShipmentPositions[shipment._id];
-          if (pos) return { shipment, lat: pos.latitude, lng: pos.longitude, isPending: false };
-        } else if (status === 'Pending') {
-          const pos = pendingShipmentPositions[shipment._id];
-          if (pos) return { shipment, lat: pos.latitude, lng: pos.longitude, isPending: true };
-        }
-        const loc = trackerLocations[shipment.trackerId] ?? trackerLocations[String(shipment.trackerId)];
-        if (!loc) return null;
-        return { shipment, lat: loc.latitude, lng: loc.longitude, isPending: status === 'Pending' };
+        const address = addressForShipment(shipment);
+        const pos = address ? geocodedAddresses[address] : null;
+        if (!pos) return null;
+        return { shipment, lat: pos.latitude, lng: pos.longitude, isPending: getShipmentStatus(shipment) === 'Pending' };
       })
       .filter(Boolean);
-  }, [filteredShipments, trackerLocations, deliveredShipmentPositions, pendingShipmentPositions]);
+  }, [filteredShipments, geocodedAddresses]);
 
   const handleSelectAll = () => {
     if (selectAll) {
