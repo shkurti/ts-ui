@@ -1334,19 +1334,37 @@ const Shipments = () => {
   // truncated traces seen downtown. /nearest has no such constraint: it just
   // answers "where's the closest road to this point," independently, so it
   // can't produce a bogus detour.
+  const fetchNearest = async (point, radiusMeters) => {
+    const url = `${OSRM_BASE_URL}/nearest/v1/driving/${point.longitude},${point.latitude}?number=1&radiuses=${radiusMeters}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.message || `OSRM responded ${response.status}`);
+    }
+    const data = await response.json();
+    if (data.code !== 'Ok' || !data.waypoints?.[0]?.location) {
+      throw new Error(data.message || 'No nearby road found');
+    }
+    return data.waypoints[0];
+  };
+
   const snapSinglePoint = async (point) => {
-    const url = `${OSRM_BASE_URL}/nearest/v1/driving/${point.longitude},${point.latitude}?number=1&radiuses=${OSRM_NEAREST_RADIUS_METERS}`;
     try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.message || `OSRM responded ${response.status}`);
+      let waypoint = await fetchNearest(point, OSRM_NEAREST_RADIUS_METERS);
+      // Parking-lot aisles and driveways are almost always unnamed in OSM,
+      // while real streets almost always have a name — that's exactly what
+      // was pulling the trace onto small loop/driveway roads. If the
+      // closest hit is unnamed, look further out for an actual named
+      // street instead of trusting it.
+      if (!waypoint.name) {
+        try {
+          const namedWaypoint = await fetchNearest(point, OSRM_NEAREST_RADIUS_METERS * 3);
+          if (namedWaypoint.name) waypoint = namedWaypoint;
+        } catch {
+          // No named road found further out either — keep the unnamed hit.
+        }
       }
-      const data = await response.json();
-      if (data.code !== 'Ok' || !data.waypoints?.[0]?.location) {
-        throw new Error(data.message || 'No nearby road found');
-      }
-      const [lon, lat] = data.waypoints[0].location;
+      const [lon, lat] = waypoint.location;
       return { coord: [lat, lon], error: null };
     } catch (err) {
       // Fall back to the raw fix rather than dropping the point.
