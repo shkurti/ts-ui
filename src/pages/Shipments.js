@@ -1316,7 +1316,11 @@ const Shipments = () => {
   // OSRM instance for production (no rate limits, no dependency on OSRM's
   // shared demo server).
   const OSRM_BASE_URL = (process.env.REACT_APP_OSRM_URL || 'https://router.project-osrm.org').replace(/\/$/, '');
-  const OSRM_MAX_POINTS_PER_REQUEST = 90; // demo server caps /match at 100 coords
+  // OSRM's own default max-matching-size is 100, but the public demo server
+  // enforces a much lower cap in practice ("Too many trace coordinates" at
+  // 90) — stay well under it. A self-hosted instance can raise this back up
+  // via REACT_APP_OSRM_MAX_POINTS if its --max-matching-size allows more.
+  const OSRM_MAX_POINTS_PER_REQUEST = Number(process.env.REACT_APP_OSRM_MAX_POINTS) || 25;
 
   const [snappedCoordinates, setSnappedCoordinates] = useState([]);
   const [isSnappingRoute, setIsSnappingRoute] = useState(false);
