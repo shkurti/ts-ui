@@ -1386,6 +1386,33 @@ const Shipments = () => {
     }
   };
 
+  // A /nearest lookup can occasionally snap a single fix onto the wrong
+  // nearby road — a driveway, a parking-lot loop, a short service road —
+  // instead of the street the vehicle was actually on. That shows up as a
+  // little spike in the trace: a detour in, then straight back out. If
+  // going via a point costs much more distance than just going straight
+  // from its neighbors would, it's almost certainly that, not a real turn,
+  // so drop it before routing hops between points.
+  const SPIKE_DETOUR_RATIO = 2;
+
+  const pruneSnapSpikes = (points) => {
+    if (points.length < 3) return points;
+    const result = [points[0]];
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = result[result.length - 1];
+      const cur = points[i];
+      const next = points[i + 1];
+      const viaDist = distanceMeters(prev[0], prev[1], cur[0], cur[1]) + distanceMeters(cur[0], cur[1], next[0], next[1]);
+      const directDist = distanceMeters(prev[0], prev[1], next[0], next[1]);
+      if (directDist > 5 && viaDist > directDist * SPIKE_DETOUR_RATIO) {
+        continue; // drop the spike, keep going from `prev`
+      }
+      result.push(cur);
+    }
+    result.push(points[points.length - 1]);
+    return result;
+  };
+
   const snapPointsToRoad = async (points) => {
     const snapped = new Array(points.length);
     let firstError = null;
@@ -1398,23 +1425,25 @@ const Shipments = () => {
       });
     }
 
-    if (snapped.length < 2) return { coordinates: snapped, error: firstError };
+    const pruned = pruneSnapSpikes(snapped);
+
+    if (pruned.length < 2) return { coordinates: pruned, error: firstError };
 
     // Connect each pair of adjacent snapped points with a short road-hugging
     // curve where that's trustworthy, falling back to a straight hop where
     // it isn't. Segments overlap at their shared endpoint, so drop the
     // duplicate when stitching them together.
     const hops = [];
-    for (let i = 0; i < snapped.length - 1; i += OSRM_NEAREST_CONCURRENCY) {
+    for (let i = 0; i < pruned.length - 1; i += OSRM_NEAREST_CONCURRENCY) {
       const batchPairs = [];
-      for (let j = i; j < Math.min(i + OSRM_NEAREST_CONCURRENCY, snapped.length - 1); j++) {
-        batchPairs.push([snapped[j], snapped[j + 1]]);
+      for (let j = i; j < Math.min(i + OSRM_NEAREST_CONCURRENCY, pruned.length - 1); j++) {
+        batchPairs.push([pruned[j], pruned[j + 1]]);
       }
       const results = await Promise.all(batchPairs.map(([a, b]) => routeBetween(a, b)));
       hops.push(...results);
     }
 
-    const coordinates = [snapped[0]];
+    const coordinates = [pruned[0]];
     hops.forEach((segment) => coordinates.push(...segment.slice(1)));
 
     return { coordinates, error: firstError };
