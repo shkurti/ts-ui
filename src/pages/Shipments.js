@@ -1316,65 +1316,26 @@ const Shipments = () => {
   // OSRM instance for production (no rate limits, no dependency on OSRM's
   // shared demo server).
   const OSRM_BASE_URL = (process.env.REACT_APP_OSRM_URL || 'https://router.project-osrm.org').replace(/\/$/, '');
-  // Servers cap how many trace points /match accepts per request, but the
-  // exact cap isn't published (the public demo server rejects well under
-  // OSRM's own default of 100). Rather than guess a number, start with a
-  // generous chunk size and let matchChunk() halve-and-retry on "too many
-  // trace coordinates" until it finds a size the server accepts.
-  const OSRM_INITIAL_CHUNK_SIZE = Number(process.env.REACT_APP_OSRM_MAX_POINTS) || 100;
+  // How many points to look up at once. /nearest is a lightweight, independent
+  // lookup per point (unlike /match), so this is just a concurrency cap to
+  // be polite to the server, not a hard protocol limit.
+  const OSRM_NEAREST_CONCURRENCY = Number(process.env.REACT_APP_OSRM_MAX_POINTS) || 8;
+  const OSRM_NEAREST_RADIUS_METERS = 50;
 
   const [snappedCoordinates, setSnappedCoordinates] = useState([]);
   const [isSnappingRoute, setIsSnappingRoute] = useState(false);
   const [snapRouteError, setSnapRouteError] = useState(null);
 
-  // Below this confidence, OSRM's own estimate of "did I actually get this
-  // right" is too low to trust. This is what was producing the big looping
-  // detours around residential side-streets: when consecutive fixes are far
-  // apart (sparse pings), OSRM still forces *some* legal driving path
-  // between them, and with one-way streets that can mean routing all the
-  // way around a loop instead of a straight shot. Splitting into smaller
-  // segments and re-matching each usually resolves it; if it still can't
-  // find a confident path down at 2 points, we fall back to the raw fix
-  // rather than trust the geometry.
-  const MIN_MATCH_CONFIDENCE = 0.5;
-
-  const splitAndMatch = async (chunk) => {
-    const mid = Math.ceil(chunk.length / 2);
-    const [left, right] = await Promise.all([
-      matchChunk(chunk.slice(0, mid)),
-      matchChunk(chunk.slice(mid)),
-    ]);
-    return {
-      coordinates: [...left.coordinates, ...right.coordinates],
-      error: left.error || right.error,
-    };
-  };
-
-  // Matches a single chunk of points against OSRM's /match (map matching)
-  // service. If the server rejects it for having too many trace coordinates,
-  // or returns a low-confidence match, splits the chunk in half and retries
-  // each half, so we converge on whatever limit this server enforces and
-  // avoid trusting shaky matches, without hardcoding either.
-  const matchChunk = async (chunk) => {
-    if (chunk.length < 2) {
-      return { coordinates: chunk.map(p => [p.latitude, p.longitude]), error: null };
-    }
-
-    const coordsParam = chunk.map(p => `${p.longitude},${p.latitude}`).join(';');
-    const radiusesParam = chunk.map(() => '25').join(';');
-    // gaps=split needs timestamps to know where the real time gaps are —
-    // omitting them while gaps=split is set is a documented cause of a hard
-    // 400 from OSRM, so always send them alongside it. OSRM also requires
-    // them strictly increasing, so nudge apart any pings in the same second.
-    let lastTs = -Infinity;
-    const timestampsParam = chunk.map(p => {
-      let ts = Math.floor(new Date(p.timestamp).getTime() / 1000);
-      if (ts <= lastTs) ts = lastTs + 1;
-      lastTs = ts;
-      return ts;
-    }).join(';');
-    const url = `${OSRM_BASE_URL}/match/v1/driving/${coordsParam}?geometries=geojson&overview=full&radiuses=${radiusesParam}&timestamps=${timestampsParam}&gaps=split&tidy=true`;
-
+  // Snaps a single fix to the nearest road edge via OSRM's /nearest service.
+  // We deliberately snap point-by-point instead of asking /match to connect
+  // them: /match forces a *legally drivable* path between every pair of
+  // points, and in a dense one-way grid that can mean routing all the way
+  // around a block just to connect two fixes 30m apart — the big loops and
+  // truncated traces seen downtown. /nearest has no such constraint: it just
+  // answers "where's the closest road to this point," independently, so it
+  // can't produce a bogus detour.
+  const snapSinglePoint = async (point) => {
+    const url = `${OSRM_BASE_URL}/nearest/v1/driving/${point.longitude},${point.latitude}?number=1&radiuses=${OSRM_NEAREST_RADIUS_METERS}`;
     try {
       const response = await fetch(url);
       if (!response.ok) {
@@ -1382,50 +1343,27 @@ const Shipments = () => {
         throw new Error(body?.message || `OSRM responded ${response.status}`);
       }
       const data = await response.json();
-      if (data.code !== 'Ok' || !data.matchings || data.matchings.length === 0) {
-        throw new Error(data.message || 'No match found for this segment');
+      if (data.code !== 'Ok' || !data.waypoints?.[0]?.location) {
+        throw new Error(data.message || 'No nearby road found');
       }
-
-      const minConfidence = Math.min(
-        ...data.matchings.map(m => (typeof m.confidence === 'number' ? m.confidence : 1))
-      );
-      if (minConfidence < MIN_MATCH_CONFIDENCE && chunk.length > 2) {
-        return splitAndMatch(chunk);
-      }
-
-      const coordinates = [];
-      for (const matching of data.matchings) {
-        for (const [lon, lat] of matching.geometry.coordinates) {
-          coordinates.push([lat, lon]);
-        }
-      }
-      return { coordinates, error: null };
+      const [lon, lat] = data.waypoints[0].location;
+      return { coord: [lat, lon], error: null };
     } catch (err) {
-      if (/too many trace coordinates/i.test(err.message) && chunk.length > 2) {
-        return splitAndMatch(chunk);
-      }
-      // Fall back to the raw (unsnapped) points for this chunk rather than
-      // dropping the segment entirely.
-      return { coordinates: chunk.map(p => [p.latitude, p.longitude]), error: err };
+      // Fall back to the raw fix rather than dropping the point.
+      return { coord: [point.latitude, point.longitude], error: err };
     }
   };
 
-  // Calls OSRM's /match service (map matching), which is built for exactly
-  // this: a sequence of noisy GPS fixes snapped onto the road graph, as
-  // opposed to /route which only cares about start/end. Chunks long traces
-  // since the service caps how many coordinates it accepts per request.
   const snapPointsToRoad = async (points) => {
-    const chunks = [];
-    for (let i = 0; i < points.length; i += OSRM_INITIAL_CHUNK_SIZE) {
-      chunks.push(points.slice(i, i + OSRM_INITIAL_CHUNK_SIZE));
-    }
-
-    const snapped = [];
+    const snapped = new Array(points.length);
     let firstError = null;
-    for (const chunk of chunks) {
-      const { coordinates, error } = await matchChunk(chunk);
-      snapped.push(...coordinates);
-      firstError = firstError || error;
+    for (let i = 0; i < points.length; i += OSRM_NEAREST_CONCURRENCY) {
+      const batch = points.slice(i, i + OSRM_NEAREST_CONCURRENCY);
+      const results = await Promise.all(batch.map(snapSinglePoint));
+      results.forEach((r, j) => {
+        snapped[i + j] = r.coord;
+        firstError = firstError || r.error;
+      });
     }
     return { coordinates: snapped, error: firstError };
   };
@@ -1675,23 +1613,22 @@ const Shipments = () => {
 
   // The map also draws a short dashed segment connecting the last GPS fix to
   // the next destination pin (see the "Red marker at current GPS" block
-  // below). That's normally a straight as-the-crow-flies line, which is what
-  // was cutting diagonally across parking lots/blocks at the end of a trip
-  // even with road snapping on. When snapping is enabled, route that segment
-  // too via OSRM's /route (just two points, not a match) so it follows roads.
-  const [connectorCoordinates, setConnectorCoordinates] = useState([]);
-
-  useEffect(() => {
-    if (!routeSnapEnabled || !selectedShipmentDetail || locationData.length === 0 || legPoints.length < 2) {
-      setConnectorCoordinates([]);
-      return;
+  // below). It's intentionally a plain straight line rather than a routed
+  // one: routing it through OSRM had the same one-way-grid problem as the
+  // main trace (looping detours, and occasionally failing to reach the pin
+  // at all). A straight line always reaches the destination and can't loop;
+  // it just starts from the last *snapped* point instead of the raw GPS fix
+  // so it lines up with where the road-snapped polyline actually ends.
+  const connectorCoordinates = useMemo(() => {
+    if (!routeSnapEnabled || !selectedShipmentDetail || locationData.length === 0 || legPoints.length < 2 || snappedCoordinates.length === 0) {
+      return [];
     }
 
     const lastGps = locationData[locationData.length - 1];
-    const gpsPos = [lastGps.latitude, lastGps.longitude];
+    const rawPos = [lastGps.latitude, lastGps.longitude];
     let minDist = Infinity, closestIdx = 0;
     for (let i = 0; i < legPoints.length; i++) {
-      const d = Math.hypot(legPoints[i].lat - gpsPos[0], legPoints[i].lng - gpsPos[1]);
+      const d = Math.hypot(legPoints[i].lat - rawPos[0], legPoints[i].lng - rawPos[1]);
       if (d < minDist) {
         minDist = d;
         closestIdx = i;
@@ -1699,39 +1636,11 @@ const Shipments = () => {
     }
     const nextIdx = Math.min(closestIdx + 1, legPoints.length - 1);
     const nextPoint = legPoints[nextIdx];
-    const showDashedToNext = nextIdx !== 0 && (gpsPos[0] !== nextPoint.lat || gpsPos[1] !== nextPoint.lng);
-    if (!showDashedToNext) {
-      setConnectorCoordinates([]);
-      return;
-    }
+    const showDashedToNext = nextIdx !== 0 && (rawPos[0] !== nextPoint.lat || rawPos[1] !== nextPoint.lng);
+    if (!showDashedToNext) return [];
 
-    // Start the connector from where the road-snapped trace actually ends,
-    // not the raw GPS fix — otherwise this segment and the main polyline
-    // don't line up and the route appears to break at the seam.
-    const routeStartPos = snappedCoordinates.length > 0
-      ? snappedCoordinates[snappedCoordinates.length - 1]
-      : gpsPos;
-
-    let cancelled = false;
-    const url = `${OSRM_BASE_URL}/route/v1/driving/${routeStartPos[1]},${routeStartPos[0]};${nextPoint.lng},${nextPoint.lat}?geometries=geojson&overview=full`;
-    fetch(url)
-      .then((response) => response.json())
-      .then((data) => {
-        if (cancelled) return;
-        if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
-          setConnectorCoordinates(data.routes[0].geometry.coordinates.map(([lon, lat]) => [lat, lon]));
-        } else {
-          setConnectorCoordinates([]);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.error('Connector road routing failed:', err);
-          setConnectorCoordinates([]);
-        }
-      });
-
-    return () => { cancelled = true; };
+    const snappedPos = snappedCoordinates[snappedCoordinates.length - 1];
+    return [snappedPos, [nextPoint.lat, nextPoint.lng]];
   }, [routeSnapEnabled, selectedShipmentDetail?._id, locationData, legPoints, snappedCoordinates]);
 
   // Persisted set of processed message IDs to avoid duplicates
