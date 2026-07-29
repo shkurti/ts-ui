@@ -1712,7 +1712,16 @@ const Shipments = () => {
     return [rawFirst, ...trimmed, rawLast];
   };
 
-  const snapPointsToRoad = async (points) => {
+  // rawAnchorFirst/rawAnchorLast are the *unfiltered* first/last GPS fixes
+  // for this trip — always used as the trace's forced endpoints, even
+  // though `points` (the noise-filtered set actually sent to OSRM) may not
+  // include them at all. The noise filter can legitimately drop the true
+  // final fix entirely (a resting position within STATIONARY_RADIUS_METERS
+  // of the last moving fix reads as jitter and gets collapsed away), so
+  // anchoring to `points`' own endpoints would connect the trace to
+  // wherever filtering happened to stop, not to where the vehicle marker
+  // actually is.
+  const snapPointsToRoad = async (points, rawAnchorFirst, rawAnchorLast) => {
     if (points.length < 2) return { coordinates: points.map((p) => [p.latitude, p.longitude]), error: null };
 
     const chunks = [];
@@ -1739,7 +1748,7 @@ const Shipments = () => {
     });
 
     const deLooped = removeSmallLoops(coordinates);
-    const trimmed = trimSnapEndpoints(deLooped, points[0], points[points.length - 1], endpointExclusionRadiusMeters);
+    const trimmed = trimSnapEndpoints(deLooped, rawAnchorFirst, rawAnchorLast, endpointExclusionRadiusMeters);
     return { coordinates: trimmed, error: firstError };
   };
 
@@ -1760,7 +1769,7 @@ const Shipments = () => {
     setIsSnappingRoute(true);
     setSnapRouteError(null);
 
-    snapPointsToRoad(pointsToSnap)
+    snapPointsToRoad(pointsToSnap, sortedData[0], sortedData[sortedData.length - 1])
       .then(({ coordinates, error }) => {
         if (cancelled) return;
         setSnappedCoordinates(coordinates);
