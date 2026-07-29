@@ -1316,15 +1316,75 @@ const Shipments = () => {
   // OSRM instance for production (no rate limits, no dependency on OSRM's
   // shared demo server).
   const OSRM_BASE_URL = (process.env.REACT_APP_OSRM_URL || 'https://router.project-osrm.org').replace(/\/$/, '');
-  // OSRM's own default max-matching-size is 100, but the public demo server
-  // enforces a much lower cap in practice ("Too many trace coordinates" at
-  // 90) — stay well under it. A self-hosted instance can raise this back up
-  // via REACT_APP_OSRM_MAX_POINTS if its --max-matching-size allows more.
-  const OSRM_MAX_POINTS_PER_REQUEST = Number(process.env.REACT_APP_OSRM_MAX_POINTS) || 25;
+  // Servers cap how many trace points /match accepts per request, but the
+  // exact cap isn't published (the public demo server rejects well under
+  // OSRM's own default of 100). Rather than guess a number, start with a
+  // generous chunk size and let matchChunk() halve-and-retry on "too many
+  // trace coordinates" until it finds a size the server accepts.
+  const OSRM_INITIAL_CHUNK_SIZE = Number(process.env.REACT_APP_OSRM_MAX_POINTS) || 100;
 
   const [snappedCoordinates, setSnappedCoordinates] = useState([]);
   const [isSnappingRoute, setIsSnappingRoute] = useState(false);
   const [snapRouteError, setSnapRouteError] = useState(null);
+
+  // Matches a single chunk of points against OSRM's /match (map matching)
+  // service. If the server rejects it for having too many trace coordinates,
+  // splits the chunk in half and retries each half, so we converge on
+  // whatever limit this particular server enforces without hardcoding it.
+  const matchChunk = async (chunk) => {
+    if (chunk.length < 2) {
+      return { coordinates: chunk.map(p => [p.latitude, p.longitude]), error: null };
+    }
+
+    const coordsParam = chunk.map(p => `${p.longitude},${p.latitude}`).join(';');
+    const radiusesParam = chunk.map(() => '25').join(';');
+    // gaps=split needs timestamps to know where the real time gaps are —
+    // omitting them while gaps=split is set is a documented cause of a hard
+    // 400 from OSRM, so always send them alongside it. OSRM also requires
+    // them strictly increasing, so nudge apart any pings in the same second.
+    let lastTs = -Infinity;
+    const timestampsParam = chunk.map(p => {
+      let ts = Math.floor(new Date(p.timestamp).getTime() / 1000);
+      if (ts <= lastTs) ts = lastTs + 1;
+      lastTs = ts;
+      return ts;
+    }).join(';');
+    const url = `${OSRM_BASE_URL}/match/v1/driving/${coordsParam}?geometries=geojson&overview=full&radiuses=${radiusesParam}&timestamps=${timestampsParam}&gaps=split&tidy=true`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.message || `OSRM responded ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.code !== 'Ok' || !data.matchings || data.matchings.length === 0) {
+        throw new Error(data.message || 'No match found for this segment');
+      }
+      const coordinates = [];
+      for (const matching of data.matchings) {
+        for (const [lon, lat] of matching.geometry.coordinates) {
+          coordinates.push([lat, lon]);
+        }
+      }
+      return { coordinates, error: null };
+    } catch (err) {
+      if (/too many trace coordinates/i.test(err.message) && chunk.length > 2) {
+        const mid = Math.ceil(chunk.length / 2);
+        const [left, right] = await Promise.all([
+          matchChunk(chunk.slice(0, mid)),
+          matchChunk(chunk.slice(mid)),
+        ]);
+        return {
+          coordinates: [...left.coordinates, ...right.coordinates],
+          error: left.error || right.error,
+        };
+      }
+      // Fall back to the raw (unsnapped) points for this chunk rather than
+      // dropping the segment entirely.
+      return { coordinates: chunk.map(p => [p.latitude, p.longitude]), error: err };
+    }
+  };
 
   // Calls OSRM's /match service (map matching), which is built for exactly
   // this: a sequence of noisy GPS fixes snapped onto the road graph, as
@@ -1332,56 +1392,16 @@ const Shipments = () => {
   // since the service caps how many coordinates it accepts per request.
   const snapPointsToRoad = async (points) => {
     const chunks = [];
-    for (let i = 0; i < points.length; i += OSRM_MAX_POINTS_PER_REQUEST) {
-      chunks.push(points.slice(i, i + OSRM_MAX_POINTS_PER_REQUEST));
+    for (let i = 0; i < points.length; i += OSRM_INITIAL_CHUNK_SIZE) {
+      chunks.push(points.slice(i, i + OSRM_INITIAL_CHUNK_SIZE));
     }
 
     const snapped = [];
     let firstError = null;
     for (const chunk of chunks) {
-      if (chunk.length < 2) {
-        snapped.push(...chunk.map(p => [p.latitude, p.longitude]));
-        continue;
-      }
-      const coordsParam = chunk.map(p => `${p.longitude},${p.latitude}`).join(';');
-      const radiusesParam = chunk.map(() => '25').join(';');
-      // gaps=split needs timestamps to know where the real time gaps are —
-      // omitting them while gaps=split is set is a documented cause of a
-      // hard 400 from OSRM, so always send them alongside it. OSRM also
-      // requires them strictly increasing, so nudge apart any pings that
-      // landed in the same second.
-      let lastTs = -Infinity;
-      const timestamps = chunk.map(p => {
-        let ts = Math.floor(new Date(p.timestamp).getTime() / 1000);
-        if (ts <= lastTs) ts = lastTs + 1;
-        lastTs = ts;
-        return ts;
-      });
-      const timestampsParam = timestamps.join(';');
-      const url = `${OSRM_BASE_URL}/match/v1/driving/${coordsParam}?geometries=geojson&overview=full&radiuses=${radiusesParam}&timestamps=${timestampsParam}&gaps=split&tidy=true`;
-
-      try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          const body = await response.json().catch(() => null);
-          throw new Error(body?.message || `OSRM responded ${response.status}`);
-        }
-        const data = await response.json();
-        if (data.code !== 'Ok' || !data.matchings || data.matchings.length === 0) {
-          throw new Error(data.message || 'No match found for this segment');
-        }
-        for (const matching of data.matchings) {
-          for (const [lon, lat] of matching.geometry.coordinates) {
-            snapped.push([lat, lon]);
-          }
-        }
-      } catch (err) {
-        // Fall back to the raw (unsnapped) points for this chunk rather than
-        // dropping the segment entirely; keep going so the rest of the trace
-        // can still be snapped.
-        snapped.push(...chunk.map(p => [p.latitude, p.longitude]));
-        firstError = firstError || err;
-      }
+      const { coordinates, error } = await matchChunk(chunk);
+      snapped.push(...coordinates);
+      firstError = firstError || error;
     }
     return { coordinates: snapped, error: firstError };
   };
