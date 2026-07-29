@@ -1618,6 +1618,32 @@ const Shipments = () => {
   // matchRadiusMeters past that via the tuning panel against the public
   // demo server.
 
+  // /match can report high confidence for a path that's still wrong: when
+  // several unnamed private service roads connect into one network (e.g.
+  // adjoining stores in the same plaza sharing back lanes), the matcher can
+  // confidently pick the wrong fork through that network for a noisy
+  // stretch of points — confirmed against a real trip where /match returned
+  // 97% confidence for a matching whose end was ~70m from the actual last
+  // fix, well outside the per-point search radius. Guard against this by
+  // checking every raw input point actually has *some* point on the matched
+  // geometry within reach; if one doesn't, the matcher went somewhere the
+  // data doesn't support, and legacySnapChunk (point-by-point, no
+  // whole-path guessing) is safer for this chunk.
+  const MATCH_MAX_DEVIATION_METERS = 60;
+
+  const matchGeometryCoversRawPoints = (geometryCoords, rawPoints, maxDeviationMeters) => {
+    if (geometryCoords.length === 0) return false;
+    return rawPoints.every((p) => {
+      let minDist = Infinity;
+      for (const [lat, lon] of geometryCoords) {
+        const d = distanceMeters(p.latitude, p.longitude, lat, lon);
+        if (d < minDist) minDist = d;
+        if (minDist <= maxDeviationMeters) break;
+      }
+      return minDist <= maxDeviationMeters;
+    });
+  };
+
   // OSRM requires non-decreasing timestamps; nudge duplicates/invalid values
   // forward by a second so every chunk has a strictly increasing sequence.
   const toEpochSecondsSequence = (points) => {
@@ -1671,6 +1697,12 @@ const Shipments = () => {
       data.matchings.forEach((matching) => {
         coordinates.push(...matching.geometry.coordinates.map(([lon, lat]) => [lat, lon]));
       });
+
+      if (!matchGeometryCoversRawPoints(coordinates, points, MATCH_MAX_DEVIATION_METERS)) {
+        console.warn(`[route-snap] /match geometry strays more than ${MATCH_MAX_DEVIATION_METERS}m from a raw point in chunk ${chunkDesc} despite ${confidences.join(',')} confidence; falling back to legacy snap for this chunk`);
+        return null;
+      }
+
       return coordinates;
     } catch (err) {
       console.warn('[route-snap] /match request threw, falling back to legacy snap for this chunk:', err);
