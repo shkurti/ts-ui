@@ -1327,10 +1327,34 @@ const Shipments = () => {
   const [isSnappingRoute, setIsSnappingRoute] = useState(false);
   const [snapRouteError, setSnapRouteError] = useState(null);
 
+  // Below this confidence, OSRM's own estimate of "did I actually get this
+  // right" is too low to trust. This is what was producing the big looping
+  // detours around residential side-streets: when consecutive fixes are far
+  // apart (sparse pings), OSRM still forces *some* legal driving path
+  // between them, and with one-way streets that can mean routing all the
+  // way around a loop instead of a straight shot. Splitting into smaller
+  // segments and re-matching each usually resolves it; if it still can't
+  // find a confident path down at 2 points, we fall back to the raw fix
+  // rather than trust the geometry.
+  const MIN_MATCH_CONFIDENCE = 0.5;
+
+  const splitAndMatch = async (chunk) => {
+    const mid = Math.ceil(chunk.length / 2);
+    const [left, right] = await Promise.all([
+      matchChunk(chunk.slice(0, mid)),
+      matchChunk(chunk.slice(mid)),
+    ]);
+    return {
+      coordinates: [...left.coordinates, ...right.coordinates],
+      error: left.error || right.error,
+    };
+  };
+
   // Matches a single chunk of points against OSRM's /match (map matching)
   // service. If the server rejects it for having too many trace coordinates,
-  // splits the chunk in half and retries each half, so we converge on
-  // whatever limit this particular server enforces without hardcoding it.
+  // or returns a low-confidence match, splits the chunk in half and retries
+  // each half, so we converge on whatever limit this server enforces and
+  // avoid trusting shaky matches, without hardcoding either.
   const matchChunk = async (chunk) => {
     if (chunk.length < 2) {
       return { coordinates: chunk.map(p => [p.latitude, p.longitude]), error: null };
@@ -1361,6 +1385,14 @@ const Shipments = () => {
       if (data.code !== 'Ok' || !data.matchings || data.matchings.length === 0) {
         throw new Error(data.message || 'No match found for this segment');
       }
+
+      const minConfidence = Math.min(
+        ...data.matchings.map(m => (typeof m.confidence === 'number' ? m.confidence : 1))
+      );
+      if (minConfidence < MIN_MATCH_CONFIDENCE && chunk.length > 2) {
+        return splitAndMatch(chunk);
+      }
+
       const coordinates = [];
       for (const matching of data.matchings) {
         for (const [lon, lat] of matching.geometry.coordinates) {
@@ -1370,15 +1402,7 @@ const Shipments = () => {
       return { coordinates, error: null };
     } catch (err) {
       if (/too many trace coordinates/i.test(err.message) && chunk.length > 2) {
-        const mid = Math.ceil(chunk.length / 2);
-        const [left, right] = await Promise.all([
-          matchChunk(chunk.slice(0, mid)),
-          matchChunk(chunk.slice(mid)),
-        ]);
-        return {
-          coordinates: [...left.coordinates, ...right.coordinates],
-          error: left.error || right.error,
-        };
+        return splitAndMatch(chunk);
       }
       // Fall back to the raw (unsnapped) points for this chunk rather than
       // dropping the segment entirely.
@@ -1681,8 +1705,15 @@ const Shipments = () => {
       return;
     }
 
+    // Start the connector from where the road-snapped trace actually ends,
+    // not the raw GPS fix — otherwise this segment and the main polyline
+    // don't line up and the route appears to break at the seam.
+    const routeStartPos = snappedCoordinates.length > 0
+      ? snappedCoordinates[snappedCoordinates.length - 1]
+      : gpsPos;
+
     let cancelled = false;
-    const url = `${OSRM_BASE_URL}/route/v1/driving/${gpsPos[1]},${gpsPos[0]};${nextPoint.lng},${nextPoint.lat}?geometries=geojson&overview=full`;
+    const url = `${OSRM_BASE_URL}/route/v1/driving/${routeStartPos[1]},${routeStartPos[0]};${nextPoint.lng},${nextPoint.lat}?geometries=geojson&overview=full`;
     fetch(url)
       .then((response) => response.json())
       .then((data) => {
@@ -1701,7 +1732,7 @@ const Shipments = () => {
       });
 
     return () => { cancelled = true; };
-  }, [routeSnapEnabled, selectedShipmentDetail?._id, locationData, legPoints]);
+  }, [routeSnapEnabled, selectedShipmentDetail?._id, locationData, legPoints, snappedCoordinates]);
 
   // Persisted set of processed message IDs to avoid duplicates
   const processedMessagesRef = useRef(new Set());
