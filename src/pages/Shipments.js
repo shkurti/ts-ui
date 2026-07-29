@@ -1346,10 +1346,14 @@ const Shipments = () => {
   // also dropped first, so the final segment isn't a tiny zigzag right at
   // the anchor. 0 = no extra cleanup, just connect straight to the raw fix.
   const [endpointExclusionRadiusMeters, setEndpointExclusionRadiusMeters] = useState(0);
-  // The point-by-point fallback (legacySnapChunk) prefers a named street
-  // over a closer-but-unnamed road (parking aisle/driveway) — turn off to
-  // test whether that bias is what's pulling a fix onto the wrong road.
-  const [preferNamedRoads, setPreferNamedRoads] = useState(true);
+  // The point-by-point fallback (legacySnapChunk) can optionally prefer a
+  // named street over a closer-but-unnamed road (parking aisle/driveway).
+  // Default OFF: confirmed against a real parking lot that OSRM's /nearest
+  // correctly finds the closest (unnamed) aisle within a few meters — this
+  // bias was overriding that correct hit and pulling the fix onto a named
+  // street tens of meters further away instead. Left as an opt-in toggle in
+  // case a future route needs it, but it should not be on by default.
+  const [preferNamedRoads, setPreferNamedRoads] = useState(false);
   const [showSnapTuningPanel, setShowSnapTuningPanel] = useState(false);
 
   // Snaps a single fix to the nearest road edge via OSRM's /nearest service.
