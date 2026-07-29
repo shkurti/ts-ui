@@ -1320,7 +1320,10 @@ const Shipments = () => {
   // lookup per point (unlike /match), so this is just a concurrency cap to
   // be polite to the server, not a hard protocol limit.
   const OSRM_NEAREST_CONCURRENCY = Number(process.env.REACT_APP_OSRM_MAX_POINTS) || 8;
-  const OSRM_NEAREST_RADIUS_METERS = 50;
+  // Wide enough to still find the correct carriageway at highway
+  // interchanges/ramps, where the nearest road edge can be further from the
+  // raw fix than on a typical surface street.
+  const OSRM_NEAREST_RADIUS_METERS = 100;
 
   const [snappedCoordinates, setSnappedCoordinates] = useState([]);
   const [isSnappingRoute, setIsSnappingRoute] = useState(false);
