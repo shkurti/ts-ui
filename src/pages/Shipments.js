@@ -1519,7 +1519,12 @@ const Shipments = () => {
     return result;
   };
 
-  const snapPointsToRoad = async (points) => {
+  // Point-by-point /nearest + pairwise /route reconstruction. Used as a
+  // per-chunk fallback when /match (below) fails or can't be trusted for a
+  // given stretch of the trip — kept because its behavior on a small chunk
+  // is well understood (see the ratio/deviation heuristics above), even
+  // though /match handles the common case better.
+  const legacySnapChunk = async (points) => {
     // Approximate each point's direction of travel from its neighbors in
     // the raw (unsnapped) sequence, so the /nearest lookup can be biased
     // toward roads running that way.
@@ -1561,6 +1566,84 @@ const Shipments = () => {
 
     const coordinates = [pruned[0]];
     hops.forEach((segment) => coordinates.push(...segment.slice(1)));
+
+    return { coordinates: removeSmallLoops(coordinates), error: firstError };
+  };
+
+  // /match reasons about a whole sequence of fixes at once (it's a proper
+  // GPS-trace map matcher, not just nearest-road lookup), so it doesn't need
+  // the detour-ratio/deviation guesses legacySnapChunk relies on — that's
+  // what was producing the straight-line "not snapped" hops near ramps and
+  // turns. Run in small chunks rather than over the whole trip: a single bad
+  // stretch (e.g. a real gap in coverage) then only costs that chunk, not
+  // the whole route, and it keeps each request well under OSRM's
+  // coordinate-count limits.
+  const MATCH_CHUNK_SIZE = 20;
+
+  // OSRM requires non-decreasing timestamps; nudge duplicates/invalid values
+  // forward by a second so every chunk has a strictly increasing sequence.
+  const toEpochSecondsSequence = (points) => {
+    let last = -Infinity;
+    return points.map((p) => {
+      let t = Math.floor(new Date(p.timestamp).getTime() / 1000);
+      if (!Number.isFinite(t) || t <= last) t = last + 1;
+      last = t;
+      return t;
+    });
+  };
+
+  // Returns matched [lat, lon] coordinates for a chunk, or null if the
+  // request failed / came back unusable, so the caller can fall back to
+  // legacySnapChunk for just that stretch.
+  const matchChunk = async (points) => {
+    if (points.length < 2) return null;
+    try {
+      const coordsParam = points.map((p) => `${p.longitude},${p.latitude}`).join(';');
+      const radiusesParam = points.map(() => OSRM_NEAREST_RADIUS_METERS).join(';');
+      const timestampsParam = toEpochSecondsSequence(points).join(';');
+      const url = `${OSRM_BASE_URL}/match/v1/driving/${coordsParam}` +
+        `?geometries=geojson&overview=full&gaps=split&tidy=true` +
+        `&radiuses=${radiusesParam}&timestamps=${timestampsParam}`;
+      const response = await fetch(url);
+      if (!response.ok) return null;
+      const data = await response.json();
+      if (data.code !== 'Ok' || !data.matchings?.length) return null;
+
+      const coordinates = [];
+      data.matchings.forEach((matching) => {
+        coordinates.push(...matching.geometry.coordinates.map(([lon, lat]) => [lat, lon]));
+      });
+      return coordinates;
+    } catch {
+      return null;
+    }
+  };
+
+  const snapPointsToRoad = async (points) => {
+    if (points.length < 2) return { coordinates: points.map((p) => [p.latitude, p.longitude]), error: null };
+
+    const chunks = [];
+    const step = MATCH_CHUNK_SIZE - 1; // overlap by 1 point so chunks stitch together
+    for (let i = 0; i < points.length - 1; i += step) {
+      chunks.push(points.slice(i, Math.min(i + MATCH_CHUNK_SIZE, points.length)));
+    }
+
+    let firstError = null;
+    const chunkResults = [];
+    for (const chunk of chunks) {
+      let coords = await matchChunk(chunk);
+      if (!coords || coords.length < 2) {
+        const legacy = await legacySnapChunk(chunk);
+        coords = legacy.coordinates;
+        firstError = firstError || legacy.error;
+      }
+      chunkResults.push(coords);
+    }
+
+    const coordinates = [];
+    chunkResults.forEach((segment, idx) => {
+      coordinates.push(...(idx === 0 ? segment : segment.slice(1)));
+    });
 
     return { coordinates: removeSmallLoops(coordinates), error: firstError };
   };
