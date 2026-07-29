@@ -1622,26 +1622,27 @@ const Shipments = () => {
   // several unnamed private service roads connect into one network (e.g.
   // adjoining stores in the same plaza sharing back lanes), the matcher can
   // confidently pick the wrong fork through that network for a noisy
-  // stretch of points — confirmed against a real trip where /match returned
-  // 97% confidence for a matching whose end was ~70m from the actual last
-  // fix, well outside the per-point search radius. Guard against this by
-  // checking every raw input point actually has *some* point on the matched
-  // geometry within reach; if one doesn't, the matcher went somewhere the
-  // data doesn't support, and legacySnapChunk (point-by-point, no
-  // whole-path guessing) is safer for this chunk.
+  // stretch of points. Confirmed against a real trip: /match returned 97%
+  // confidence for a matching whose geometry *started* 3.7m from the raw
+  // first fix (fine) but *ended* 72m from the raw last fix — well outside
+  // the per-point search radius — because it kept going past the actual
+  // stop, onto a connected private lane toward a neighboring business.
+  // Checking "is every raw point near *some* point on the path" doesn't
+  // catch this (the overshooting path still passes close to every raw fix
+  // on its way through), so check the path's own endpoints against the
+  // chunk's raw first/last fix specifically — that's where an overshoot
+  // like this actually shows up.
   const MATCH_MAX_DEVIATION_METERS = 60;
 
-  const matchGeometryCoversRawPoints = (geometryCoords, rawPoints, maxDeviationMeters) => {
+  const matchGeometryEndpointsAlign = (geometryCoords, rawPoints, maxDeviationMeters) => {
     if (geometryCoords.length === 0) return false;
-    return rawPoints.every((p) => {
-      let minDist = Infinity;
-      for (const [lat, lon] of geometryCoords) {
-        const d = distanceMeters(p.latitude, p.longitude, lat, lon);
-        if (d < minDist) minDist = d;
-        if (minDist <= maxDeviationMeters) break;
-      }
-      return minDist <= maxDeviationMeters;
-    });
+    const firstRaw = rawPoints[0];
+    const lastRaw = rawPoints[rawPoints.length - 1];
+    const [firstLat, firstLon] = geometryCoords[0];
+    const [lastLat, lastLon] = geometryCoords[geometryCoords.length - 1];
+    const startOk = distanceMeters(firstRaw.latitude, firstRaw.longitude, firstLat, firstLon) <= maxDeviationMeters;
+    const endOk = distanceMeters(lastRaw.latitude, lastRaw.longitude, lastLat, lastLon) <= maxDeviationMeters;
+    return startOk && endOk;
   };
 
   // OSRM requires non-decreasing timestamps; nudge duplicates/invalid values
@@ -1698,7 +1699,7 @@ const Shipments = () => {
         coordinates.push(...matching.geometry.coordinates.map(([lon, lat]) => [lat, lon]));
       });
 
-      if (!matchGeometryCoversRawPoints(coordinates, points, MATCH_MAX_DEVIATION_METERS)) {
+      if (!matchGeometryEndpointsAlign(coordinates, points, MATCH_MAX_DEVIATION_METERS)) {
         console.warn(`[route-snap] /match geometry strays more than ${MATCH_MAX_DEVIATION_METERS}m from a raw point in chunk ${chunkDesc} despite ${confidences.join(',')} confidence; falling back to legacy snap for this chunk`);
         return null;
       }
