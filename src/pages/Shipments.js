@@ -1334,8 +1334,27 @@ const Shipments = () => {
   // truncated traces seen downtown. /nearest has no such constraint: it just
   // answers "where's the closest road to this point," independently, so it
   // can't produce a bogus detour.
-  const fetchNearest = async (point, radiusMeters) => {
-    const url = `${OSRM_BASE_URL}/nearest/v1/driving/${point.longitude},${point.latitude}?number=1&radiuses=${radiusMeters}`;
+  // No device reports heading today, but we already have the raw fixes in
+  // sequence, which is enough to approximate direction of travel between
+  // neighbors. That matters at complex interchanges (stacked ramps a few
+  // meters apart, both directions of a divided highway): position alone
+  // can't tell /nearest which carriageway you're on, but a bearing filter
+  // can rule out the ones running the wrong way.
+  const BEARING_TOLERANCE_DEGREES = 45;
+
+  const computeBearingDegrees = (lat1, lon1, lat2, lon2) => {
+    const toRad = (d) => (d * Math.PI) / 180;
+    const toDeg = (r) => (r * 180) / Math.PI;
+    const dLon = toRad(lon2 - lon1);
+    const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+      Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+    return (toDeg(Math.atan2(y, x)) + 360) % 360;
+  };
+
+  const fetchNearest = async (point, radiusMeters, bearing) => {
+    const bearingParam = bearing != null ? `&bearings=${Math.round(bearing)},${BEARING_TOLERANCE_DEGREES}` : '';
+    const url = `${OSRM_BASE_URL}/nearest/v1/driving/${point.longitude},${point.latitude}?number=1&radiuses=${radiusMeters}${bearingParam}`;
     const response = await fetch(url);
     if (!response.ok) {
       const body = await response.json().catch(() => null);
@@ -1348,9 +1367,18 @@ const Shipments = () => {
     return data.waypoints[0];
   };
 
-  const snapSinglePoint = async (point) => {
+  const snapSinglePoint = async (point, bearing) => {
     try {
-      let waypoint = await fetchNearest(point, OSRM_NEAREST_RADIUS_METERS);
+      let waypoint;
+      try {
+        waypoint = await fetchNearest(point, OSRM_NEAREST_RADIUS_METERS, bearing);
+      } catch (err) {
+        // A bearing-constrained search can legitimately come up empty right
+        // where the road curves sharply — retry without it rather than
+        // losing the point entirely.
+        if (bearing == null) throw err;
+        waypoint = await fetchNearest(point, OSRM_NEAREST_RADIUS_METERS, null);
+      }
       // Parking-lot aisles and driveways are almost always unnamed in OSM,
       // while real streets almost always have a name — that's exactly what
       // was pulling the trace onto small loop/driveway roads. If the
@@ -1358,7 +1386,7 @@ const Shipments = () => {
       // street instead of trusting it.
       if (!waypoint.name) {
         try {
-          const namedWaypoint = await fetchNearest(point, OSRM_NEAREST_RADIUS_METERS * 3);
+          const namedWaypoint = await fetchNearest(point, OSRM_NEAREST_RADIUS_METERS * 3, bearing);
           if (namedWaypoint.name) waypoint = namedWaypoint;
         } catch {
           // No named road found further out either — keep the unnamed hit.
@@ -1489,11 +1517,21 @@ const Shipments = () => {
   };
 
   const snapPointsToRoad = async (points) => {
+    // Approximate each point's direction of travel from its neighbors in
+    // the raw (unsnapped) sequence, so the /nearest lookup can be biased
+    // toward roads running that way.
+    const bearings = points.map((p, idx) => {
+      const from = points[idx - 1] || p;
+      const to = points[idx + 1] || p;
+      if (from === to || (from.latitude === to.latitude && from.longitude === to.longitude)) return null;
+      return computeBearingDegrees(from.latitude, from.longitude, to.latitude, to.longitude);
+    });
+
     const snapped = new Array(points.length);
     let firstError = null;
     for (let i = 0; i < points.length; i += OSRM_NEAREST_CONCURRENCY) {
       const batch = points.slice(i, i + OSRM_NEAREST_CONCURRENCY);
-      const results = await Promise.all(batch.map(snapSinglePoint));
+      const results = await Promise.all(batch.map((p, j) => snapSinglePoint(p, bearings[i + j])));
       results.forEach((r, j) => {
         snapped[i + j] = r.coord;
         firstError = firstError || r.error;
