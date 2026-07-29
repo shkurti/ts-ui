@@ -1578,7 +1578,10 @@ const Shipments = () => {
   // stretch (e.g. a real gap in coverage) then only costs that chunk, not
   // the whole route, and it keeps each request well under OSRM's
   // coordinate-count limits.
-  const MATCH_CHUNK_SIZE = 20;
+  // The public demo server rejects /match with 400 "Too many trace
+  // coordinates" above 10 points per request (confirmed empirically — 10
+  // succeeds, 11 fails) — a much tighter cap than /route or /nearest.
+  const MATCH_CHUNK_SIZE = 10;
   // /match rejects with 400 "TooBig" above ~45m per-point radius (confirmed
   // against the public server) — a much tighter cap than /nearest's, since
   // matching searches the road network around every point in the chunk
