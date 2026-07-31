@@ -157,6 +157,11 @@ const Shipments = () => {
   const [lightData, setLightData] = useState([]);
   const [locationData, setLocationData] = useState([]);
   const [isLoadingSensorData, setIsLoadingSensorData] = useState(false);
+  const [useSnappedRoute, setUseSnappedRoute] = useState(false);
+  const [snappedCoordinates, setSnappedCoordinates] = useState([]);
+  const [isSnappingRoute, setIsSnappingRoute] = useState(false);
+  const [snapError, setSnapError] = useState(null);
+  const [snapRouteParams, setSnapRouteParams] = useState(null);
   const [alertsData, setAlertsData] = useState([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [alertEvents, setAlertEvents] = useState([]);
@@ -549,6 +554,10 @@ const Shipments = () => {
     setSpeedData([]);
     setLightData([]);
     setLocationData([]);
+    setUseSnappedRoute(false);
+    setSnappedCoordinates([]);
+    setSnapError(null);
+    setSnapRouteParams(null);
     console.log('Clearing alerts data for new shipment');
     setAlertsData([]);
     setAlertEvents([]);
@@ -568,6 +577,7 @@ const Shipments = () => {
       return;
     }
 
+    setSnapRouteParams({ trackerId, shipDate, arrivalDate });
     setIsLoadingSensorData(true);
     try {
       const data = await shipmentApi.getRouteData(trackerId, shipDate, arrivalDate, userTimezone);
@@ -921,6 +931,10 @@ const Shipments = () => {
     setSpeedData([]);
     setLightData([]);
     setLocationData([]);
+    setUseSnappedRoute(false);
+    setSnappedCoordinates([]);
+    setSnapError(null);
+    setSnapRouteParams(null);
     // Clear hover marker
     setHoverMarkerPosition(null);
     setHoverMarkerData(null);
@@ -1219,9 +1233,41 @@ const Shipments = () => {
     return sortedData.map(point => [point.latitude, point.longitude]);
   };
 
-  // Coordinates drawn on the map: the raw (optionally noise-filtered) GPS trace.
+  // Coordinates drawn on the map: the road-snapped route when available and enabled,
+  // otherwise the raw (optionally noise-filtered) GPS trace.
   const getDisplayPolylineCoordinates = () => {
+    if (useSnappedRoute && snappedCoordinates.length > 0) {
+      return snappedCoordinates;
+    }
     return getPolylineCoordinates();
+  };
+
+  const fetchSnappedRoute = async (trackerId, shipDate, arrivalDate) => {
+    if (!trackerId || !shipDate || !arrivalDate) return;
+    setIsSnappingRoute(true);
+    setSnapError(null);
+    try {
+      const result = await shipmentApi.getSnappedRoute(trackerId, shipDate, arrivalDate, userTimezone);
+      setSnappedCoordinates(result?.matched_coordinates || []);
+    } catch (error) {
+      console.error('Error fetching snapped route:', error);
+      setSnappedCoordinates([]);
+      setSnapError('Snap unavailable, showing raw trace');
+    } finally {
+      setIsSnappingRoute(false);
+    }
+  };
+
+  const handleToggleSnappedRoute = () => {
+    const next = !useSnappedRoute;
+    setUseSnappedRoute(next);
+    if (next) {
+      if (snapRouteParams && locationData.length >= 2) {
+        fetchSnappedRoute(snapRouteParams.trackerId, snapRouteParams.shipDate, snapRouteParams.arrivalDate);
+      }
+    } else {
+      setSnapError(null);
+    }
   };
 
   // Component to handle map bounds fitting
@@ -2141,6 +2187,29 @@ const Shipments = () => {
       </div>
 
       <div className="map-container">
+        {selectedShipmentDetail && locationData.length > 1 && (
+          <button
+            type="button"
+            onClick={handleToggleSnappedRoute}
+            title={snapError || 'Snap the GPS trace to roads (OSRM)'}
+            style={{
+              position: 'absolute',
+              top: 10,
+              right: 10,
+              zIndex: 1000,
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #ccc',
+              background: useSnappedRoute ? '#667eea' : '#fff',
+              color: useSnappedRoute ? '#fff' : '#333',
+              fontSize: 13,
+              cursor: 'pointer',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
+            }}
+          >
+            {isSnappingRoute ? 'Snapping…' : snapError ? 'Snap unavailable' : 'Snap to roads'}
+          </button>
+        )}
         <MapContainer
           ref={mapRef}
           center={[20, 0]} // Default world view

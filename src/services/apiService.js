@@ -89,8 +89,10 @@ export const shipmentApi = {
   getAll: () => apiService.get('/shipment_meta'),
   create: (shipment) => apiService.post('/shipment_meta', shipment),
   delete: (shipmentId) => apiService.delete(`/shipment_meta/${shipmentId}`),
-  getRouteData: (trackerId, start, end, timezone = 'America/New_York') => 
+  getRouteData: (trackerId, start, end, timezone = 'America/New_York') =>
     apiService.get(`/shipment_route_data?tracker_id=${trackerId}&start=${start}&end=${end}&timezone=${timezone}`),
+  getSnappedRoute: (trackerId, start, end, timezone = 'America/New_York') =>
+    apiService.post(`/shipment_route_snap?tracker_id=${trackerId}&start=${start}&end=${end}&timezone=${timezone}`),
   getAlerts: (shipmentId, trackerId) => {
     const params = new URLSearchParams();
     if (shipmentId) params.append('shipment_id', shipmentId);
