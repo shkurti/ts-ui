@@ -1207,93 +1207,6 @@ const Shipments = () => {
     }, delay);
   };
 
-  // Haversine distance between two lat/lng points, in meters
-  const distanceMeters = (lat1, lon1, lat2, lon2) => {
-    const R = 6371000;
-    const toRad = (deg) => (deg * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  };
-
-  // Drops GPS fixes that imply an unrealistic speed from the last kept point,
-  // and collapses near-stationary jitter (e.g. sitting at a delivery stop)
-  // into a single point instead of the little loops/spikes that noise draws.
-  const MAX_PLAUSIBLE_SPEED_MPS = 55; // ~198 km/h
-  const STATIONARY_RADIUS_METERS = 25;
-  const STATIONARY_SPEED_KMH = 5; // tracker-reported speed at/below this = parked
-
-  const averagePoint = (cluster) => ({
-    ...cluster[0],
-    latitude: cluster.reduce((sum, p) => sum + p.latitude, 0) / cluster.length,
-    longitude: cluster.reduce((sum, p) => sum + p.longitude, 0) / cluster.length,
-  });
-
-  const filterGpsNoise = (points) => {
-    if (points.length < 3) return points;
-
-    // Pass 1: collapse runs where the tracker itself reports near-zero speed.
-    // GPS position can hop tens (even hundreds) of meters from multipath
-    // reflections off buildings while genuinely parked — a ping-pong between
-    // a couple of cached fixes that still "looks" like a plausible speed
-    // point-to-point. The tracker's own speed reading isn't fooled by that,
-    // so it catches noise that pure distance/time inference misses.
-    const speedCollapsed = [];
-    let i = 0;
-    while (i < points.length) {
-      const isStationary = (p) => typeof p.speed === 'number' && !isNaN(p.speed) && p.speed <= STATIONARY_SPEED_KMH;
-      if (isStationary(points[i])) {
-        const stayCluster = [points[i]];
-        let j = i + 1;
-        while (j < points.length && isStationary(points[j])) {
-          stayCluster.push(points[j]);
-          j++;
-        }
-        speedCollapsed.push(averagePoint(stayCluster));
-        i = j;
-      } else {
-        speedCollapsed.push(points[i]);
-        i++;
-      }
-    }
-
-    // Pass 2: for the remaining points (actually moving, or no speed field
-    // reported at all), fall back to distance/time based rejection.
-    const filtered = [speedCollapsed[0]];
-
-    for (let k = 1; k < speedCollapsed.length; k++) {
-      const prev = filtered[filtered.length - 1];
-      const point = speedCollapsed[k];
-
-      const distance = distanceMeters(
-        prev.latitude, prev.longitude,
-        point.latitude, point.longitude
-      );
-      const dtSeconds = (new Date(point.timestamp) - new Date(prev.timestamp)) / 1000;
-
-      if (distance <= STATIONARY_RADIUS_METERS) {
-        // Within jitter range of the last kept point: treat as the same spot,
-        // skip plotting the wobble.
-        continue;
-      }
-
-      if (dtSeconds > 0) {
-        const impliedSpeed = distance / dtSeconds;
-        if (impliedSpeed > MAX_PLAUSIBLE_SPEED_MPS) {
-          // Physically implausible jump — almost certainly a bad fix, drop it.
-          continue;
-        }
-      }
-
-      filtered.push(point);
-    }
-
-    return filtered;
-  };
-
   // Create polyline coordinates from location data
   const getPolylineCoordinates = () => {
     if (!locationData || locationData.length === 0) return [];
@@ -1303,26 +1216,7 @@ const Shipments = () => {
       new Date(a.timestamp) - new Date(b.timestamp)
     );
 
-    const gpsNoiseFilterEnabled = user?.gps_noise_filter_enabled ?? true;
-    const pointsToRender = gpsNoiseFilterEnabled
-      ? filterGpsNoise(sortedData)
-      : sortedData;
-
-    const coordinates = pointsToRender.map(point => [point.latitude, point.longitude]);
-
-    // The live marker is always drawn at the raw (unfiltered) last GPS fix,
-    // but the noise filter above can collapse/average away that exact point
-    // when the vehicle is stationary (e.g. parked). Force the trace to end
-    // at that same raw fix so it always reaches the marker instead of
-    // stopping short of it.
-    const rawLast = sortedData[sortedData.length - 1];
-    const lastCoord = [rawLast.latitude, rawLast.longitude];
-    const tail = coordinates[coordinates.length - 1];
-    if (!tail || tail[0] !== lastCoord[0] || tail[1] !== lastCoord[1]) {
-      coordinates.push(lastCoord);
-    }
-
-    return coordinates;
+    return sortedData.map(point => [point.latitude, point.longitude]);
   };
 
   // Coordinates drawn on the map: the raw (optionally noise-filtered) GPS trace.
