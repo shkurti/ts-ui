@@ -1308,7 +1308,22 @@ const Shipments = () => {
       ? filterGpsNoise(sortedData)
       : sortedData;
 
-    return pointsToRender.map(point => [point.latitude, point.longitude]);
+    const coordinates = pointsToRender.map(point => [point.latitude, point.longitude]);
+
+    // The live marker is always drawn at the raw (unfiltered) last GPS fix,
+    // but the noise filter above can collapse/average away that exact point
+    // when the vehicle is stationary (e.g. parked). Force the trace to end
+    // at that same raw fix so it always reaches the marker instead of
+    // stopping short of it — same principle as trimSnapEndpoints below for
+    // the road-snapped path.
+    const rawLast = sortedData[sortedData.length - 1];
+    const lastCoord = [rawLast.latitude, rawLast.longitude];
+    const tail = coordinates[coordinates.length - 1];
+    if (!tail || tail[0] !== lastCoord[0] || tail[1] !== lastCoord[1]) {
+      coordinates.push(lastCoord);
+    }
+
+    return coordinates;
   };
 
   // --- Road snapping (OSRM map matching) ---------------------------------
@@ -3079,9 +3094,8 @@ const Shipments = () => {
                 positions={getDisplayPolylineCoordinates()}
                 pathOptions={{
                   color: '#667eea',
-                  weight: 4,
-                  opacity: 0.8,
-                  dashArray: '10, 5'
+                  weight: 5,
+                  opacity: 0.85
                 }}
               />
               
