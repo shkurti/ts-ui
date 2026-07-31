@@ -118,6 +118,51 @@ const ShipmentClusterLayer = ({ points, onSelect }) => {
   return null;
 };
 
+const EARTH_RADIUS_METERS = 6371000;
+
+const haversineMeters = (lat1, lng1, lat2, lng2) => {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const GPS_STAY_CLUSTER_RADIUS_METERS = 60; // collapse GPS jitter while parked/dwelling in one spot
+
+// Collapse consecutive points that jitter within a small radius (e.g. multipath
+// GPS noise while parked) into a single representative point, so a stationary
+// dwell doesn't draw as a tangle of back-and-forth segments. `points` must
+// already be sorted by timestamp.
+const collapseStationaryClusters = (points) => {
+  if (points.length === 0) return points;
+
+  const centroid = (cluster) => {
+    const lat = cluster.reduce((sum, p) => sum + p.latitude, 0) / cluster.length;
+    const lng = cluster.reduce((sum, p) => sum + p.longitude, 0) / cluster.length;
+    return [lat, lng];
+  };
+
+  const collapsed = [];
+  let cluster = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i];
+    const [cLat, cLng] = centroid(cluster);
+    if (haversineMeters(cLat, cLng, p.latitude, p.longitude) <= GPS_STAY_CLUSTER_RADIUS_METERS) {
+      cluster.push(p);
+    } else {
+      const [lat, lng] = centroid(cluster);
+      collapsed.push({ latitude: lat, longitude: lng });
+      cluster = [p];
+    }
+  }
+  const [lat, lng] = centroid(cluster);
+  collapsed.push({ latitude: lat, longitude: lng });
+  return collapsed;
+};
+
 const Shipments = () => {
   const { user, isAuthenticated, loading } = useAuth();
   const { connected: wsConnected, sensorData } = useWebSocketContext();
@@ -1230,7 +1275,8 @@ const Shipments = () => {
       new Date(a.timestamp) - new Date(b.timestamp)
     );
 
-    return sortedData.map(point => [point.latitude, point.longitude]);
+    const clustered = collapseStationaryClusters(sortedData);
+    return clustered.map(point => [point.latitude, point.longitude]);
   };
 
   // Coordinates drawn on the map: the road-snapped route when available and enabled,
