@@ -214,6 +214,9 @@ const Shipments = () => {
   // Add state for hover marker on polyline
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
   const [hoverMarkerData, setHoverMarkerData] = useState(null);
+  // When true, a chart click has frozen the marker in place (e.g. so the user can take a screenshot)
+  // and further hover/touch movement is ignored until it's unpinned.
+  const [isMarkerPinned, setIsMarkerPinned] = useState(false);
   
   // Add state for geocoded leg coordinates and geofence radii
   const [legCoordinates, setLegCoordinates] = useState({});
@@ -983,6 +986,7 @@ const Shipments = () => {
     // Clear hover marker
     setHoverMarkerPosition(null);
     setHoverMarkerData(null);
+    setIsMarkerPinned(false);
   };
   // Helper function to generate SVG path from data points
   const generateSVGPath = (data, valueKey, maxHeight = 60, maxWidth = 300) => {
@@ -1181,13 +1185,81 @@ const Shipments = () => {
     }
   };
 
+  // Resolves a chart-local x coordinate to a data point + map location, then updates the
+  // hover marker/vertical-line/tooltip. Shared by live hover, touch, and click-to-pin.
+  const applyChartPoint = (chartEl, pageX, pageY, xViewBox, data, valueKey, sensorName, unit, sensorKey, color, { pin, showCursorTooltip }) => {
+    const closestPoint = findClosestDataPoint(data, valueKey, xViewBox);
+    if (!closestPoint) return;
+
+    const locationPoint = findLocationByTimestamp(closestPoint.timestamp);
+
+    if (locationPoint) {
+      setHoverMarkerPosition([locationPoint.latitude, locationPoint.longitude]);
+      setHoverMarkerData({
+        timestamp: closestPoint.timestamp,
+        sensorName: sensorName,
+        sensorValue: closestPoint.value,
+        unit: unit,
+        location: locationPoint,
+        key: sensorKey,
+        color: color
+      });
+    }
+    if (pin) {
+      setIsMarkerPinned(true);
+    }
+
+    // Create unique ID for each chart's vertical line
+    const chartId = sensorName.toLowerCase().replace(' ', '-');
+    const verticalLineId = `chart-vertical-line-${chartId}`;
+
+    // Show vertical line
+    let verticalLine = document.getElementById(verticalLineId);
+    if (!verticalLine) {
+      verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      verticalLine.id = verticalLineId;
+      verticalLine.setAttribute('stroke', '#666');
+      verticalLine.setAttribute('stroke-width', '1');
+      verticalLine.setAttribute('stroke-dasharray', '3,3');
+      verticalLine.setAttribute('opacity', '0.7');
+      chartEl.appendChild(verticalLine);
+    }
+
+    const xPos = isNaN(closestPoint.x) ? 0 : closestPoint.x;
+    verticalLine.setAttribute('x1', xPos);
+    verticalLine.setAttribute('y1', '0');
+    verticalLine.setAttribute('x2', xPos);
+    verticalLine.setAttribute('y2', '60');
+    verticalLine.style.display = 'block';
+
+    // Show tooltip for desktop (don't show on mobile as it can interfere with touch) — the
+    // richer sensor readout now lives on the map marker itself, so this stays a lightweight cursor cue.
+    if (showCursorTooltip) {
+      const tooltip = document.getElementById('chart-tooltip');
+      if (tooltip) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = pageX + 15 + 'px';
+        tooltip.style.top = pageY - 60 + 'px';
+        tooltip.innerHTML = `
+          <strong>${sensorName}:</strong> ${closestPoint.value.toFixed(1)}${unit}<br/>
+          <strong>Time:</strong> ${formatTimestamp(closestPoint.timestamp)}<br/>
+          <strong>Location:</strong> ${locationPoint ? `${locationPoint.latitude.toFixed(4)}, ${locationPoint.longitude.toFixed(4)}` : 'N/A'}
+        `;
+      }
+    }
+  };
+
   // Helper function to handle chart hover and touch events
   const handleChartInteraction = (e, data, valueKey, sensorName, unit, sensorKey, color) => {
     e.preventDefault(); // Prevent default touch behaviors
-    
+
+    // A click already froze the marker in place — ignore further hover/touch movement
+    // until the user unpins it, so the pinned reading doesn't jump while they screenshot.
+    if (isMarkerPinned) return;
+
     const rect = e.currentTarget.getBoundingClientRect();
     let clientX;
-    
+
     // Handle both mouse and touch events
     if (e.type === 'touchstart' || e.type === 'touchmove') {
       if (e.touches && e.touches.length > 0) {
@@ -1198,91 +1270,66 @@ const Shipments = () => {
     } else {
       clientX = e.clientX;
     }
-    
+
     const mouseX = ((clientX - rect.left) / rect.width) * 300; // Scale to viewBox width
-    
-    const closestPoint = findClosestDataPoint(data, valueKey, mouseX);
-    
-    if (closestPoint) {
-      // Find corresponding location on polyline
-      const locationPoint = findLocationByTimestamp(closestPoint.timestamp);
-      
-      if (locationPoint) {
-        setHoverMarkerPosition([locationPoint.latitude, locationPoint.longitude]);
-        setHoverMarkerData({
-          timestamp: closestPoint.timestamp,
-          sensorName: sensorName,
-          sensorValue: closestPoint.value,
-          unit: unit,
-          location: locationPoint,
-          key: sensorKey,
-          color: color
-        });
-      }
+    const isTouch = e.type === 'touchstart' || e.type === 'touchmove';
 
-      // Create unique ID for each chart's vertical line
-      const chartId = sensorName.toLowerCase().replace(' ', '-');
-      const verticalLineId = `chart-vertical-line-${chartId}`;
-
-      // Show vertical line
-      let verticalLine = document.getElementById(verticalLineId);
-      if (!verticalLine) {
-        verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        verticalLine.id = verticalLineId;
-        verticalLine.setAttribute('stroke', '#666');
-        verticalLine.setAttribute('stroke-width', '1');
-        verticalLine.setAttribute('stroke-dasharray', '3,3');
-        verticalLine.setAttribute('opacity', '0.7');
-        e.currentTarget.appendChild(verticalLine);
-      }
-
-      const xPos = isNaN(closestPoint.x) ? 0 : closestPoint.x;
-      verticalLine.setAttribute('x1', xPos);
-      verticalLine.setAttribute('y1', '0');
-      verticalLine.setAttribute('x2', xPos);
-      verticalLine.setAttribute('y2', '60');
-      verticalLine.style.display = 'block';
-
-      // Show tooltip for desktop (don't show on mobile as it can interfere with touch) — the
-      // richer sensor readout now lives on the map marker itself, so this stays a lightweight cursor cue.
-      if (e.type !== 'touchstart' && e.type !== 'touchmove') {
-        const tooltip = document.getElementById('chart-tooltip');
-        if (tooltip) {
-          tooltip.style.display = 'block';
-          tooltip.style.left = clientX + 15 + 'px';
-          tooltip.style.top = e.pageY - 60 + 'px';
-          tooltip.innerHTML = `
-            <strong>${sensorName}:</strong> ${closestPoint.value.toFixed(1)}${unit}<br/>
-            <strong>Time:</strong> ${formatTimestamp(closestPoint.timestamp)}<br/>
-            <strong>Location:</strong> ${locationPoint ? `${locationPoint.latitude.toFixed(4)}, ${locationPoint.longitude.toFixed(4)}` : 'N/A'}
-          `;
-        }
-      }
-    }
+    applyChartPoint(e.currentTarget, clientX, e.pageY, mouseX, data, valueKey, sensorName, unit, sensorKey, color, {
+      pin: false,
+      showCursorTooltip: !isTouch
+    });
   };
 
-  // Helper function to handle chart leave and touch end
+  // Click (desktop) or tap (mobile) a specific spot on the chart to freeze the marker there —
+  // handy for lining up the map and chart before taking a screenshot.
+  const handleChartPin = (e, data, valueKey, sensorName, unit, sensorKey, color) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clientX = e.type.startsWith('touch') ? (e.changedTouches?.[0]?.clientX ?? e.clientX) : e.clientX;
+    const pageY = e.type.startsWith('touch') ? (e.changedTouches?.[0]?.pageY ?? e.pageY) : e.pageY;
+    const mouseX = ((clientX - rect.left) / rect.width) * 300;
+
+    applyChartPoint(e.currentTarget, clientX, pageY, mouseX, data, valueKey, sensorName, unit, sensorKey, color, {
+      pin: true,
+      showCursorTooltip: false
+    });
+  };
+
+  // Unfreezes the marker, returning to normal chart-hover behavior
+  const handleUnpinMarker = () => {
+    setIsMarkerPinned(false);
+    setHoverMarkerPosition(null);
+    setHoverMarkerData(null);
+  };
+
+  // Helper function to hide the hover marker when the mouse leaves the chart
+  // (touch end now pins instead of hiding — see handleChartPin)
   const handleChartLeaveOrEnd = (sensorName, e) => {
     // Only hide on mouse leave or touch end, not on touch move
     if (e && (e.type === 'touchmove' || e.type === 'touchstart')) {
       return;
     }
-    
+
+    // A pinned marker stays put until explicitly unpinned
+    if (isMarkerPinned) {
+      return;
+    }
+
     // Hide hover marker after a delay on mobile to allow for better UX
     const isMobile = window.innerWidth <= 768;
     const delay = isMobile ? 2000 : 0; // 2 second delay on mobile
-    
+
     setTimeout(() => {
+      if (isMarkerPinned) return;
       setHoverMarkerPosition(null);
       setHoverMarkerData(null);
-      
+
       const chartId = sensorName.toLowerCase().replace(' ', '-');
       const verticalLineId = `chart-vertical-line-${chartId}`;
       const verticalLine = document.getElementById(verticalLineId);
       if (verticalLine) {
         verticalLine.style.display = 'none';
       }
-      
+
       const tooltip = document.getElementById('chart-tooltip');
       if (tooltip) {
         tooltip.style.display = 'none';
@@ -1876,9 +1923,10 @@ const Shipments = () => {
                                         style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
                                         onMouseMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
                                         onMouseLeave={(e) => handleChartLeaveOrEnd(row.label, e)}
+                                        onClick={(e) => handleChartPin(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
                                         onTouchStart={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
                                         onTouchMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
-                                        onTouchEnd={(e) => handleChartLeaveOrEnd(row.label, e)}
+                                        onTouchEnd={(e) => handleChartPin(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
                                       >
                                         {row.data.length > 0 ? (
                                           <>
@@ -2455,26 +2503,28 @@ const Shipments = () => {
                 }}
               />
               
-              {/* Hover marker that follows chart interactions, colored to match the active sensor */}
+              {/* Hover marker that follows chart interactions, colored to match the active sensor.
+                  Clicking a point on the chart pins it here so it holds still for a screenshot. */}
               {hoverMarkerPosition && hoverMarkerData && (
                 <Marker
                   position={hoverMarkerPosition}
                   icon={L.divIcon({
                     className: 'route-marker hover-marker',
                     html: `
-                      <div class="hover-marker-dot" style="
+                      <div class="hover-marker-dot${isMarkerPinned ? ' is-pinned' : ''}" style="
                         width: 16px;
                         height: 16px;
                         background: ${hoverMarkerData.color};
+                        color: ${hoverMarkerData.color};
                         border: 3px solid white;
                         border-radius: 50%;
                         box-shadow: 0 0 0 2px ${hoverMarkerData.color}, 0 2px 8px rgba(0,0,0,0.35);
-                        animation: pulse 1.5s infinite;
                       "></div>
                     `,
                     iconSize: [16, 16],
                     iconAnchor: [8, 8]
                   })}
+                  eventHandlers={isMarkerPinned ? { click: handleUnpinMarker } : undefined}
                 >
                   <Tooltip
                     permanent
@@ -2492,6 +2542,17 @@ const Shipments = () => {
                         </span>
                       </div>
                       <span className="sensor-hover-time">{formatTimestamp(hoverMarkerData.timestamp)}</span>
+                      {isMarkerPinned && (
+                        <button
+                          type="button"
+                          className="sensor-hover-close"
+                          onClick={(e) => { e.stopPropagation(); handleUnpinMarker(); }}
+                          aria-label="Unpin marker"
+                          title="Unpin"
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
                   </Tooltip>
                 </Marker>
