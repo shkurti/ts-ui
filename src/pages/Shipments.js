@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -1081,17 +1081,36 @@ const Shipments = () => {
     return closestPoint;
   };
 
+  // Small lucide-style icon per sensor type, used on the map hover card
+  const getSensorIcon = (key) => {
+    const common = { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'white', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' };
+    switch (key) {
+      case 'temp':
+        return <svg {...common}><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>;
+      case 'humidity':
+        return <svg {...common}><path d="M12 2.7 17.7 9a8 8 0 1 1-11.4 0Z"/></svg>;
+      case 'battery':
+        return <svg {...common}><rect x="2" y="7" width="16" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/></svg>;
+      case 'speed':
+        return <svg {...common}><path d="M12 14 15 10"/><path d="M3.5 19a9 9 0 1 1 17 0"/></svg>;
+      case 'light':
+        return <svg {...common}><circle cx="12" cy="12" r="4"/><path d="M12 3v2"/><path d="M12 19v2"/><path d="m5 5 1.4 1.4"/><path d="m17.6 17.6 1.4 1.4"/><path d="M3 12h2"/><path d="M19 12h2"/><path d="m5 19 1.4-1.4"/><path d="m17.6 6.4 1.4-1.4"/></svg>;
+      default:
+        return null;
+    }
+  };
+
   // Helper function to handle chart hover
-  const handleChartHover = (e, data, valueKey, sensorName, unit) => {
+  const handleChartHover = (e, data, valueKey, sensorName, unit, sensorKey, color) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const mouseX = ((e.clientX - rect.left) / rect.width) * 300; // Scale to viewBox width
-    
+
     const closestPoint = findClosestDataPoint(data, valueKey, mouseX);
-    
+
     if (closestPoint) {
       // Find corresponding location on polyline
       const locationPoint = findLocationByTimestamp(closestPoint.timestamp);
-      
+
       if (locationPoint) {
         setHoverMarkerPosition([locationPoint.latitude, locationPoint.longitude]);
         setHoverMarkerData({
@@ -1099,7 +1118,9 @@ const Shipments = () => {
           sensorName: sensorName,
           sensorValue: closestPoint.value,
           unit: unit,
-          location: locationPoint
+          location: locationPoint,
+          key: sensorKey,
+          color: color
         });
       }
 
@@ -1161,7 +1182,7 @@ const Shipments = () => {
   };
 
   // Helper function to handle chart hover and touch events
-  const handleChartInteraction = (e, data, valueKey, sensorName, unit) => {
+  const handleChartInteraction = (e, data, valueKey, sensorName, unit, sensorKey, color) => {
     e.preventDefault(); // Prevent default touch behaviors
     
     const rect = e.currentTarget.getBoundingClientRect();
@@ -1193,14 +1214,16 @@ const Shipments = () => {
           sensorName: sensorName,
           sensorValue: closestPoint.value,
           unit: unit,
-          location: locationPoint
+          location: locationPoint,
+          key: sensorKey,
+          color: color
         });
       }
 
       // Create unique ID for each chart's vertical line
       const chartId = sensorName.toLowerCase().replace(' ', '-');
       const verticalLineId = `chart-vertical-line-${chartId}`;
-      
+
       // Show vertical line
       let verticalLine = document.getElementById(verticalLineId);
       if (!verticalLine) {
@@ -1212,15 +1235,16 @@ const Shipments = () => {
         verticalLine.setAttribute('opacity', '0.7');
         e.currentTarget.appendChild(verticalLine);
       }
-      
+
       const xPos = isNaN(closestPoint.x) ? 0 : closestPoint.x;
       verticalLine.setAttribute('x1', xPos);
       verticalLine.setAttribute('y1', '0');
       verticalLine.setAttribute('x2', xPos);
       verticalLine.setAttribute('y2', '60');
       verticalLine.style.display = 'block';
-      
-      // Show tooltip for desktop (don't show on mobile as it can interfere with touch)
+
+      // Show tooltip for desktop (don't show on mobile as it can interfere with touch) — the
+      // richer sensor readout now lives on the map marker itself, so this stays a lightweight cursor cue.
       if (e.type !== 'touchstart' && e.type !== 'touchmove') {
         const tooltip = document.getElementById('chart-tooltip');
         if (tooltip) {
@@ -1850,10 +1874,10 @@ const Shipments = () => {
                                       <svg
                                         width="100%" height={CHART_H} viewBox={`0 0 300 ${CHART_H}`} preserveAspectRatio="none"
                                         style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                        onMouseMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
+                                        onMouseMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
                                         onMouseLeave={(e) => handleChartLeaveOrEnd(row.label, e)}
-                                        onTouchStart={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
-                                        onTouchMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
+                                        onTouchStart={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
+                                        onTouchMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
                                         onTouchEnd={(e) => handleChartLeaveOrEnd(row.label, e)}
                                       >
                                         {row.data.length > 0 ? (
@@ -2431,20 +2455,20 @@ const Shipments = () => {
                 }}
               />
               
-              {/* Hover marker that follows chart interactions */}
-              {hoverMarkerPosition && (
-                <Marker 
+              {/* Hover marker that follows chart interactions, colored to match the active sensor */}
+              {hoverMarkerPosition && hoverMarkerData && (
+                <Marker
                   position={hoverMarkerPosition}
                   icon={L.divIcon({
                     className: 'route-marker hover-marker',
                     html: `
-                      <div style="
+                      <div class="hover-marker-dot" style="
                         width: 16px;
                         height: 16px;
-                        background: #ff6b35;
+                        background: ${hoverMarkerData.color};
                         border: 3px solid white;
                         border-radius: 50%;
-                        box-shadow: 0 0 0 2px #ff6b35, 0 2px 8px rgba(0,0,0,0.3);
+                        box-shadow: 0 0 0 2px ${hoverMarkerData.color}, 0 2px 8px rgba(0,0,0,0.35);
                         animation: pulse 1.5s infinite;
                       "></div>
                     `,
@@ -2452,14 +2476,24 @@ const Shipments = () => {
                     iconAnchor: [8, 8]
                   })}
                 >
-                  <Popup>
-                    <div>
-                      <strong>Sensor Reading</strong><br />
-                      <strong>{hoverMarkerData?.sensorName}:</strong> {hoverMarkerData?.sensorValue?.toFixed(1)}{hoverMarkerData?.unit}<br />
-                      <strong>Time:</strong> {formatTimestamp(hoverMarkerData?.timestamp)}<br />
-                      <strong>Coordinates:</strong> {hoverMarkerData?.location?.latitude?.toFixed(6)}, {hoverMarkerData?.location?.longitude?.toFixed(6)}
+                  <Tooltip
+                    permanent
+                    direction="top"
+                    offset={[0, -12]}
+                    opacity={1}
+                    className="sensor-hover-tooltip"
+                  >
+                    <div className="sensor-hover-card" style={{ '--sensor-color': hoverMarkerData.color }}>
+                      <span className="sensor-hover-icon">{getSensorIcon(hoverMarkerData.key)}</span>
+                      <div className="sensor-hover-body">
+                        <span className="sensor-hover-label">{hoverMarkerData.sensorName}</span>
+                        <span className="sensor-hover-value">
+                          {hoverMarkerData.sensorValue?.toFixed(1)}{hoverMarkerData.unit}
+                        </span>
+                      </div>
+                      <span className="sensor-hover-time">{formatTimestamp(hoverMarkerData.timestamp)}</span>
                     </div>
-                  </Popup>
+                  </Tooltip>
                 </Marker>
               )}
               

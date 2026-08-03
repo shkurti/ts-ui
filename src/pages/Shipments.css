@@ -1051,6 +1051,102 @@
   z-index: 1000;
 }
 
+/* Glide smoothly between points as the mouse moves across the sensor chart,
+   instead of snapping instantly — Leaflet just repositions via transform,
+   so a short CSS transition on that same property animates it for free. */
+.leaflet-marker-icon.hover-marker {
+  transition: transform 0.12s linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leaflet-marker-icon.hover-marker {
+    transition: none;
+  }
+  .hover-marker-dot {
+    animation: none;
+  }
+}
+
+/* Sensor readout card that floats above the hover marker, colored per sensor */
+.sensor-hover-tooltip.leaflet-tooltip {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  pointer-events: none;
+  opacity: 1;
+}
+
+.sensor-hover-tooltip.leaflet-tooltip::before {
+  display: none;
+}
+
+.sensor-hover-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border-radius: 10px;
+  padding: 6px 10px 6px 6px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+
+.sensor-hover-card::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  transform: translateX(-50%) rotate(45deg);
+  box-shadow: 2px 2px 4px rgba(15, 23, 42, 0.08);
+}
+
+.sensor-hover-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--sensor-color);
+  flex-shrink: 0;
+}
+
+.sensor-hover-body {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.sensor-hover-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #6b7280);
+}
+
+.sensor-hover-value {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--sensor-color);
+}
+
+.sensor-hover-time {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-muted, #6b7280);
+  border-left: 1px solid var(--color-border, #e5e7eb);
+  padding-left: 8px;
+  margin-left: 2px;
+}
+
 /* ── Mobile: bottom-sheet layout ──────────────────────────────────────────
    Below 768px the side-by-side panel + map stops working: a fixed-width
    panel next to the map leaves the map a useless sliver. Instead the map
