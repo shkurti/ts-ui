@@ -1047,21 +1047,112 @@ const Shipments = () => {
   // Helper function to find the closest data point to mouse position
   const findClosestDataPoint = (data, valueKey, mouseX, maxWidth = 300) => {
     if (!data || data.length === 0) return null;
-    
+
     const values = data.map(item => ({ value: item[valueKey], timestamp: item.timestamp }))
                         .filter(item => item.value !== null && !isNaN(item.value));
     if (values.length === 0) return null;
-    
+
     const stepSize = maxWidth / (values.length - 1);
     const index = Math.round(mouseX / stepSize);
     const clampedIndex = Math.max(0, Math.min(index, values.length - 1));
-    
+
     return {
       ...values[clampedIndex],
       index: clampedIndex,
       x: clampedIndex * stepSize
     };
-  };  // Helper function to find location data point by timestamp
+  };
+
+  // Same sensor rows shown in the "Sensors" tab, exposed here so the shared hover/sync
+  // logic can look up every sensor's own data array (each has independent timestamps).
+  const getSensorRowsConfig = () => ([
+    { key: 'temp', label: 'Temperature', data: temperatureData, field: 'temperature', unit: '°C', color: '#ef4444', fill: 'rgba(239,68,68,0.08)' },
+    { key: 'humidity', label: 'Humidity', data: humidityData, field: 'humidity', unit: '%', color: '#3b82f6', fill: 'rgba(59,130,246,0.08)' },
+    { key: 'battery', label: 'Battery', data: batteryData, field: 'battery', unit: '%', color: '#22c55e', fill: 'rgba(34,197,94,0.08)' },
+    { key: 'speed', label: 'Speed', data: speedData, field: 'speed', unit: ' km/h', color: '#ea580c', fill: 'rgba(234,88,12,0.08)' },
+    { key: 'light', label: 'Light', data: lightData, field: 'light', unit: ' Lux', color: '#ca8a04', fill: 'rgba(202,138,4,0.08)' },
+  ]);
+
+  // Finds the point in `data` whose timestamp is closest to `timestamp` (rather than by
+  // mouse x), so charts with different point counts/timestamps still line up correctly.
+  const findClosestPointByTimestamp = (data, valueKey, timestamp, maxWidth = 300) => {
+    if (!data || data.length === 0 || !timestamp) return null;
+
+    const values = data.map(item => ({ value: item[valueKey], timestamp: item.timestamp }))
+                        .filter(item => item.value !== null && !isNaN(item.value));
+    if (values.length === 0) return null;
+
+    const targetTime = new Date(timestamp).getTime();
+    let closestIndex = 0;
+    let minDiff = Infinity;
+    values.forEach((item, i) => {
+      const diff = Math.abs(new Date(item.timestamp).getTime() - targetTime);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIndex = i;
+      }
+    });
+
+    const stepSize = values.length > 1 ? maxWidth / (values.length - 1) : 0;
+    return {
+      ...values[closestIndex],
+      index: closestIndex,
+      x: values.length > 1 ? closestIndex * stepSize : maxWidth / 2
+    };
+  };
+
+  // Draws (or hides) the dashed crosshair line on every sensor chart at the position
+  // matching `timestamp`, so hovering one chart lines up the same instant on all of them.
+  const syncAllChartVerticalLines = (timestamp) => {
+    getSensorRowsConfig().forEach((row) => {
+      const verticalLineId = `chart-vertical-line-${row.key}`;
+      const chartEl = document.getElementById(`chart-svg-${row.key}`);
+      const point = findClosestPointByTimestamp(row.data, row.field, timestamp);
+
+      let verticalLine = document.getElementById(verticalLineId);
+      if (!point || !chartEl) {
+        if (verticalLine) verticalLine.style.display = 'none';
+        return;
+      }
+
+      if (!verticalLine) {
+        verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        verticalLine.id = verticalLineId;
+        verticalLine.setAttribute('stroke', '#666');
+        verticalLine.setAttribute('stroke-width', '1');
+        verticalLine.setAttribute('stroke-dasharray', '3,3');
+        verticalLine.setAttribute('opacity', '0.7');
+        chartEl.appendChild(verticalLine);
+      }
+
+      const xPos = isNaN(point.x) ? 0 : point.x;
+      verticalLine.setAttribute('x1', xPos);
+      verticalLine.setAttribute('y1', '0');
+      verticalLine.setAttribute('x2', xPos);
+      verticalLine.setAttribute('y2', '60');
+      verticalLine.style.display = 'block';
+    });
+  };
+
+  // Hides the synced crosshair on every sensor chart at once.
+  const hideAllChartVerticalLines = () => {
+    getSensorRowsConfig().forEach((row) => {
+      const verticalLine = document.getElementById(`chart-vertical-line-${row.key}`);
+      if (verticalLine) verticalLine.style.display = 'none';
+    });
+  };
+
+  // Builds the combined tooltip: every sensor's reading at the hovered timestamp.
+  const buildSyncedTooltipHtml = (timestamp) => {
+    const rows = getSensorRowsConfig().map((row) => {
+      const point = findClosestPointByTimestamp(row.data, row.field, timestamp);
+      const valueStr = point && typeof point.value === 'number' ? `${point.value.toFixed(1)}${row.unit}` : 'N/A';
+      return `<span style="color:${row.color}">●</span> ${row.label}: <strong>${valueStr}</strong>`;
+    }).join('<br/>');
+    return `${rows}<br/><strong>Time:</strong> ${formatTimestamp(timestamp)}`;
+  };
+
+  // Helper function to find location data point by timestamp
   const findLocationByTimestamp = (timestamp) => {
     if (!locationData || locationData.length === 0 || !timestamp || timestamp === 'N/A') {
       return null;
@@ -1209,31 +1300,12 @@ const Shipments = () => {
       setIsMarkerPinned(true);
     }
 
-    // Create unique ID for each chart's vertical line
-    const chartId = sensorName.toLowerCase().replace(' ', '-');
-    const verticalLineId = `chart-vertical-line-${chartId}`;
+    // Sync the dashed crosshair across every sensor chart to this same timestamp,
+    // not just the one being hovered/touched.
+    syncAllChartVerticalLines(closestPoint.timestamp);
 
-    // Show vertical line
-    let verticalLine = document.getElementById(verticalLineId);
-    if (!verticalLine) {
-      verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      verticalLine.id = verticalLineId;
-      verticalLine.setAttribute('stroke', '#666');
-      verticalLine.setAttribute('stroke-width', '1');
-      verticalLine.setAttribute('stroke-dasharray', '3,3');
-      verticalLine.setAttribute('opacity', '0.7');
-      chartEl.appendChild(verticalLine);
-    }
-
-    const xPos = isNaN(closestPoint.x) ? 0 : closestPoint.x;
-    verticalLine.setAttribute('x1', xPos);
-    verticalLine.setAttribute('y1', '0');
-    verticalLine.setAttribute('x2', xPos);
-    verticalLine.setAttribute('y2', '60');
-    verticalLine.style.display = 'block';
-
-    // Show tooltip for desktop (don't show on mobile as it can interfere with touch) — the
-    // richer sensor readout now lives on the map marker itself, so this stays a lightweight cursor cue.
+    // Show tooltip for desktop (don't show on mobile as it can interfere with touch).
+    // It now lists every sensor's reading at this timestamp, not just the hovered one.
     if (showCursorTooltip) {
       const tooltip = document.getElementById('chart-tooltip');
       if (tooltip) {
@@ -1241,8 +1313,7 @@ const Shipments = () => {
         tooltip.style.left = pageX + 15 + 'px';
         tooltip.style.top = pageY - 60 + 'px';
         tooltip.innerHTML = `
-          <strong>${sensorName}:</strong> ${closestPoint.value.toFixed(1)}${unit}<br/>
-          <strong>Time:</strong> ${formatTimestamp(closestPoint.timestamp)}<br/>
+          ${buildSyncedTooltipHtml(closestPoint.timestamp)}<br/>
           <strong>Location:</strong> ${locationPoint ? `${locationPoint.latitude.toFixed(4)}, ${locationPoint.longitude.toFixed(4)}` : 'N/A'}
         `;
       }
@@ -1323,12 +1394,7 @@ const Shipments = () => {
       setHoverMarkerPosition(null);
       setHoverMarkerData(null);
 
-      const chartId = sensorName.toLowerCase().replace(' ', '-');
-      const verticalLineId = `chart-vertical-line-${chartId}`;
-      const verticalLine = document.getElementById(verticalLineId);
-      if (verticalLine) {
-        verticalLine.style.display = 'none';
-      }
+      hideAllChartVerticalLines();
 
       const tooltip = document.getElementById('chart-tooltip');
       if (tooltip) {
@@ -1885,13 +1951,7 @@ const Shipments = () => {
                     </button>
                   </div>                  <div className="tab-content">
                     {activeTab === 'sensors' && (() => {
-                      const sensorRows = [
-                        { key: 'temp', label: 'Temperature', data: temperatureData, field: 'temperature', unit: '°C', color: '#ef4444', fill: 'rgba(239,68,68,0.08)' },
-                        { key: 'humidity', label: 'Humidity', data: humidityData, field: 'humidity', unit: '%', color: '#3b82f6', fill: 'rgba(59,130,246,0.08)' },
-                        { key: 'battery', label: 'Battery', data: batteryData, field: 'battery', unit: '%', color: '#22c55e', fill: 'rgba(34,197,94,0.08)' },
-                        { key: 'speed', label: 'Speed', data: speedData, field: 'speed', unit: ' km/h', color: '#ea580c', fill: 'rgba(234,88,12,0.08)' },
-                        { key: 'light', label: 'Light', data: lightData, field: 'light', unit: ' Lux', color: '#ca8a04', fill: 'rgba(202,138,4,0.08)' },
-                      ];
+                      const sensorRows = getSensorRowsConfig();
                       const CHART_H = 64;
 
                       return (
@@ -1919,6 +1979,7 @@ const Shipments = () => {
                                     </div>
                                     <div className="sensor-chart-area">
                                       <svg
+                                        id={`chart-svg-${row.key}`}
                                         width="100%" height={CHART_H} viewBox={`0 0 300 ${CHART_H}`} preserveAspectRatio="none"
                                         style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
                                         onMouseMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
@@ -2829,8 +2890,9 @@ const Shipments = () => {
           display: 'none',
           boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
           border: '1px solid rgba(255,255,255,0.15)',
-          maxWidth: '200px',
-          whiteSpace: 'nowrap'
+          maxWidth: '220px',
+          lineHeight: 1.6,
+          whiteSpace: 'normal'
         }}
       />
     </div>
