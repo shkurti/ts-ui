@@ -27,10 +27,11 @@ const DrawController = ({ initialPoints, onChange }) => {
 
     if (initialPoints && initialPoints.length >= 3) {
       const polygon = new L.Polygon(initialPoints, {
-        color: '#3b82f6',
+        color: '#1d4ed8',
         fillColor: '#3b82f6',
         fillOpacity: 0.2,
-        weight: 3
+        weight: 4,
+        opacity: 1
       });
       featureGroup.addLayer(polygon);
     }
@@ -42,10 +43,11 @@ const DrawController = ({ initialPoints, onChange }) => {
           allowIntersection: false,
           showArea: true,
           shapeOptions: {
-            color: '#3b82f6',
+            color: '#1d4ed8',
             fillColor: '#3b82f6',
             fillOpacity: 0.2,
-            weight: 3
+            weight: 4,
+            opacity: 1
           }
         },
         marker: false,

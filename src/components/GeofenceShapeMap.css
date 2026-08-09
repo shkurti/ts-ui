@@ -115,13 +115,35 @@
   background-color: #374151 !important;
 }
 
-.leaflet-draw-guide-dash {
-  background: #3b82f6 !important;
+/* Dashed preview line shown while placing a point - brighter & fully opaque so it
+   stays visible while forming the shape (default leaflet-draw style is faint). */
+.gsm-map-container .leaflet-draw-guide-dash {
+  background: #1d4ed8 !important;
+  opacity: 1 !important;
 }
 
-.leaflet-edit-marker-selected {
-  border-color: #3b82f6 !important;
-  background-color: rgba(59, 130, 246, 0.15) !important;
+/* Draggable vertex/edit handles - smaller and red so they read clearly as
+   "grab points" against both satellite and street tiles, without covering the shape. */
+.gsm-map-container .leaflet-div-icon,
+.gsm-map-container .leaflet-editing-icon {
+  width: 9px !important;
+  height: 9px !important;
+  margin-left: -5px !important;
+  margin-top: -5px !important;
+  background: #ef4444 !important;
+  border: 2px solid #fff !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
+
+.gsm-map-container .leaflet-edit-marker-selected {
+  width: 11px !important;
+  height: 11px !important;
+  margin-left: -6px !important;
+  margin-top: -6px !important;
+  background: #b91c1c !important;
+  border: 2px solid #fff !important;
+  border-radius: 50% !important;
 }
 
 .leaflet-draw-tooltip {
