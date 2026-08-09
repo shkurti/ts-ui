@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Polygon, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -9,6 +9,7 @@ import './Shipments.css';
 import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi } from '../services/apiService';
+import GeofenceShapeMap from '../components/GeofenceShapeMap';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocketContext } from '../context/WebSocketContext';
 
@@ -221,6 +222,9 @@ const Shipments = () => {
   // Add state for geocoded leg coordinates and geofence radii
   const [legCoordinates, setLegCoordinates] = useState({});
   const [geofenceRadii, setGeofenceRadii] = useState({});
+  // 'circle' (radius slider, default) or 'polygon' (hand-drawn custom shape)
+  const [geofenceShapeMode, setGeofenceShapeMode] = useState({});
+  const [geofencePolygons, setGeofencePolygons] = useState({});
   const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
   
   // User timezone (you can make this configurable)
@@ -481,6 +485,14 @@ const Shipments = () => {
     });
   };
 
+  const setGeofenceMode = (legIndex, mode) => {
+    setGeofenceShapeMode(prev => ({ ...prev, [legIndex]: mode }));
+  };
+
+  const handlePolygonChange = (legIndex, points) => {
+    setGeofencePolygons(prev => ({ ...prev, [legIndex]: points }));
+  };
+
   const handleAddStop = () => {
     setFormData(prev => ({
       ...prev,
@@ -519,20 +531,41 @@ const Shipments = () => {
       return;
     }
 
+    // A leg with geofence enabled in "custom shape" mode must have a finished polygon
+    // (at least 3 points) before we can save it - otherwise there's nothing to alert on.
+    const hasIncompleteShape = formData.legs.some((leg, index) => {
+      if (geofenceRadii[index] === undefined) return false;
+      if (geofenceShapeMode[index] !== 'polygon') return false;
+      return !(geofencePolygons[index] && geofencePolygons[index].length >= 3);
+    });
+
+    if (hasIncompleteShape) {
+      alert('One of your destinations has "Custom shape" selected but no shape has been drawn yet. Please finish drawing the geofence shape, or switch back to "Radius circle".');
+      return;
+    }
+
     try {
+      const buildGeofencePreset = (index) => {
+        if (!legCoordinates[index]) return [];
+        const base = {
+          type: 'geofence',
+          latitude: legCoordinates[index].latitude,
+          longitude: legCoordinates[index].longitude,
+          enabled: true
+        };
+        if (geofenceShapeMode[index] === 'polygon' && geofencePolygons[index]?.length >= 3) {
+          return [{ ...base, shape: 'polygon', points: geofencePolygons[index] }];
+        }
+        return [{ ...base, shape: 'circle', radius: geofenceRadii[index] || 1000 }];
+      };
+
       const shipmentData = {
         trackerId: selectedTracker,
         legs: formData.legs.map((leg, index) => ({
           legNumber: index + 1,
           shipFromAddress: index === 0 ? leg.shipFrom : undefined,
           shipDate: leg.shipDate,
-          alertPresets: legCoordinates[index] ? [{
-            type: 'geofence',
-            latitude: legCoordinates[index].latitude,
-            longitude: legCoordinates[index].longitude,
-            radius: geofenceRadii[index] || 1000,
-            enabled: true
-          }] : [],
+          alertPresets: buildGeofencePreset(index),
           mode: leg.transportMode,
           carrier: leg.carrier,
           stopAddress: leg.stopAddress || leg.shipTo,
@@ -565,6 +598,8 @@ const Shipments = () => {
     setSelectedTracker('');
     setLegCoordinates({});
     setGeofenceRadii({});
+    setGeofenceShapeMode({});
+    setGeofencePolygons({});
     setFormData({
       legs: [{
         shipFrom: '',
@@ -2426,29 +2461,49 @@ const Shipments = () => {
             <ShipmentClusterLayer points={shipmentMapPoints} onSelect={handleShipmentClick} />
           )}
 
-          {/* Show geofence circles for each leg with alertPresets */}
+          {/* Show geofence zones (circle or hand-drawn polygon) for each leg with alertPresets */}
           {selectedShipmentDetail && selectedShipmentDetail.legs && selectedShipmentDetail.legs.map((leg, legIndex) => {
             const geofencePreset = leg.alertPresets?.find(preset => preset.type === 'geofence' && preset.enabled);
             if (!geofencePreset) return null;
-            
+
             const destLat = geofencePreset.latitude;
             const destLng = geofencePreset.longitude;
-            const radius = geofencePreset.radius || 1000;
-            
             if (destLat == null || destLng == null) return null;
-            
+
+            const geofencePathOptions = {
+              color: '#3b82f6',
+              fillColor: '#3b82f6',
+              fillOpacity: 0.15,
+              weight: 2,
+              dashArray: '5, 5'
+            };
+
+            if (geofencePreset.shape === 'polygon' && geofencePreset.points?.length >= 3) {
+              return (
+                <Polygon
+                  key={`geofence-${legIndex}`}
+                  positions={geofencePreset.points}
+                  pathOptions={geofencePathOptions}
+                >
+                  <Popup>
+                    <div>
+                      <strong>Geofence Alert Zone</strong><br />
+                      Shape: Custom<br />
+                      Leg: {leg.legNumber || legIndex + 1}<br />
+                      Destination: {leg.stopAddress || 'N/A'}
+                    </div>
+                  </Popup>
+                </Polygon>
+              );
+            }
+
+            const radius = geofencePreset.radius || 1000;
             return (
               <Circle
                 key={`geofence-${legIndex}`}
                 center={[destLat, destLng]}
                 radius={radius}
-                pathOptions={{
-                  color: '#3b82f6',
-                  fillColor: '#3b82f6',
-                  fillOpacity: 0.15,
-                  weight: 2,
-                  dashArray: '5, 5'
-                }}
+                pathOptions={geofencePathOptions}
               >
                 <Popup>
                   <div>
@@ -2805,24 +2860,52 @@ const Shipments = () => {
 
                       {geofenceRadii[index] !== undefined && (
                         <>
-                          <label className="sf-geofence-radius-label">
-                            Geofence radius: <strong>{geofenceRadii[index]}m</strong>
-                            <span className="sf-geofence-radius-hint">(alert when within this distance)</span>
-                          </label>
-                          <input
-                            type="range"
-                            min="100"
-                            max="5000"
-                            step="100"
-                            value={geofenceRadii[index]}
-                            onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
-                            className="sf-geofence-slider"
-                          />
-                          <div className="sf-geofence-scale">
-                            <span>100m</span>
-                            <span>2.5km</span>
-                            <span>5km</span>
+                          <div className="sf-geofence-mode-toggle">
+                            <button
+                              type="button"
+                              className={`sf-geofence-mode-btn ${(geofenceShapeMode[index] || 'circle') === 'circle' ? 'active' : ''}`}
+                              onClick={() => setGeofenceMode(index, 'circle')}
+                            >
+                              ◯ Radius circle
+                            </button>
+                            <button
+                              type="button"
+                              className={`sf-geofence-mode-btn ${geofenceShapeMode[index] === 'polygon' ? 'active' : ''}`}
+                              onClick={() => setGeofenceMode(index, 'polygon')}
+                            >
+                              ⬠ Custom shape
+                            </button>
                           </div>
+
+                          {(geofenceShapeMode[index] || 'circle') === 'circle' ? (
+                            <>
+                              <label className="sf-geofence-radius-label">
+                                Geofence radius: <strong>{geofenceRadii[index]}m</strong>
+                                <span className="sf-geofence-radius-hint">(alert when within this distance)</span>
+                              </label>
+                              <input
+                                type="range"
+                                min="100"
+                                max="5000"
+                                step="100"
+                                value={geofenceRadii[index]}
+                                onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
+                                className="sf-geofence-slider"
+                              />
+                              <div className="sf-geofence-scale">
+                                <span>100m</span>
+                                <span>2.5km</span>
+                                <span>5km</span>
+                              </div>
+                            </>
+                          ) : (
+                            <GeofenceShapeMap
+                              center={legCoordinates[index]}
+                              initialPoints={geofencePolygons[index]}
+                              onChange={(points) => handlePolygonChange(index, points)}
+                            />
+                          )}
+
                           <div className="sf-geofence-destination">
                             📍 Destination: {index === 0 ? leg.stopAddress : leg.shipTo}
                           </div>
