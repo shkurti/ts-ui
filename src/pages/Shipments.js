@@ -6,7 +6,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import './Shipments.css';
-import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock } from 'lucide-react';
+import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock, Maximize2, X, RotateCcw } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi } from '../services/apiService';
 import GeofenceShapeMap from '../components/GeofenceShapeMap';
@@ -164,6 +164,175 @@ const collapseStationaryClusters = (points) => {
   return collapsed;
 };
 
+const EXPANDED_CHART_WIDTH = 640;
+const EXPANDED_CHART_HEIGHT = 168;
+
+const expandedGeneratePath = (data, valueKey, maxHeight = EXPANDED_CHART_HEIGHT, maxWidth = EXPANDED_CHART_WIDTH) => {
+  if (!data || data.length === 0) return '';
+  const values = data.map(item => item[valueKey]).filter(val => val !== null && !isNaN(val));
+  if (values.length === 0) return '';
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue || 1;
+  return values.map((value, index) => {
+    const x = values.length > 1 ? (index / (values.length - 1)) * maxWidth : maxWidth / 2;
+    const y = maxHeight - ((value - minValue) / range) * (maxHeight - 20) - 10;
+    return `${x},${y}`;
+  }).join(' ');
+};
+
+const expandedFindClosestPoint = (data, valueKey, mouseX, maxWidth = EXPANDED_CHART_WIDTH) => {
+  if (!data || data.length === 0) return null;
+  const values = data.map(item => ({ value: item[valueKey], timestamp: item.timestamp }))
+    .filter(item => item.value !== null && !isNaN(item.value));
+  if (values.length === 0) return null;
+  const stepSize = values.length > 1 ? maxWidth / (values.length - 1) : maxWidth;
+  const index = values.length > 1 ? Math.round(mouseX / stepSize) : 0;
+  const clampedIndex = Math.max(0, Math.min(index, values.length - 1));
+  return { ...values[clampedIndex], index: clampedIndex, x: values.length > 1 ? clampedIndex * stepSize : maxWidth / 2 };
+};
+
+const expandedFormatTimestamp = (timestamp) => {
+  if (!timestamp || timestamp === 'N/A') return 'N/A';
+  try {
+    return new Date(timestamp).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+  } catch {
+    return timestamp;
+  }
+};
+
+// Expanded sensor chart, rendered as a bottom-sheet overlay above the map. Dragging across
+// it selects a time range that both re-scales this chart to that window and drives the map
+// (via onBrushCommit) to fit the matching stretch of the route.
+// Defined at module scope (not nested in Shipments) so its drag state survives frequent
+// re-renders of the parent (e.g. from live websocket sensor updates).
+const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, onClose }) => {
+  const [dragStartX, setDragStartX] = useState(null);
+  const [dragCurrentX, setDragCurrentX] = useState(null);
+  const svgRef = useRef(null);
+
+  const displayedData = useMemo(() => {
+    if (!zoomRange) return sensorRow.data;
+    return sensorRow.data.filter((item) => {
+      const t = new Date(item.timestamp).getTime();
+      return t >= zoomRange.start && t <= zoomRange.end;
+    });
+  }, [sensorRow.data, zoomRange]);
+
+  const pathPoints = expandedGeneratePath(displayedData, sensorRow.field);
+  const values = displayedData.map(d => d[sensorRow.field]).filter(v => v !== null && !isNaN(v));
+  const currentValue = values.length > 0 ? values[values.length - 1] : null;
+
+  const toViewBoxX = (clientX) => {
+    if (!svgRef.current) return 0;
+    const rect = svgRef.current.getBoundingClientRect();
+    return Math.max(0, Math.min(EXPANDED_CHART_WIDTH, ((clientX - rect.left) / rect.width) * EXPANDED_CHART_WIDTH));
+  };
+
+  const handlePointerDown = (clientX) => {
+    const x = toViewBoxX(clientX);
+    setDragStartX(x);
+    setDragCurrentX(x);
+  };
+  const handlePointerMove = (clientX) => {
+    if (dragStartX === null) return;
+    setDragCurrentX(toViewBoxX(clientX));
+  };
+  const handlePointerUp = () => {
+    if (dragStartX === null || dragCurrentX === null) {
+      setDragStartX(null);
+      setDragCurrentX(null);
+      return;
+    }
+    const dragWidth = Math.abs(dragCurrentX - dragStartX);
+    if (dragWidth > 6) {
+      const p1 = expandedFindClosestPoint(displayedData, sensorRow.field, Math.min(dragStartX, dragCurrentX));
+      const p2 = expandedFindClosestPoint(displayedData, sensorRow.field, Math.max(dragStartX, dragCurrentX));
+      if (p1 && p2) {
+        const t1 = new Date(p1.timestamp).getTime();
+        const t2 = new Date(p2.timestamp).getTime();
+        if (Number.isFinite(t1) && Number.isFinite(t2) && t1 !== t2) {
+          onBrushCommit({ start: Math.min(t1, t2), end: Math.max(t1, t2) });
+        }
+      }
+    }
+    setDragStartX(null);
+    setDragCurrentX(null);
+  };
+
+  const selectionRect = dragStartX !== null && dragCurrentX !== null
+    ? { x: Math.min(dragStartX, dragCurrentX), width: Math.abs(dragCurrentX - dragStartX) }
+    : null;
+
+  const firstTs = displayedData[0]?.timestamp;
+  const lastTs = displayedData[displayedData.length - 1]?.timestamp;
+
+  return (
+    <div className="expanded-chart-overlay" role="dialog" aria-label={`${sensorRow.label} expanded chart`}>
+      <div className="expanded-chart-grip" aria-hidden="true"></div>
+      <div className="expanded-chart-header">
+        <span className="expanded-chart-title">
+          <span className={`sensor-dot sensor-dot--${sensorRow.key}`}></span>
+          {sensorRow.label}
+          {typeof currentValue === 'number' && (
+            <span className="expanded-chart-current-value" style={{ color: sensorRow.color }}>
+              {currentValue.toFixed(1)}{sensorRow.unit}
+            </span>
+          )}
+        </span>
+        <span className="expanded-chart-actions">
+          {zoomRange && (
+            <button type="button" className="expanded-chart-btn" onClick={onResetZoom} title="Reset zoom" aria-label="Reset zoom">
+              <RotateCcw size={13} /> Reset zoom
+            </button>
+          )}
+          <button type="button" className="expanded-chart-btn expanded-chart-btn--close" onClick={onClose} title="Close expanded chart" aria-label="Close expanded chart">
+            <X size={15} />
+          </button>
+        </span>
+      </div>
+      <div className="expanded-chart-hint">Drag across the chart to zoom into a time range — the map follows</div>
+      <svg
+        ref={svgRef}
+        className="expanded-chart-svg"
+        width="100%"
+        height={EXPANDED_CHART_HEIGHT}
+        viewBox={`0 0 ${EXPANDED_CHART_WIDTH} ${EXPANDED_CHART_HEIGHT}`}
+        preserveAspectRatio="none"
+        style={{ touchAction: 'none' }}
+        onMouseDown={(e) => handlePointerDown(e.clientX)}
+        onMouseMove={(e) => handlePointerMove(e.clientX)}
+        onMouseUp={handlePointerUp}
+        onMouseLeave={handlePointerUp}
+        onTouchStart={(e) => e.touches[0] && handlePointerDown(e.touches[0].clientX)}
+        onTouchMove={(e) => e.touches[0] && handlePointerMove(e.touches[0].clientX)}
+        onTouchEnd={handlePointerUp}
+      >
+        {displayedData.length > 0 ? (
+          <>
+            <line x1="0" y1={EXPANDED_CHART_HEIGHT - 1} x2={EXPANDED_CHART_WIDTH} y2={EXPANDED_CHART_HEIGHT - 1} stroke="var(--color-border)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            <polygon fill={sensorRow.fill} points={pathPoints + ` ${EXPANDED_CHART_WIDTH},${EXPANDED_CHART_HEIGHT} 0,${EXPANDED_CHART_HEIGHT}`} />
+            <polyline fill="none" stroke={sensorRow.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" points={pathPoints} />
+            {selectionRect && (
+              <rect x={selectionRect.x} y="0" width={selectionRect.width} height={EXPANDED_CHART_HEIGHT} fill="rgba(37,99,235,0.16)" stroke="rgba(37,99,235,0.65)" strokeWidth="1" />
+            )}
+          </>
+        ) : (
+          <text x={EXPANDED_CHART_WIDTH / 2} y={EXPANDED_CHART_HEIGHT / 2} textAnchor="middle" fill="#94a3b8" fontSize="12" fontFamily="var(--font-sans)">No data</text>
+        )}
+      </svg>
+      {displayedData.length > 0 && (
+        <div className="expanded-chart-range-labels">
+          <span>{expandedFormatTimestamp(firstTs)}</span>
+          <span>{expandedFormatTimestamp(lastTs)}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Shipments = () => {
   const { user, isAuthenticated, loading } = useAuth();
   const { connected: wsConnected, sensorData } = useWebSocketContext();
@@ -218,7 +387,12 @@ const Shipments = () => {
   // When true, a chart click has frozen the marker in place (e.g. so the user can take a screenshot)
   // and further hover/touch movement is ignored until it's unpinned.
   const [isMarkerPinned, setIsMarkerPinned] = useState(false);
-  
+
+  // Which sensor card is expanded into the overlay above the map, and the brushed
+  // time range (epoch ms) it's currently zoomed to. Both drive the map's fitted bounds.
+  const [expandedSensorKey, setExpandedSensorKey] = useState(null);
+  const [chartZoomRange, setChartZoomRange] = useState(null);
+
   // Add state for geocoded leg coordinates and geofence radii
   const [legCoordinates, setLegCoordinates] = useState({});
   const [geofenceRadii, setGeofenceRadii] = useState({});
@@ -641,6 +815,8 @@ const Shipments = () => {
     setSnappedCoordinates([]);
     setSnapError(null);
     setSnapRouteParams(null);
+    setExpandedSensorKey(null);
+    setChartZoomRange(null);
     console.log('Clearing alerts data for new shipment');
     setAlertsData([]);
     setAlertEvents([]);
@@ -1022,6 +1198,8 @@ const Shipments = () => {
     setHoverMarkerPosition(null);
     setHoverMarkerData(null);
     setIsMarkerPinned(false);
+    setExpandedSensorKey(null);
+    setChartZoomRange(null);
   };
   // Helper function to generate SVG path from data points
   const generateSVGPath = (data, valueKey, maxHeight = 60, maxWidth = 300) => {
@@ -1538,6 +1716,37 @@ const Shipments = () => {
     return null;
   };
 
+  // Keeps the map's view synced to the expanded sensor chart's brushed time range: fits to
+  // just that stretch of the route when a range is selected, and back to the full route
+  // when the brush is cleared while the chart panel is still open.
+  const ChartZoomMapSync = () => {
+    const map = useMap();
+
+    useEffect(() => {
+      if (!expandedSensorKey) return;
+
+      if (chartZoomRange) {
+        const pts = locationData
+          .filter((p) => {
+            const t = new Date(p.timestamp).getTime();
+            return t >= chartZoomRange.start && t <= chartZoomRange.end;
+          })
+          .map((p) => [p.latitude, p.longitude]);
+        if (pts.length > 0) {
+          map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 17 });
+        }
+        return;
+      }
+
+      const routeCoordinates = getDisplayPolylineCoordinates();
+      if (routeCoordinates.length > 0) {
+        map.fitBounds(L.latLngBounds(routeCoordinates), { padding: [20, 20], maxZoom: 15 });
+      }
+    }, [map, chartZoomRange, expandedSensorKey]);
+
+    return null;
+  };
+
   // MapTiler Geocoding Control React wrapper
   const MapTilerGeocodingControl = ({ apiKey }) => {
     const map = useMap();
@@ -2002,16 +2211,28 @@ const Shipments = () => {
                                 const lastPoint = getLastPoint(row.data, row.field, CHART_H);
                                 const currentValue = getCurrentValue(row.data, row.field);
                                 return (
-                                  <div key={row.key} className={`sensor-card sensor-card--${row.key}`}>
-                                    <div className="sensor-card-header">
+                                  <div key={row.key} className={`sensor-card sensor-card--${row.key}${expandedSensorKey === row.key ? ' sensor-card--expanded' : ''}`}>
+                                    <button
+                                      type="button"
+                                      className="sensor-card-header sensor-card-header--expandable"
+                                      onClick={() => {
+                                        setExpandedSensorKey(row.key);
+                                        setChartZoomRange(null);
+                                      }}
+                                      title={`Expand ${row.label} chart`}
+                                      aria-label={`Expand ${row.label} chart above the map`}
+                                    >
                                       <span className="sensor-name">
                                         <span className={`sensor-dot sensor-dot--${row.key}`}></span>
                                         {row.label}
                                       </span>
-                                      <span className="sensor-value">
-                                        {typeof currentValue === 'number' ? currentValue.toFixed(1) + row.unit : '—'}
+                                      <span className="sensor-header-right">
+                                        <span className="sensor-value">
+                                          {typeof currentValue === 'number' ? currentValue.toFixed(1) + row.unit : '—'}
+                                        </span>
+                                        <Maximize2 size={13} className="sensor-expand-icon" aria-hidden="true" />
                                       </span>
-                                    </div>
+                                    </button>
                                     <div className="sensor-chart-area">
                                       <svg
                                         id={`chart-svg-${row.key}`}
@@ -2424,6 +2645,19 @@ const Shipments = () => {
             {isSnappingRoute ? 'Snapping…' : snapError ? 'Snap unavailable' : 'Snap to roads'}
           </button>
         )}
+        {selectedShipmentDetail && expandedSensorKey && (() => {
+          const expandedRow = getSensorRowsConfig().find(r => r.key === expandedSensorKey);
+          if (!expandedRow) return null;
+          return (
+            <SensorChartOverlay
+              sensorRow={expandedRow}
+              zoomRange={chartZoomRange}
+              onBrushCommit={setChartZoomRange}
+              onResetZoom={() => setChartZoomRange(null)}
+              onClose={() => { setExpandedSensorKey(null); setChartZoomRange(null); }}
+            />
+          );
+        })()}
         <MapContainer
           ref={mapRef}
           center={[20, 0]} // Default world view
@@ -2453,6 +2687,7 @@ const Shipments = () => {
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
           <MapBoundsHandler />
           <MapFitWidthHandler />
+          <ChartZoomMapSync />
 
           {/* Overview mode: cluster every shipment by current location. Clicking a
               lone marker drills into that shipment; clicking a cluster zooms in,
@@ -2618,7 +2853,29 @@ const Shipments = () => {
                   opacity: 0.85
                 }}
               />
-              
+
+              {/* Highlights the stretch of the route matching the expanded chart's brushed
+                  time range, drawn over the base route so the selected window reads clearly. */}
+              {expandedSensorKey && chartZoomRange && (() => {
+                const segment = locationData
+                  .filter((p) => {
+                    const t = new Date(p.timestamp).getTime();
+                    return t >= chartZoomRange.start && t <= chartZoomRange.end;
+                  })
+                  .map((p) => [p.latitude, p.longitude]);
+                if (segment.length < 2) return null;
+                return (
+                  <Polyline
+                    positions={segment}
+                    pathOptions={{
+                      color: '#f59e0b',
+                      weight: 6,
+                      opacity: 0.95
+                    }}
+                  />
+                );
+              })()}
+
               {/* Hover marker that follows chart interactions, colored to match the active sensor.
                   Clicking a point on the chart pins it here so it holds still for a screenshot. */}
               {hoverMarkerPosition && hoverMarkerData && (
