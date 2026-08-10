@@ -244,6 +244,16 @@ const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, 
   const isHovering = hoverPoint && typeof hoverPoint.value === 'number';
   const headerValue = isHovering ? hoverPoint.value : currentValue;
 
+  // Y position of the hovered point, using the same scale as expandedGeneratePath, so the
+  // crosshair's dot lands exactly on the line rather than just tracking the cursor's x.
+  const hoverY = useMemo(() => {
+    if (!isHovering || values.length === 0) return null;
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const range = maxValue - minValue || 1;
+    return EXPANDED_CHART_HEIGHT - ((hoverPoint.value - minValue) / range) * (EXPANDED_CHART_HEIGHT - 20) - 10;
+  }, [isHovering, hoverPoint, values]);
+
   const toViewBoxX = (clientX) => {
     if (!svgRef.current) return 0;
     const rect = svgRef.current.getBoundingClientRect();
@@ -353,6 +363,18 @@ const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, 
             <polyline fill="none" stroke={sensorRow.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" points={pathPoints} />
             {selectionRect && (
               <rect x={selectionRect.x} y="0" width={selectionRect.width} height={EXPANDED_CHART_HEIGHT} fill="rgba(37,99,235,0.16)" stroke="rgba(37,99,235,0.65)" strokeWidth="1" />
+            )}
+            {isHovering && (
+              <>
+                <line
+                  x1={hoverPoint.x} y1="0" x2={hoverPoint.x} y2={EXPANDED_CHART_HEIGHT}
+                  stroke="#475569" strokeWidth="1" strokeDasharray="4,4" opacity="0.7"
+                  vectorEffect="non-scaling-stroke"
+                />
+                {hoverY !== null && (
+                  <circle cx={hoverPoint.x} cy={hoverY} r="3.5" fill={sensorRow.color} stroke="#fff" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                )}
+              </>
             )}
           </>
         ) : (
