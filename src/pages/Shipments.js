@@ -208,13 +208,27 @@ const expandedFormatTimestamp = (timestamp) => {
 // (via onBrushCommit) to fit the matching stretch of the route.
 // Defined at module scope (not nested in Shipments) so its drag state survives frequent
 // re-renders of the parent (e.g. from live websocket sensor updates).
-const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, onClose, onHoverChange }) => {
+const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, onClose, onHoverChange, onHeightChange }) => {
   const [dragStartX, setDragStartX] = useState(null);
   const [dragCurrentX, setDragCurrentX] = useState(null);
   // The point currently under the cursor — while set, the header shows this reading
   // (value + the exact time it was recorded) instead of the latest one.
   const [hoverPoint, setHoverPoint] = useState(null);
   const svgRef = useRef(null);
+  const panelRef = useRef(null);
+
+  // Reports this panel's actual rendered height to the parent so the map can pad its
+  // "fit to route" bounds by exactly that much, keeping the full route visible above it.
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el || !onHeightChange) return;
+    const report = () => onHeightChange(el.offsetHeight);
+    report();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onHeightChange]);
 
   const displayedData = useMemo(() => {
     if (!zoomRange) return sensorRow.data;
@@ -289,7 +303,7 @@ const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, 
   const lastTs = displayedData[displayedData.length - 1]?.timestamp;
 
   return (
-    <div className="expanded-chart-overlay" role="dialog" aria-label={`${sensorRow.label} expanded chart`}>
+    <div ref={panelRef} className="expanded-chart-overlay" role="dialog" aria-label={`${sensorRow.label} expanded chart`}>
       <div className="expanded-chart-grip" aria-hidden="true"></div>
       <div className="expanded-chart-header">
         <span className="expanded-chart-title">
@@ -421,11 +435,17 @@ const MapFitWidthHandler = () => {
 // when the brush is cleared while the chart panel is still open. Does NOT react to
 // hovering the chart — only to a committed brush selection — so panning the mouse across
 // the chart moves the hover dot (handled elsewhere) without touching the map's zoom.
-const ChartZoomMapSync = ({ expandedSensorKey, chartZoomRange, locationData, routeCoordinates }) => {
+const ChartZoomMapSync = ({ expandedSensorKey, chartZoomRange, locationData, routeCoordinates, overlayHeight }) => {
   const map = useMap();
 
   useEffect(() => {
     if (!expandedSensorKey) return;
+
+    // The expanded chart overlay docks to the bottom of the map, so bounds must be padded
+    // by its actual height (plus a little breathing room) on that side specifically —
+    // otherwise "fit to route" leaves the lower part of the route hidden underneath it.
+    // Falls back to a conservative estimate before the overlay's real height is measured.
+    const bottomPad = (overlayHeight || 260) + 24;
 
     if (chartZoomRange) {
       const pts = locationData
@@ -435,15 +455,23 @@ const ChartZoomMapSync = ({ expandedSensorKey, chartZoomRange, locationData, rou
         })
         .map((p) => [p.latitude, p.longitude]);
       if (pts.length > 0) {
-        map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 17 });
+        map.fitBounds(L.latLngBounds(pts), {
+          paddingTopLeft: [50, 50],
+          paddingBottomRight: [50, bottomPad],
+          maxZoom: 17
+        });
       }
       return;
     }
 
     if (routeCoordinates.length > 0) {
-      map.fitBounds(L.latLngBounds(routeCoordinates), { padding: [20, 20], maxZoom: 15 });
+      map.fitBounds(L.latLngBounds(routeCoordinates), {
+        paddingTopLeft: [20, 20],
+        paddingBottomRight: [20, bottomPad],
+        maxZoom: 15
+      });
     }
-  }, [map, chartZoomRange, expandedSensorKey, locationData, routeCoordinates]);
+  }, [map, chartZoomRange, expandedSensorKey, locationData, routeCoordinates, overlayHeight]);
 
   return null;
 };
@@ -536,6 +564,10 @@ const Shipments = () => {
   // time range (epoch ms) it's currently zoomed to. Both drive the map's fitted bounds.
   const [expandedSensorKey, setExpandedSensorKey] = useState(null);
   const [chartZoomRange, setChartZoomRange] = useState(null);
+  // Actual rendered height of the expanded chart overlay, reported by it via a
+  // ResizeObserver — used to pad the map's fitted bounds so the whole route stays
+  // visible above the panel instead of running underneath it.
+  const [expandedChartHeight, setExpandedChartHeight] = useState(0);
 
   // Add state for geocoded leg coordinates and geofence radii
   const [legCoordinates, setLegCoordinates] = useState({});
@@ -961,6 +993,7 @@ const Shipments = () => {
     setSnapRouteParams(null);
     setExpandedSensorKey(null);
     setChartZoomRange(null);
+    setExpandedChartHeight(0);
     console.log('Clearing alerts data for new shipment');
     setAlertsData([]);
     setAlertEvents([]);
@@ -1344,6 +1377,7 @@ const Shipments = () => {
     setIsMarkerPinned(false);
     setExpandedSensorKey(null);
     setChartZoomRange(null);
+    setExpandedChartHeight(0);
   };
   // Helper function to generate SVG path from data points
   const generateSVGPath = (data, valueKey, maxHeight = 60, maxWidth = 300) => {
@@ -2704,7 +2738,8 @@ const Shipments = () => {
               zoomRange={chartZoomRange}
               onBrushCommit={setChartZoomRange}
               onResetZoom={() => setChartZoomRange(null)}
-              onClose={() => { setExpandedSensorKey(null); setChartZoomRange(null); }}
+              onClose={() => { setExpandedSensorKey(null); setChartZoomRange(null); setExpandedChartHeight(0); }}
+              onHeightChange={setExpandedChartHeight}
               onHoverChange={(timestamp) => {
                 if (isMarkerPinned) return;
                 if (!timestamp) {
@@ -2767,6 +2802,7 @@ const Shipments = () => {
             chartZoomRange={chartZoomRange}
             locationData={locationData}
             routeCoordinates={displayPolylineCoordinates}
+            overlayHeight={expandedChartHeight}
           />
 
           {/* Overview mode: cluster every shipment by current location. Clicking a
