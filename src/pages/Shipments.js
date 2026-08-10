@@ -208,7 +208,7 @@ const expandedFormatTimestamp = (timestamp) => {
 // (via onBrushCommit) to fit the matching stretch of the route.
 // Defined at module scope (not nested in Shipments) so its drag state survives frequent
 // re-renders of the parent (e.g. from live websocket sensor updates).
-const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, onClose }) => {
+const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, onClose, onHoverChange }) => {
   const [dragStartX, setDragStartX] = useState(null);
   const [dragCurrentX, setDragCurrentX] = useState(null);
   const svgRef = useRef(null);
@@ -236,9 +236,15 @@ const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, 
     setDragStartX(x);
     setDragCurrentX(x);
   };
+  // Mirrors the small sidebar charts: hovering (or dragging — the cursor position is still
+  // meaningful mid-drag) drives a matching dot on the map polyline.
   const handlePointerMove = (clientX) => {
-    if (dragStartX === null) return;
-    setDragCurrentX(toViewBoxX(clientX));
+    const x = toViewBoxX(clientX);
+    if (dragStartX !== null) {
+      setDragCurrentX(x);
+    }
+    const point = expandedFindClosestPoint(displayedData, sensorRow.field, x);
+    if (point && onHoverChange) onHoverChange(point.timestamp);
   };
   const handlePointerUp = () => {
     if (dragStartX === null || dragCurrentX === null) {
@@ -260,6 +266,10 @@ const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, 
     }
     setDragStartX(null);
     setDragCurrentX(null);
+  };
+  const handlePointerLeave = () => {
+    handlePointerUp();
+    if (onHoverChange) onHoverChange(null);
   };
 
   const selectionRect = dragStartX !== null && dragCurrentX !== null
@@ -305,7 +315,7 @@ const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, 
         onMouseDown={(e) => handlePointerDown(e.clientX)}
         onMouseMove={(e) => handlePointerMove(e.clientX)}
         onMouseUp={handlePointerUp}
-        onMouseLeave={handlePointerUp}
+        onMouseLeave={handlePointerLeave}
         onTouchStart={(e) => e.touches[0] && handlePointerDown(e.touches[0].clientX)}
         onTouchMove={(e) => e.touches[0] && handlePointerMove(e.touches[0].clientX)}
         onTouchEnd={handlePointerUp}
@@ -2655,6 +2665,27 @@ const Shipments = () => {
               onBrushCommit={setChartZoomRange}
               onResetZoom={() => setChartZoomRange(null)}
               onClose={() => { setExpandedSensorKey(null); setChartZoomRange(null); }}
+              onHoverChange={(timestamp) => {
+                if (isMarkerPinned) return;
+                if (!timestamp) {
+                  setHoverMarkerPosition(null);
+                  setHoverMarkerData(null);
+                  return;
+                }
+                const locationPoint = findLocationByTimestamp(timestamp);
+                if (!locationPoint) return;
+                const valuePoint = findClosestPointByTimestamp(expandedRow.data, expandedRow.field, timestamp);
+                setHoverMarkerPosition([locationPoint.latitude, locationPoint.longitude]);
+                setHoverMarkerData({
+                  timestamp,
+                  sensorName: expandedRow.label,
+                  sensorValue: valuePoint?.value ?? null,
+                  unit: expandedRow.unit,
+                  location: locationPoint,
+                  key: expandedRow.key,
+                  color: expandedRow.color
+                });
+              }}
             />
           );
         })()}
