@@ -203,17 +203,6 @@ const expandedFormatTimestamp = (timestamp) => {
   }
 };
 
-// Time-only, no date — used in the narrow mini sensor-card headers where the full
-// expandedFormatTimestamp output would crowd the value next to it.
-const formatHoverTime = (timestamp) => {
-  if (!timestamp || timestamp === 'N/A') return 'N/A';
-  try {
-    return new Date(timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return timestamp;
-  }
-};
-
 // Expanded sensor chart, rendered as a bottom-sheet overlay above the map. Dragging across
 // it selects a time range that both re-scales this chart to that window and drives the map
 // (via onBrushCommit) to fit the matching stretch of the route.
@@ -222,6 +211,9 @@ const formatHoverTime = (timestamp) => {
 const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, onClose, onHoverChange }) => {
   const [dragStartX, setDragStartX] = useState(null);
   const [dragCurrentX, setDragCurrentX] = useState(null);
+  // The point currently under the cursor — while set, the header shows this reading
+  // (value + the exact time it was recorded) instead of the latest one.
+  const [hoverPoint, setHoverPoint] = useState(null);
   const svgRef = useRef(null);
 
   const displayedData = useMemo(() => {
@@ -235,6 +227,8 @@ const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, 
   const pathPoints = expandedGeneratePath(displayedData, sensorRow.field);
   const values = displayedData.map(d => d[sensorRow.field]).filter(v => v !== null && !isNaN(v));
   const currentValue = values.length > 0 ? values[values.length - 1] : null;
+  const isHovering = hoverPoint && typeof hoverPoint.value === 'number';
+  const headerValue = isHovering ? hoverPoint.value : currentValue;
 
   const toViewBoxX = (clientX) => {
     if (!svgRef.current) return 0;
@@ -255,7 +249,10 @@ const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, 
       setDragCurrentX(x);
     }
     const point = expandedFindClosestPoint(displayedData, sensorRow.field, x);
-    if (point && onHoverChange) onHoverChange(point.timestamp);
+    if (point) {
+      setHoverPoint(point);
+      if (onHoverChange) onHoverChange(point.timestamp);
+    }
   };
   const handlePointerUp = () => {
     if (dragStartX === null || dragCurrentX === null) {
@@ -280,6 +277,7 @@ const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, 
   };
   const handlePointerLeave = () => {
     handlePointerUp();
+    setHoverPoint(null);
     if (onHoverChange) onHoverChange(null);
   };
 
@@ -297,10 +295,13 @@ const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, 
         <span className="expanded-chart-title">
           <span className={`sensor-dot sensor-dot--${sensorRow.key}`}></span>
           {sensorRow.label}
-          {typeof currentValue === 'number' && (
+          {typeof headerValue === 'number' && (
             <span className="expanded-chart-current-value" style={{ color: sensorRow.color }}>
-              {currentValue.toFixed(1)}{sensorRow.unit}
+              {headerValue.toFixed(1)}{sensorRow.unit}
             </span>
+          )}
+          {isHovering && (
+            <span className="sensor-hover-time">{expandedFormatTimestamp(hoverPoint.timestamp)}</span>
           )}
         </span>
         <span className="expanded-chart-actions">
@@ -413,10 +414,6 @@ const Shipments = () => {
   // time range (epoch ms) it's currently zoomed to. Both drive the map's fitted bounds.
   const [expandedSensorKey, setExpandedSensorKey] = useState(null);
   const [chartZoomRange, setChartZoomRange] = useState(null);
-  // Timestamp currently under the cursor on any sensor chart (mini card or the expanded
-  // overlay) — every sensor card's header value reflects its own reading at this instant
-  // instead of the latest one while it's set, so hovering one chart updates them all.
-  const [hoveredTimestamp, setHoveredTimestamp] = useState(null);
 
   // Add state for geocoded leg coordinates and geofence radii
   const [legCoordinates, setLegCoordinates] = useState({});
@@ -1537,7 +1534,6 @@ const Shipments = () => {
     if (pin) {
       setIsMarkerPinned(true);
     }
-    setHoveredTimestamp(closestPoint.timestamp);
 
     // Sync the dashed crosshair across every sensor chart to this same timestamp,
     // not just the one being hovered/touched.
@@ -1609,7 +1605,6 @@ const Shipments = () => {
     setIsMarkerPinned(false);
     setHoverMarkerPosition(null);
     setHoverMarkerData(null);
-    setHoveredTimestamp(null);
   };
 
   // Helper function to hide the hover marker when the mouse leaves the chart
@@ -1633,7 +1628,6 @@ const Shipments = () => {
       if (isMarkerPinned) return;
       setHoverMarkerPosition(null);
       setHoverMarkerData(null);
-      setHoveredTimestamp(null);
 
       hideAllChartVerticalLines();
 
@@ -2238,13 +2232,6 @@ const Shipments = () => {
                               {sensorRows.map((row) => {
                                 const lastPoint = getLastPoint(row.data, row.field, CHART_H);
                                 const currentValue = getCurrentValue(row.data, row.field);
-                                // While any chart is being hovered, every card shows its own reading
-                                // at that same instant instead of its latest one.
-                                const hoveredPoint = hoveredTimestamp
-                                  ? findClosestPointByTimestamp(row.data, row.field, hoveredTimestamp)
-                                  : null;
-                                const isHovering = hoveredPoint && typeof hoveredPoint.value === 'number';
-                                const displayValue = isHovering ? hoveredPoint.value : currentValue;
                                 return (
                                   <div key={row.key} className={`sensor-card sensor-card--${row.key}${expandedSensorKey === row.key ? ' sensor-card--expanded' : ''}`}>
                                     <button
@@ -2262,11 +2249,8 @@ const Shipments = () => {
                                         {row.label}
                                       </span>
                                       <span className="sensor-header-right">
-                                        {isHovering && (
-                                          <span className="sensor-hover-time">{formatHoverTime(hoveredPoint.timestamp)}</span>
-                                        )}
                                         <span className="sensor-value">
-                                          {typeof displayValue === 'number' ? displayValue.toFixed(1) + row.unit : '—'}
+                                          {typeof currentValue === 'number' ? currentValue.toFixed(1) + row.unit : '—'}
                                         </span>
                                         <Maximize2 size={13} className="sensor-expand-icon" aria-hidden="true" />
                                       </span>
@@ -2698,10 +2682,8 @@ const Shipments = () => {
                 if (!timestamp) {
                   setHoverMarkerPosition(null);
                   setHoverMarkerData(null);
-                  setHoveredTimestamp(null);
                   return;
                 }
-                setHoveredTimestamp(timestamp);
                 const locationPoint = findLocationByTimestamp(timestamp);
                 if (!locationPoint) return;
                 const valuePoint = findClosestPointByTimestamp(expandedRow.data, expandedRow.field, timestamp);
