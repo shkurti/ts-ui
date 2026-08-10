@@ -196,7 +196,7 @@ const expandedFormatTimestamp = (timestamp) => {
   if (!timestamp || timestamp === 'N/A') return 'N/A';
   try {
     return new Date(timestamp).toLocaleString(undefined, {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
     });
   } catch {
     return timestamp;
