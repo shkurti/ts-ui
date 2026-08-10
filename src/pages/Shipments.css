@@ -678,7 +678,12 @@
    controls (z-index 1000) so those stay reachable. */
 .expanded-chart-overlay {
   position: absolute;
-  left: 12px;
+  /* .map-container spans the full width behind the absolutely-positioned sidebar,
+     so without this the overlay's left edge would sit underneath it. --sidebar-inset
+     is set inline on .map-container to the sidebar's current (expanded/collapsed)
+     width; the mobile media query below resets it since the sidebar docks to the
+     bottom there instead of sitting beside the map. */
+  left: calc(var(--sidebar-inset, 0px) + 12px);
   right: 12px;
   bottom: 12px;
   z-index: 950;

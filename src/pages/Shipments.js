@@ -2631,7 +2631,7 @@ const Shipments = () => {
         )}
       </div>
 
-      <div className="map-container">
+      <div className="map-container" style={{ '--sidebar-inset': sidebarCollapsed ? '60px' : '370px' }}>
         {selectedShipmentDetail && locationData.length > 1 && (
           <button
             type="button"
