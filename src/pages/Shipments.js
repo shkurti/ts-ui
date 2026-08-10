@@ -355,6 +355,128 @@ const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, 
   );
 };
 
+// The four map child components below are defined at module scope, not nested inside
+// Shipments, specifically so their function identity is stable across Shipments re-renders.
+// A nested component (`const Foo = () => {...}` inside another component's body) is a new
+// function — and therefore a new React element type — every render; React then remounts it
+// at that tree position, which reruns its effects unconditionally (mount always runs an
+// effect regardless of its dependency array). Shipments re-renders very frequently while a
+// chart is being hovered (every mousemove updates hover-marker state), so a nested
+// map-bounds-fitting component would re-fit/re-zoom the map on every single mouse move.
+// Being module-scope components, these instead only run their effects when the actual
+// values passed to them as props change.
+
+// Fits the map to the full route + alert markers whenever the selected shipment or its
+// route data changes.
+const MapBoundsHandler = ({ selectedShipmentId, routeCoordinates, alertMarkers }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!selectedShipmentId) return;
+    const alertCoordinates = alertMarkers.map((m) => [m.lat, m.lng]);
+    const coordinates = [...routeCoordinates, ...alertCoordinates];
+    if (coordinates.length > 0) {
+      const bounds = L.latLngBounds(coordinates);
+      map.fitBounds(bounds, { padding: [20, 20], maxZoom: 15 });
+    }
+  }, [map, selectedShipmentId, routeCoordinates, alertMarkers]);
+
+  return null;
+};
+
+// Keeps the world map filling the container width with no gaps on either side
+const MapFitWidthHandler = () => {
+  const map = useMap();
+
+  useEffect(() => {
+    const applyMinZoom = () => {
+      const width = map.getSize().x;
+      if (!width) return;
+      // Fractional zoom so the world map's pixel width matches the
+      // container width exactly (no gaps, no cropping from over-zooming).
+      const minZoom = Math.max(2, Math.log2(width / 256));
+      map.setMinZoom(minZoom);
+      if (map.getZoom() < minZoom) {
+        map.setZoom(minZoom);
+      }
+    };
+
+    applyMinZoom();
+    map.on('resize', applyMinZoom);
+
+    const handleWindowResize = () => map.invalidateSize();
+    window.addEventListener('resize', handleWindowResize);
+
+    return () => {
+      map.off('resize', applyMinZoom);
+      window.removeEventListener('resize', handleWindowResize);
+    };
+  }, [map]);
+
+  return null;
+};
+
+// Keeps the map's view synced to the expanded sensor chart's brushed time range: fits to
+// just that stretch of the route when a range is selected, and back to the full route
+// when the brush is cleared while the chart panel is still open. Does NOT react to
+// hovering the chart — only to a committed brush selection — so panning the mouse across
+// the chart moves the hover dot (handled elsewhere) without touching the map's zoom.
+const ChartZoomMapSync = ({ expandedSensorKey, chartZoomRange, locationData, routeCoordinates }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!expandedSensorKey) return;
+
+    if (chartZoomRange) {
+      const pts = locationData
+        .filter((p) => {
+          const t = new Date(p.timestamp).getTime();
+          return t >= chartZoomRange.start && t <= chartZoomRange.end;
+        })
+        .map((p) => [p.latitude, p.longitude]);
+      if (pts.length > 0) {
+        map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 17 });
+      }
+      return;
+    }
+
+    if (routeCoordinates.length > 0) {
+      map.fitBounds(L.latLngBounds(routeCoordinates), { padding: [20, 20], maxZoom: 15 });
+    }
+  }, [map, chartZoomRange, expandedSensorKey, locationData, routeCoordinates]);
+
+  return null;
+};
+
+// MapTiler Geocoding Control React wrapper
+const MapTilerGeocodingControl = ({ apiKey }) => {
+  const map = useMap();
+  useEffect(() => {
+    // Only run if window.L and window.maptiler exist (CDN loaded)
+    if (window.L && window.maptiler && window.maptiler.geocoding) {
+      const geocodingControl = window.maptiler.geocoding.control({
+        apiKey,
+        marker: true,
+        showResultsWhileTyping: true,
+        collapsed: false,
+        placeholder: 'Search address…'
+      }).addTo(map);
+
+      // Optionally, listen for geocode result events
+      geocodingControl.on('select', (e) => {
+        // e.data contains the selected result
+        // e.data.lat, e.data.lon
+        // You can update your state or do something here if needed
+      });
+
+      return () => {
+        map.removeControl(geocodingControl);
+      };
+    }
+  }, [map, apiKey]);
+  return null;
+};
+
 const Shipments = () => {
   const { user, isAuthenticated, loading } = useAuth();
   const { connected: wsConnected, sensorData } = useWebSocketContext();
@@ -1660,6 +1782,15 @@ const Shipments = () => {
     return getPolylineCoordinates();
   };
 
+  // Memoized so the array reference only changes when the underlying route data actually
+  // does — MapBoundsHandler/ChartZoomMapSync depend on it, and a fresh array on every
+  // render (e.g. from hover-driven state updates elsewhere on the page) would make them
+  // think the route changed and re-fit the map on every hover move.
+  const displayPolylineCoordinates = useMemo(
+    () => getDisplayPolylineCoordinates(),
+    [locationData, useSnappedRoute, snappedCoordinates]
+  );
+
   const fetchSnappedRoute = async (trackerId, shipDate, arrivalDate) => {
     if (!trackerId || !shipDate || !arrivalDate) return;
     setIsSnappingRoute(true);
@@ -1688,115 +1819,12 @@ const Shipments = () => {
     }
   };
 
-  // Component to handle map bounds fitting
-  const MapBoundsHandler = () => {
-    const map = useMap();
-    
-    useEffect(() => {
-      if (!selectedShipmentDetail) return;
-      const routeCoordinates = getDisplayPolylineCoordinates();
-      const alertCoordinates = combinedAlertMarkers.map((m) => [m.lat, m.lng]);
-      const coordinates = [...routeCoordinates, ...alertCoordinates];
-      if (coordinates.length > 0) {
-        const bounds = L.latLngBounds(coordinates);
-        map.fitBounds(bounds, { padding: [20, 20], maxZoom: 15 });
-      }
-    }, [map, selectedShipmentDetail?._id, locationData, combinedAlertMarkers]);
-
-    return null;
-  };
-
-  // Keeps the world map filling the container width with no gaps on either side
-  const MapFitWidthHandler = () => {
-    const map = useMap();
-
-    useEffect(() => {
-      const applyMinZoom = () => {
-        const width = map.getSize().x;
-        if (!width) return;
-        // Fractional zoom so the world map's pixel width matches the
-        // container width exactly (no gaps, no cropping from over-zooming).
-        const minZoom = Math.max(2, Math.log2(width / 256));
-        map.setMinZoom(minZoom);
-        if (map.getZoom() < minZoom) {
-          map.setZoom(minZoom);
-        }
-      };
-
-      applyMinZoom();
-      map.on('resize', applyMinZoom);
-
-      const handleWindowResize = () => map.invalidateSize();
-      window.addEventListener('resize', handleWindowResize);
-
-      return () => {
-        map.off('resize', applyMinZoom);
-        window.removeEventListener('resize', handleWindowResize);
-      };
-    }, [map]);
-
-    return null;
-  };
-
-  // Keeps the map's view synced to the expanded sensor chart's brushed time range: fits to
-  // just that stretch of the route when a range is selected, and back to the full route
-  // when the brush is cleared while the chart panel is still open.
-  const ChartZoomMapSync = () => {
-    const map = useMap();
-
-    useEffect(() => {
-      if (!expandedSensorKey) return;
-
-      if (chartZoomRange) {
-        const pts = locationData
-          .filter((p) => {
-            const t = new Date(p.timestamp).getTime();
-            return t >= chartZoomRange.start && t <= chartZoomRange.end;
-          })
-          .map((p) => [p.latitude, p.longitude]);
-        if (pts.length > 0) {
-          map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 17 });
-        }
-        return;
-      }
-
-      const routeCoordinates = getDisplayPolylineCoordinates();
-      if (routeCoordinates.length > 0) {
-        map.fitBounds(L.latLngBounds(routeCoordinates), { padding: [20, 20], maxZoom: 15 });
-      }
-    }, [map, chartZoomRange, expandedSensorKey]);
-
-    return null;
-  };
-
-  // MapTiler Geocoding Control React wrapper
-  const MapTilerGeocodingControl = ({ apiKey }) => {
-    const map = useMap();
-    useEffect(() => {
-      // Only run if window.L and window.maptiler exist (CDN loaded)
-      if (window.L && window.maptiler && window.maptiler.geocoding) {
-        const geocodingControl = window.maptiler.geocoding.control({
-          apiKey,
-          marker: true,
-          showResultsWhileTyping: true,
-          collapsed: false,
-          placeholder: 'Search address…'
-        }).addTo(map);
-
-        // Optionally, listen for geocode result events
-        geocodingControl.on('select', (e) => {
-          // e.data contains the selected result
-          // e.data.lat, e.data.lon
-          // You can update your state or do something here if needed
-        });
-
-        return () => {
-          map.removeControl(geocodingControl);
-        };
-      }
-    }, [map, apiKey]);
-    return null;
-  };
+  // MapBoundsHandler, MapFitWidthHandler, ChartZoomMapSync, and MapTilerGeocodingControl
+  // are defined at module scope (near the top of the file) rather than nested here — as
+  // nested components their function identity changed on every Shipments render, which
+  // made React remount them (and re-run their effects, unconditionally) on every render,
+  // including the high-frequency ones from chart-hover state updates. That caused the map
+  // to repeatedly re-fit/zoom while hovering a chart. See their definitions for details.
 
   // Teardrop pin for fixed points (origin/destination) — icon names the role instead of relying on color alone
   const createPinIcon = (role) => {
@@ -2728,9 +2756,18 @@ const Shipments = () => {
             noWrap={true}
           />
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
-          <MapBoundsHandler />
+          <MapBoundsHandler
+            selectedShipmentId={selectedShipmentDetail?._id}
+            routeCoordinates={displayPolylineCoordinates}
+            alertMarkers={combinedAlertMarkers}
+          />
           <MapFitWidthHandler />
-          <ChartZoomMapSync />
+          <ChartZoomMapSync
+            expandedSensorKey={expandedSensorKey}
+            chartZoomRange={chartZoomRange}
+            locationData={locationData}
+            routeCoordinates={displayPolylineCoordinates}
+          />
 
           {/* Overview mode: cluster every shipment by current location. Clicking a
               lone marker drills into that shipment; clicking a cluster zooms in,
@@ -2889,7 +2926,7 @@ const Shipments = () => {
           {selectedShipmentDetail && locationData.length > 0 && (
             <>
               <Polyline
-                positions={getDisplayPolylineCoordinates()}
+                positions={displayPolylineCoordinates}
                 pathOptions={{
                   color: '#667eea',
                   weight: 5,
