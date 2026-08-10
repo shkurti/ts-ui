@@ -1843,6 +1843,27 @@
   transition: opacity 0.15s ease-out, transform 0.15s ease-out;
 }
 
+/* Appears next to the value while hovering any sensor chart, replacing the implicit
+   "this is the latest reading" with the exact instant the value was recorded. */
+.sensor-hover-time {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  animation: sensor-hover-time-in 0.12s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sensor-hover-time {
+    animation: none;
+  }
+}
+
+@keyframes sensor-hover-time-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .sensor-card-header--expandable:hover .sensor-expand-icon,
 .sensor-card-header--expandable:focus-visible .sensor-expand-icon,
 .sensor-card--expanded .sensor-expand-icon {
