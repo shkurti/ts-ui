@@ -39,16 +39,28 @@ const pickHandleIndices = (points) => {
   return Array.from(indices).sort((a, b) => a - b);
 };
 
+// How many handles on each side of the one being dragged feel the pull. A
+// window of just the immediate neighbor (1) produces a sharp "V" - the drag
+// dominates such a short, already near-straight stretch of road that it
+// draws as two straight lines meeting at a point instead of a curve. Reaching
+// further out gives the bend room to curve naturally.
+const FALLOFF_HANDLE_RADIUS = 6;
+
+// Smooth (raised-cosine) taper from 1 at the dragged point to 0 at the edge
+// of the falloff window - unlike a linear ramp, its slope is zero at both
+// ends, so the deformed stretch curves into a bend rather than kinking where
+// it meets the untouched part of the route.
+const smoothFalloff = (ratio) => 0.5 * (1 + Math.cos(Math.PI * ratio));
+
 // Keeps the FULL-resolution OSRM route as the line that's actually drawn and
 // saved, so it always hugs the road exactly - only a sparse subset of its
 // points get a draggable handle on top. Dragging a handle pulls the stretch
-// of road-hugging points around it along too, tapering to zero at the two
-// neighboring handles (a "soft" drag, same idea as a falloff brush) - moving
-// only the single dragged point produced a sharp spike instead of a smooth
-// bend, since its immediate un-selected neighbors stayed pinned in place.
-// Points beyond the neighboring handles on either side are untouched, so
-// editing stays local to the segment being dragged. Nothing gets
-// recalculated against a routing service.
+// of road-hugging points around it along too, smoothly tapering to zero
+// several handles out on each side - moving only the single dragged point
+// produced a sharp spike instead of a smooth bend, since its immediate
+// un-selected neighbors stayed pinned in place. Points beyond the falloff
+// window are untouched, so editing stays local to the segment being dragged.
+// Nothing gets recalculated against a routing service.
 const RouteEditController = ({ initialRoutePoints, onChange }) => {
   const map = useMap();
 
@@ -69,8 +81,10 @@ const RouteEditController = ({ initialRoutePoints, onChange }) => {
       const [lat, lng] = points[index];
       const marker = L.marker([lat, lng], { icon: handleIcon, draggable: true }).addTo(map);
 
-      const leftIdx = h > 0 ? handleIndices[h - 1] : index;
-      const rightIdx = h < handleIndices.length - 1 ? handleIndices[h + 1] : index;
+      const leftH = Math.max(0, h - FALLOFF_HANDLE_RADIUS);
+      const rightH = Math.min(handleIndices.length - 1, h + FALLOFF_HANDLE_RADIUS);
+      const leftIdx = handleIndices[leftH];
+      const rightIdx = handleIndices[rightH];
 
       let baseLat = lat;
       let baseLng = lng;
@@ -89,8 +103,8 @@ const RouteEditController = ({ initialRoutePoints, onChange }) => {
         for (let i = leftIdx; i <= rightIdx; i++) {
           let weight;
           if (i === index) weight = 1;
-          else if (i < index) weight = leftIdx === index ? 0 : (i - leftIdx) / (index - leftIdx);
-          else weight = rightIdx === index ? 0 : (rightIdx - i) / (rightIdx - index);
+          else if (i < index) weight = leftIdx === index ? 0 : smoothFalloff((index - i) / (index - leftIdx));
+          else weight = rightIdx === index ? 0 : smoothFalloff((i - index) / (rightIdx - index));
 
           points[i] = [
             basePoints[i][0] + deltaLat * weight,
