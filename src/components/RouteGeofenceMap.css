@@ -37,12 +37,34 @@
   transform: translateY(-4px);
 }
 
-/* Hide leaflet-routing-machine's default itinerary panel (show: false already
-   suppresses most of it, this covers any residual control chrome). */
-.leaflet-routing-container {
-  display: none !important;
-}
-
 .rgm-corridor-band {
   pointer-events: none;
+}
+
+/* Recolor leaflet-draw's default orange toolbar/vertex accents to match the app's
+   blue theme, same treatment as GeofenceShapeMap.css. */
+.rgm-map-container .leaflet-draw-toolbar a {
+  background-color: #fff;
+}
+
+.rgm-map-container .leaflet-draw-toolbar a:hover {
+  background-color: #eff6ff;
+}
+
+.rgm-map-container .leaflet-draw-actions a {
+  background-color: #374151 !important;
+}
+
+/* Draggable vertex/midpoint handles - small and red so they read clearly as
+   "grab points" against the street tiles. */
+.rgm-map-container .leaflet-div-icon,
+.rgm-map-container .leaflet-editing-icon {
+  width: 9px !important;
+  height: 9px !important;
+  margin-left: -5px !important;
+  margin-top: -5px !important;
+  background: #ef4444 !important;
+  border: 2px solid #fff !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
 }

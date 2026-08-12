@@ -605,6 +605,10 @@ const Shipments = () => {
   const [routePoints, setRoutePoints] = useState([]);
   const [routeWaypoints, setRouteWaypoints] = useState([]);
   const [routeFetchStatus, setRouteFetchStatus] = useState('idle'); // idle|loading|ready|error|stale
+  // Bumped only when a fresh route is fetched from the backend (not on every manual
+  // edit) - used as a React key to remount the editable route layer on a genuine
+  // re-fetch while leaving the user's in-progress drag edits alone otherwise.
+  const [routeVersion, setRouteVersion] = useState(0);
   const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
   
   // User timezone (you can make this configurable)
@@ -894,6 +898,7 @@ const Shipments = () => {
       setRoutePoints(result.routePoints || []);
       setRouteWaypoints(result.waypoints || routeWaypointInputs);
       setRouteFetchStatus('ready');
+      setRouteVersion((v) => v + 1);
     } catch (error) {
       console.error('Error fetching route preview:', error);
       setRouteFetchStatus('error');
@@ -3497,11 +3502,11 @@ const Shipments = () => {
 
                       {routeFetchStatus === 'ready' && routePoints.length >= 2 && (
                         <RouteGeofenceMap
+                          key={routeVersion}
                           waypoints={routeWaypointInputs}
                           routePoints={routePoints}
                           widthMeters={routeGeofenceWidth}
                           onRouteChange={handleRouteChange}
-                          onError={() => setRouteFetchStatus('error')}
                         />
                       )}
                     </>
