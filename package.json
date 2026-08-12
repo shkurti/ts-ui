@@ -10,7 +10,6 @@
     "@testing-library/user-event": "^13.5.0",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
-    "leaflet-routing-machine": "^3.2.12",
     "leaflet.markercluster": "^1.5.3",
     "lucide-react": "^0.441.0",
     "react": "^19.1.0",

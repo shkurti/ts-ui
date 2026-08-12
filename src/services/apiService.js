@@ -93,8 +93,6 @@ export const shipmentApi = {
     apiService.get(`/shipment_route_data?tracker_id=${trackerId}&start=${start}&end=${end}&timezone=${timezone}`),
   getSnappedRoute: (trackerId, start, end, timezone = 'America/New_York') =>
     apiService.post(`/shipment_route_snap?tracker_id=${trackerId}&start=${start}&end=${end}&timezone=${timezone}`),
-  getRoutePreview: (waypoints) =>
-    apiService.post('/shipment_route_preview', { waypoints }),
   getAlerts: (shipmentId, trackerId) => {
     const params = new URLSearchParams();
     if (shipmentId) params.append('shipment_id', shipmentId);
