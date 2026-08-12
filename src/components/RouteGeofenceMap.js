@@ -34,7 +34,11 @@ const RouteRoutingController = ({ waypointCoords, corridorWidthMeters, onRouteCh
       waypoints: waypointCoords.map((w) => L.latLng(w.latitude, w.longitude)),
       router: L.Routing.osrmv1({ serviceUrl: OSRM_SERVICE_URL }),
       routeWhileDragging: true,
-      addWaypoints: false,
+      // Lets the user drag a point ON the drawn route to insert a waypoint there
+      // and reroute through it - this is the "editable route" feature itself,
+      // not a "click the map to append a new stop" toggle (that's a separate,
+      // unrelated interaction this option does not control).
+      addWaypoints: true,
       draggableWaypoints: true,
       fitSelectedRoutes: true,
       show: false,
