@@ -22,7 +22,7 @@ const handleIcon = L.divIcon({
 // How many draggable handles to place along the route, regardless of how many
 // raw points OSRM returned - a fixed count keeps the map usable whether the
 // route is a 2km local hop or a 200km highway run.
-const TARGET_HANDLES = 50;
+const TARGET_HANDLES = 150;
 
 // Picks ~TARGET_HANDLES indices evenly spaced along the dense route (always
 // including the first and last point). This only decides which points get a
