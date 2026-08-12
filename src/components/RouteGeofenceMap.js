@@ -14,6 +14,24 @@ const waypointIcon = L.divIcon({
   iconAnchor: [13, 24]
 });
 
+// OSRM's raw route geometry has a vertex roughly every 5-20m, which would give
+// leaflet-draw a drag handle (plus a midpoint handle between every pair) at
+// every one of those - far too dense to usefully drag. Thin the line down to
+// a manageable number of edit points via Douglas-Peucker simplification
+// before it becomes editable; this only reduces the number of *handles*, the
+// route still visually follows the same path. Projects to a local
+// meters-based plane first so the tolerance means the same distance
+// regardless of latitude.
+const simplifyForEditing = (points, toleranceMeters = 100) => {
+  if (!points || points.length <= 2) return points;
+  const lat0 = points[0][0];
+  const latToMeters = 111320;
+  const lngToMeters = 111320 * Math.cos((lat0 * Math.PI) / 180);
+  const projected = points.map(([lat, lng]) => L.point(lng * lngToMeters, lat * latToMeters));
+  const simplified = L.LineUtil.simplify(projected, toleranceMeters);
+  return simplified.map((p) => [p.y / latToMeters, p.x / lngToMeters]);
+};
+
 // Makes the already-fetched OSRM route polyline manually draggable, using
 // leaflet-draw's edit toolbar - the same mechanism GeofenceShapeMap.js's
 // DrawController uses for the destination geofence shape, just editing a
@@ -30,7 +48,8 @@ const RouteEditController = ({ initialRoutePoints, onChange }) => {
     const featureGroup = new L.FeatureGroup();
     map.addLayer(featureGroup);
 
-    const polyline = new L.Polyline(initialRoutePoints, {
+    const editablePoints = simplifyForEditing(initialRoutePoints);
+    const polyline = new L.Polyline(editablePoints, {
       color: '#1d4ed8',
       weight: 5,
       opacity: 0.9
