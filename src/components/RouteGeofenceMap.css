@@ -1,0 +1,48 @@
+.rgm-wrapper {
+  margin-top: 10px;
+}
+
+.rgm-hint {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #4b5563;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.rgm-map-container {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #d1d5db;
+}
+
+.rgm-map {
+  height: 320px;
+  width: 100%;
+}
+
+/* Waypoint pin marker */
+.rgm-waypoint-icon {
+  background: transparent;
+  border: none;
+}
+
+.rgm-waypoint-pin {
+  font-size: 24px;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4));
+  transform: translateY(-4px);
+}
+
+/* Hide leaflet-routing-machine's default itinerary panel (show: false already
+   suppresses most of it, this covers any residual control chrome). */
+.leaflet-routing-container {
+  display: none !important;
+}
+
+.rgm-corridor-band {
+  pointer-events: none;
+}

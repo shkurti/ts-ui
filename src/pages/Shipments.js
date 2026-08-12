@@ -10,6 +10,7 @@ import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, 
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi } from '../services/apiService';
 import GeofenceShapeMap from '../components/GeofenceShapeMap';
+import RouteGeofenceMap from '../components/RouteGeofenceMap';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocketContext } from '../context/WebSocketContext';
 
@@ -597,6 +598,13 @@ const Shipments = () => {
   // 'circle' (radius slider, default) or 'polygon' (hand-drawn custom shape)
   const [geofenceShapeMode, setGeofenceShapeMode] = useState({});
   const [geofencePolygons, setGeofencePolygons] = useState({});
+  // Route (corridor) geofence — shipment-wide, not keyed by legIndex like the above.
+  const [shipFromCoordinates, setShipFromCoordinates] = useState(null);
+  const [routeGeofenceEnabled, setRouteGeofenceEnabled] = useState(false);
+  const [routeGeofenceWidth, setRouteGeofenceWidth] = useState(1000);
+  const [routePoints, setRoutePoints] = useState([]);
+  const [routeWaypoints, setRouteWaypoints] = useState([]);
+  const [routeFetchStatus, setRouteFetchStatus] = useState('idle'); // idle|loading|ready|error|stale
   const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
   
   // User timezone (you can make this configurable)
@@ -797,14 +805,21 @@ const Shipments = () => {
   const handleLegChange = (legIndex, field, value) => {
     setFormData(prev => ({
       ...prev,
-      legs: prev.legs.map((leg, index) => 
+      legs: prev.legs.map((leg, index) =>
         index === legIndex ? { ...leg, [field]: value } : leg
       )
     }));
-    
+
     // If any address field changed, geocode it
     if ((field === 'stopAddress' || field === 'shipTo') && value) {
       geocodeAddress(value, legIndex);
+    }
+    if (field === 'shipFrom' && legIndex === 0 && value) {
+      geocodeShipFrom(value);
+    }
+    // A previously-fetched route no longer matches the addresses it was built from.
+    if (routeGeofenceEnabled && (field === 'stopAddress' || field === 'shipTo' || field === 'shipFrom')) {
+      setRouteFetchStatus('stale');
     }
   };
 
@@ -834,6 +849,73 @@ const Shipments = () => {
     } catch (error) {
       console.error('Error geocoding address:', error);
     }
+  };
+
+  const geocodeShipFrom = async (address) => {
+    if (!address) return;
+    try {
+      const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(address)}.json?key=${MAPTILER_API_KEY}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data && data.features && data.features.length > 0) {
+        setShipFromCoordinates({
+          latitude: data.features[0].geometry.coordinates[1],
+          longitude: data.features[0].geometry.coordinates[0]
+        });
+      }
+    } catch (error) {
+      console.error('Error geocoding ship-from address:', error);
+    }
+  };
+
+  // Ordered waypoints (Ship From, then each stop) once every address on the
+  // form has been geocoded — null while any is still missing, so the route
+  // geofence toggle stays hidden until a route is actually fetchable.
+  const routeWaypointInputs = useMemo(() => {
+    if (!shipFromCoordinates) return null;
+    const stopsMissing = formData.legs.some((_, i) => !legCoordinates[i]);
+    if (stopsMissing) return null;
+    return [
+      { label: 'Ship From', latitude: shipFromCoordinates.latitude, longitude: shipFromCoordinates.longitude },
+      ...formData.legs.map((leg, i) => ({
+        label: i === 0 ? 'Stop' : `Stop ${i + 1}`,
+        latitude: legCoordinates[i].latitude,
+        longitude: legCoordinates[i].longitude
+      }))
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shipFromCoordinates, legCoordinates, formData.legs.length]);
+
+  const fetchRoutePreview = async () => {
+    if (!routeWaypointInputs || routeWaypointInputs.length < 2) return;
+    setRouteFetchStatus('loading');
+    try {
+      const result = await shipmentApi.getRoutePreview(routeWaypointInputs);
+      setRoutePoints(result.routePoints || []);
+      setRouteWaypoints(result.waypoints || routeWaypointInputs);
+      setRouteFetchStatus('ready');
+    } catch (error) {
+      console.error('Error fetching route preview:', error);
+      setRouteFetchStatus('error');
+    }
+  };
+
+  const toggleRouteGeofence = () => {
+    if (routeGeofenceEnabled) {
+      setRouteGeofenceEnabled(false);
+      setRoutePoints([]);
+      setRouteWaypoints([]);
+      setRouteFetchStatus('idle');
+      return;
+    }
+    setRouteGeofenceEnabled(true);
+    fetchRoutePreview();
+  };
+
+  const handleRouteChange = (points) => {
+    setRoutePoints(points);
+    setRouteWaypoints(routeWaypointInputs || []);
+    setRouteFetchStatus('ready');
   };
 
   const handleRadiusChange = (legIndex, radius) => {
@@ -916,6 +998,11 @@ const Shipments = () => {
       return;
     }
 
+    if (routeGeofenceEnabled && (routeFetchStatus === 'loading' || routeFetchStatus === 'stale' || routePoints.length < 2)) {
+      alert('Please wait for the route to finish loading, or click "Recalculate route" if your addresses changed, before creating the shipment.');
+      return;
+    }
+
     try {
       const buildGeofencePreset = (index) => {
         if (!legCoordinates[index]) return [];
@@ -931,19 +1018,41 @@ const Shipments = () => {
         return [{ ...base, shape: 'circle', radius: geofenceRadii[index] || 1000 }];
       };
 
+      const buildRouteGeofencePreset = () => {
+        if (!routeGeofenceEnabled || routePoints.length < 2) return null;
+        return {
+          type: 'corridor',
+          scope: 'shipment',
+          enabled: true,
+          widthMeters: routeGeofenceWidth,
+          routePoints,
+          waypoints: routeWaypoints,
+          routeSource: 'osrm-demo',
+          updatedAt: new Date().toISOString()
+        };
+      };
+
+      const routePreset = buildRouteGeofencePreset();
+
       const shipmentData = {
         trackerId: selectedTracker,
-        legs: formData.legs.map((leg, index) => ({
-          legNumber: index + 1,
-          shipFromAddress: index === 0 ? leg.shipFrom : undefined,
-          shipDate: leg.shipDate,
-          alertPresets: buildGeofencePreset(index),
-          mode: leg.transportMode,
-          carrier: leg.carrier,
-          stopAddress: leg.stopAddress || leg.shipTo,
-          arrivalDate: leg.arrivalDate,
-          departureDate: leg.departureDate,
-        }))
+        legs: formData.legs.map((leg, index) => {
+          const alertPresets = buildGeofencePreset(index);
+          if (index === 0 && routePreset) {
+            alertPresets.push(routePreset);
+          }
+          return {
+            legNumber: index + 1,
+            shipFromAddress: index === 0 ? leg.shipFrom : undefined,
+            shipDate: leg.shipDate,
+            alertPresets,
+            mode: leg.transportMode,
+            carrier: leg.carrier,
+            stopAddress: leg.stopAddress || leg.shipTo,
+            arrivalDate: leg.arrivalDate,
+            departureDate: leg.departureDate,
+          };
+        })
       };
 
       const result = await shipmentApi.create(shipmentData);
@@ -972,6 +1081,12 @@ const Shipments = () => {
     setGeofenceRadii({});
     setGeofenceShapeMode({});
     setGeofencePolygons({});
+    setShipFromCoordinates(null);
+    setRouteGeofenceEnabled(false);
+    setRouteGeofenceWidth(1000);
+    setRoutePoints([]);
+    setRouteWaypoints([]);
+    setRouteFetchStatus('idle');
     setFormData({
       legs: [{
         shipFrom: '',
@@ -3321,6 +3436,84 @@ const Shipments = () => {
               <button type="button" className="sf-add-stop-btn" onClick={handleAddStop}>
                 + Add Stop
               </button>
+
+              {/* Route Geofence Toggle and Configuration (shipment-wide, spans all stops) */}
+              {routeWaypointInputs && (
+                <div className="sf-geofence-panel sf-route-geofence-panel">
+                  <div className="sf-geofence-toggle-row">
+                    <input
+                      type="checkbox"
+                      id="route-geofence-toggle"
+                      checked={routeGeofenceEnabled}
+                      onChange={toggleRouteGeofence}
+                    />
+                    <label htmlFor="route-geofence-toggle">
+                      Enable geofence alert for this route
+                    </label>
+                  </div>
+
+                  {routeGeofenceEnabled && (
+                    <>
+                      <label className="sf-geofence-radius-label">
+                        Allowed deviation: <strong>{routeGeofenceWidth}m</strong>
+                        <span className="sf-geofence-radius-hint">(alert when this far off-route, either side)</span>
+                      </label>
+                      <input
+                        type="range"
+                        min="100"
+                        max="5000"
+                        step="100"
+                        value={routeGeofenceWidth}
+                        onChange={(e) => setRouteGeofenceWidth(parseInt(e.target.value))}
+                        className="sf-geofence-slider"
+                      />
+                      <div className="sf-geofence-scale">
+                        <span>100m</span>
+                        <span>2.5km</span>
+                        <span>5km</span>
+                      </div>
+
+                      {routeFetchStatus === 'loading' && (
+                        <div className="sf-geofence-pending-hint">⏳ Calculating the best route...</div>
+                      )}
+
+                      {routeFetchStatus === 'error' && (
+                        <div className="sf-route-status-error">
+                          ⚠️ Could not calculate a route.
+                          <button type="button" className="sf-route-retry-btn" onClick={fetchRoutePreview}>
+                            Retry
+                          </button>
+                        </div>
+                      )}
+
+                      {routeFetchStatus === 'stale' && (
+                        <div className="sf-route-status-error">
+                          ⚠️ Addresses changed since this route was calculated.
+                          <button type="button" className="sf-route-retry-btn" onClick={fetchRoutePreview}>
+                            Recalculate route
+                          </button>
+                        </div>
+                      )}
+
+                      {routeFetchStatus === 'ready' && routePoints.length >= 2 && (
+                        <RouteGeofenceMap
+                          waypoints={routeWaypointInputs}
+                          routePoints={routePoints}
+                          widthMeters={routeGeofenceWidth}
+                          onRouteChange={handleRouteChange}
+                          onError={() => setRouteFetchStatus('error')}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {!routeWaypointInputs && formData.legs.some((leg, i) => (i === 0 ? leg.shipFrom : leg.shipTo)) && (
+                <div className="sf-geofence-pending-hint">
+                  ⏳ Enter and confirm the Ship From address and every Stop address to enable route geofencing
+                </div>
+              )}
 
               {/* Tracker selection */}
               <div className="sf-tracker-section">
