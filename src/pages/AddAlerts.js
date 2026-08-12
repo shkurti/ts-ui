@@ -21,6 +21,26 @@ const ListIcon = (props) => (
   </svg>
 );
 
+const PinIcon = (props) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+    <path d="M12 21s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+    <circle cx="12" cy="9" r="2.5" stroke="currentColor" strokeWidth="1.8"/>
+  </svg>
+);
+
+const SearchIcon = (props) => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" {...props}>
+    <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2"/>
+    <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
+const CloseIcon = (props) => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" {...props}>
+    <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
 const PlusIcon = (props) => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
     <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
@@ -47,8 +67,33 @@ const TrashIcon = (props) => (
   </svg>
 );
 
-const AlertTypeIcon = ({ type, ...props }) =>
-  type === 'temperature' ? <ThermometerIcon {...props} /> : <DropletIcon {...props} />;
+const AlertTypeIcon = ({ type, ...props }) => {
+  if (type === 'temperature') return <ThermometerIcon {...props} />;
+  if (type === 'geofence') return <PinIcon {...props} />;
+  return <DropletIcon {...props} />;
+};
+
+const ALERT_TYPE_FILTERS = [
+  { value: 'all', label: 'All types' },
+  { value: 'temperature', label: 'Temperature' },
+  { value: 'humidity', label: 'Humidity' },
+  { value: 'geofence', label: 'Geofence' },
+];
+
+const describeAlertRange = (alert) => {
+  if (alert.type === 'geofence') {
+    if (alert.shape === 'polygon') return 'Custom drawn zone';
+    if (alert.radius != null) return `${alert.radius}m radius`;
+    return 'Zone alert';
+  }
+  return `Range: ${alert.minValue}${alert.unit} to ${alert.maxValue}${alert.unit}`;
+};
+
+const getAlertDisplayName = (alert) => {
+  if (alert.name) return alert.name;
+  if (alert.type === 'geofence') return 'Geofence Alert';
+  return `${alert.type.charAt(0).toUpperCase()}${alert.type.slice(1)} Alert`;
+};
 
 const AddAlerts = () => {
   const [alertType, setAlertType] = useState('temperature');
@@ -59,6 +104,11 @@ const AddAlerts = () => {
   const [shipments, setShipments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Left panel: browse/filter alerts across every shipment at once
+  const [alertSearch, setAlertSearch] = useState('');
+  const [alertTypeFilter, setAlertTypeFilter] = useState('all');
+  const [alertShipmentFilter, setAlertShipmentFilter] = useState('');
 
   // Fetch shipments on component mount
   useEffect(() => {
@@ -169,17 +219,54 @@ const AddAlerts = () => {
     return `#${shipment.trackerId} - ${from} → ${to}`;
   };
 
-  const getSelectedShipmentAlerts = () => {
-    if (!selectedShipment) return [];
-    const shipment = shipments.find(s => s._id === selectedShipment);
-    return shipment?.legs?.[0]?.alertPresets || [];
+  // Every alert preset across every shipment, flattened for the browser view
+  const getAllAlerts = () => {
+    return shipments.flatMap(shipment =>
+      (shipment.legs?.[0]?.alertPresets || []).map((alert, alertIndex) => ({
+        alert,
+        alertIndex,
+        shipmentId: shipment._id,
+        shipmentName: getShipmentDisplayName(shipment)
+      }))
+    );
   };
 
-  // Add function to remove existing alerts
-  const handleRemoveExistingAlert = async (alertIndex) => {
-    if (!selectedShipment) return;
+  const getFilteredAlerts = () => {
+    const query = alertSearch.trim().toLowerCase();
+    return getAllAlerts().filter(({ alert, shipmentId, shipmentName }) => {
+      if (alertShipmentFilter && shipmentId !== alertShipmentFilter) return false;
+      if (alertTypeFilter !== 'all' && alert.type !== alertTypeFilter) return false;
+      if (query) {
+        const haystack = `${getAlertDisplayName(alert)} ${shipmentName}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      return true;
+    });
+  };
 
-    const shipment = shipments.find(s => s._id === selectedShipment);
+  // Group filtered alerts by shipment, preserving shipment list order
+  const getGroupedAlerts = () => {
+    const filtered = getFilteredAlerts();
+    const groups = [];
+    const groupIndexById = new Map();
+    filtered.forEach(entry => {
+      if (!groupIndexById.has(entry.shipmentId)) {
+        groupIndexById.set(entry.shipmentId, groups.length);
+        groups.push({ shipmentId: entry.shipmentId, shipmentName: entry.shipmentName, items: [] });
+      }
+      groups[groupIndexById.get(entry.shipmentId)].items.push(entry);
+    });
+    return groups;
+  };
+
+  const clearAlertFilters = () => {
+    setAlertSearch('');
+    setAlertTypeFilter('all');
+    setAlertShipmentFilter('');
+  };
+
+  const handleRemoveExistingAlert = async (shipmentId, alertIndex) => {
+    const shipment = shipments.find(s => s._id === shipmentId);
     if (!shipment) return;
 
     const existingAlerts = shipment.legs?.[0]?.alertPresets || [];
@@ -187,7 +274,7 @@ const AddAlerts = () => {
 
     try {
       await apiService.put(
-        `/shipment_meta/${selectedShipment}/alerts`,
+        `/shipment_meta/${shipmentId}/alerts`,
         {
           alertPresets: updatedAlerts,
           legNumber: 1
@@ -195,7 +282,7 @@ const AddAlerts = () => {
       );
       // Update local shipments state
       setShipments(prev => prev.map(ship =>
-        ship._id === selectedShipment
+        ship._id === shipmentId
           ? {
               ...ship,
               legs: ship.legs.map((leg, index) =>
@@ -235,74 +322,124 @@ const AddAlerts = () => {
             <h3>
               <ListIcon />
               Existing Alerts
-              {selectedShipment && getSelectedShipmentAlerts().length > 0 && (
-                <span className="alerts-count">{getSelectedShipmentAlerts().length}</span>
+              {getAllAlerts().length > 0 && (
+                <span className="alerts-count">{getAllAlerts().length}</span>
               )}
             </h3>
-            <p>View and manage configured alerts</p>
+            <p>Every alert configured, across all shipments</p>
           </div>
 
           <div className="alerts-list-content">
-            <div className="shipment-selector">
-              <label htmlFor="alertsShipmentSelect">Select shipment to view alerts</label>
+            <div className="alerts-filter-bar">
+              <div className="alerts-search-field">
+                <SearchIcon />
+                <input
+                  type="text"
+                  value={alertSearch}
+                  onChange={(e) => setAlertSearch(e.target.value)}
+                  placeholder="Search by alert or shipment..."
+                  aria-label="Search alerts"
+                />
+                {alertSearch && (
+                  <button
+                    type="button"
+                    className="alerts-search-clear"
+                    onClick={() => setAlertSearch('')}
+                    aria-label="Clear search"
+                  >
+                    <CloseIcon />
+                  </button>
+                )}
+              </div>
+
               <select
-                id="alertsShipmentSelect"
-                value={selectedShipment}
-                onChange={(e) => setSelectedShipment(e.target.value)}
+                className="alerts-shipment-filter"
+                value={alertShipmentFilter}
+                onChange={(e) => setAlertShipmentFilter(e.target.value)}
+                aria-label="Filter by shipment"
               >
-                <option value="">Choose a shipment...</option>
+                <option value="">All shipments</option>
                 {shipments.map(shipment => (
                   <option key={shipment._id} value={shipment._id}>
                     {getShipmentDisplayName(shipment)}
                   </option>
                 ))}
               </select>
+
+              <div className="alerts-type-chips" role="group" aria-label="Filter by alert type">
+                {ALERT_TYPE_FILTERS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`alerts-type-chip ${value} ${alertTypeFilter === value ? 'active' : ''}`}
+                    onClick={() => setAlertTypeFilter(value)}
+                    aria-pressed={alertTypeFilter === value}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {!selectedShipment ? (
-              <div className="alerts-empty-state">
-                <div className="alerts-empty-icon"><ShipIcon /></div>
-                <p>Select a shipment above to view its alerts</p>
-              </div>
-            ) : getSelectedShipmentAlerts().length === 0 ? (
+            {getAllAlerts().length === 0 ? (
               <div className="alerts-empty-state">
                 <div className="alerts-empty-icon success"><CheckCircleIcon /></div>
                 <div>
-                  <strong>No alerts configured</strong>
-                  <p>This shipment has no environmental alerts set up yet.</p>
+                  <strong>No alerts configured yet</strong>
+                  <p>Create your first environmental alert using the form on the right.</p>
                 </div>
               </div>
+            ) : getGroupedAlerts().length === 0 ? (
+              <div className="alerts-empty-state">
+                <div className="alerts-empty-icon"><SearchIcon width={22} height={22} /></div>
+                <div>
+                  <strong>No alerts match your filters</strong>
+                  <p>Try a different search term or clear the filters below.</p>
+                </div>
+                <button type="button" className="alerts-clear-filters-btn" onClick={clearAlertFilters}>
+                  Clear filters
+                </button>
+              </div>
             ) : (
-              <div className="alerts-list">
-                {getSelectedShipmentAlerts().map((alert, index) => (
-                  <div key={index} className="alert-preview-item">
-                    <div className="alert-preview-info">
-                      <span className={`alert-icon ${alert.type}`}>
-                        <AlertTypeIcon type={alert.type} />
-                      </span>
-                      <div className="alert-details">
-                        <strong>{alert.name || `${alert.type} Alert`}</strong>
-                        <span className="alert-range">
-                          Range: {alert.minValue}{alert.unit} to {alert.maxValue}{alert.unit}
-                        </span>
-                        {alert.createdAt && (
-                          <span className="alert-created">
-                            Created {new Date(alert.createdAt).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
+              <div className="alerts-groups">
+                {getGroupedAlerts().map(group => (
+                  <div key={group.shipmentId} className="alerts-group">
+                    <div className="alerts-group-header">
+                      <ShipIcon width={16} height={16} />
+                      <span className="alerts-group-name">{group.shipmentName}</span>
+                      <span className="alerts-group-count">{group.items.length}</span>
                     </div>
-                    <div className="alert-actions">
-                      <span className={`alert-type-badge ${alert.type}`}>{alert.type}</span>
-                      <button
-                        className="remove-existing-alert-btn"
-                        onClick={() => handleRemoveExistingAlert(index)}
-                        title="Remove this alert"
-                        aria-label={`Remove ${alert.name || alert.type + ' alert'}`}
-                      >
-                        <TrashIcon />
-                        Remove
-                      </button>
+                    <div className="alerts-list">
+                      {group.items.map(({ alert, alertIndex, shipmentId }) => (
+                        <div key={alertIndex} className="alert-preview-item">
+                          <div className="alert-preview-info">
+                            <span className={`alert-icon ${alert.type}`}>
+                              <AlertTypeIcon type={alert.type} />
+                            </span>
+                            <div className="alert-details">
+                              <strong>{getAlertDisplayName(alert)}</strong>
+                              <span className="alert-range">{describeAlertRange(alert)}</span>
+                              {alert.createdAt && (
+                                <span className="alert-created">
+                                  Created {new Date(alert.createdAt).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="alert-actions">
+                            <span className={`alert-type-badge ${alert.type}`}>{alert.type}</span>
+                            <button
+                              className="remove-existing-alert-btn"
+                              onClick={() => handleRemoveExistingAlert(shipmentId, alertIndex)}
+                              title="Remove this alert"
+                              aria-label={`Remove ${getAlertDisplayName(alert)}`}
+                            >
+                              <TrashIcon />
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
