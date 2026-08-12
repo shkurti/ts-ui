@@ -41,11 +41,14 @@ const pickHandleIndices = (points) => {
 
 // Keeps the FULL-resolution OSRM route as the line that's actually drawn and
 // saved, so it always hugs the road exactly - only a sparse subset of its
-// points get a draggable handle on top. Dragging a handle moves just that one
-// point in the dense array; every neighboring point (including the ones
-// immediately next to it, which aren't handles) stays exactly where OSRM put
-// it, so the line only visibly deforms right where the user drags, nowhere
-// else. Nothing gets recalculated against a routing service.
+// points get a draggable handle on top. Dragging a handle pulls the stretch
+// of road-hugging points around it along too, tapering to zero at the two
+// neighboring handles (a "soft" drag, same idea as a falloff brush) - moving
+// only the single dragged point produced a sharp spike instead of a smooth
+// bend, since its immediate un-selected neighbors stayed pinned in place.
+// Points beyond the neighboring handles on either side are untouched, so
+// editing stays local to the segment being dragged. Nothing gets
+// recalculated against a routing service.
 const RouteEditController = ({ initialRoutePoints, onChange }) => {
   const map = useMap();
 
@@ -53,6 +56,7 @@ const RouteEditController = ({ initialRoutePoints, onChange }) => {
     if (!map || !initialRoutePoints || initialRoutePoints.length < 2) return undefined;
 
     const points = initialRoutePoints.map((p) => [p[0], p[1]]);
+    let basePoints = points.map((p) => [p[0], p[1]]);
 
     const polyline = L.polyline(points, {
       color: '#1d4ed8',
@@ -61,15 +65,41 @@ const RouteEditController = ({ initialRoutePoints, onChange }) => {
     }).addTo(map);
 
     const handleIndices = pickHandleIndices(points);
-    const markers = handleIndices.map((index) => {
+    const markers = handleIndices.map((index, h) => {
       const [lat, lng] = points[index];
       const marker = L.marker([lat, lng], { icon: handleIcon, draggable: true }).addTo(map);
 
+      const leftIdx = h > 0 ? handleIndices[h - 1] : index;
+      const rightIdx = h < handleIndices.length - 1 ? handleIndices[h + 1] : index;
+
+      let baseLat = lat;
+      let baseLng = lng;
+
+      marker.on('dragstart', () => {
+        basePoints = points.map((p) => [p[0], p[1]]);
+        baseLat = basePoints[index][0];
+        baseLng = basePoints[index][1];
+      });
+
       marker.on('drag', () => {
         const { lat: newLat, lng: newLng } = marker.getLatLng();
-        points[index] = [newLat, newLng];
+        const deltaLat = newLat - baseLat;
+        const deltaLng = newLng - baseLng;
+
+        for (let i = leftIdx; i <= rightIdx; i++) {
+          let weight;
+          if (i === index) weight = 1;
+          else if (i < index) weight = leftIdx === index ? 0 : (i - leftIdx) / (index - leftIdx);
+          else weight = rightIdx === index ? 0 : (rightIdx - i) / (rightIdx - index);
+
+          points[i] = [
+            basePoints[i][0] + deltaLat * weight,
+            basePoints[i][1] + deltaLng * weight
+          ];
+        }
         polyline.setLatLngs(points);
       });
+
       marker.on('dragend', () => {
         onChange(points.map((p) => [p[0], p[1]]));
       });
@@ -96,8 +126,9 @@ const RouteGeofenceMap = ({ waypoints, routePoints, onRouteChange }) => {
     <div className="rgm-wrapper">
       <div className="rgm-hint">
         The best route between your stops is drawn below. Drag any of the highlighted points to
-        reshape that part of the route - the rest of the line stays exactly where it is. The
-        corridor width you set applies to both sides of the final route.
+        smoothly reshape the route around it - the effect tapers off toward the next points on
+        either side, so the rest of the route stays put. The corridor width you set applies to
+        both sides of the final route.
       </div>
       <div className="rgm-map-container">
         <MapContainer
