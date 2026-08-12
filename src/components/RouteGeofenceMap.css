@@ -37,34 +37,20 @@
   transform: translateY(-4px);
 }
 
-.rgm-corridor-band {
-  pointer-events: none;
+/* Draggable route handles - small and red so they read clearly as "grab
+   points" against the street tiles, same treatment as the destination
+   geofence shape's edit vertices in GeofenceShapeMap.css. */
+.rgm-handle-icon {
+  background: transparent;
+  border: none;
+  cursor: grab;
 }
 
-/* Recolor leaflet-draw's default orange toolbar/vertex accents to match the app's
-   blue theme, same treatment as GeofenceShapeMap.css. */
-.rgm-map-container .leaflet-draw-toolbar a {
-  background-color: #fff;
-}
-
-.rgm-map-container .leaflet-draw-toolbar a:hover {
-  background-color: #eff6ff;
-}
-
-.rgm-map-container .leaflet-draw-actions a {
-  background-color: #374151 !important;
-}
-
-/* Draggable vertex/midpoint handles - small and red so they read clearly as
-   "grab points" against the street tiles. */
-.rgm-map-container .leaflet-div-icon,
-.rgm-map-container .leaflet-editing-icon {
-  width: 9px !important;
-  height: 9px !important;
-  margin-left: -5px !important;
-  margin-top: -5px !important;
-  background: #ef4444 !important;
-  border: 2px solid #fff !important;
-  border-radius: 50% !important;
+.rgm-handle-dot {
+  width: 10px;
+  height: 10px;
+  background: #ef4444;
+  border: 2px solid #fff;
+  border-radius: 50%;
   box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
 }

@@ -1,8 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet-draw/dist/leaflet.draw.css';
-import 'leaflet-draw';
 import './RouteGeofenceMap.css';
 
 const MAPTILER_API_KEY = 'v36tenWyOBBH2yHOYH3b';
@@ -14,74 +12,74 @@ const waypointIcon = L.divIcon({
   iconAnchor: [13, 24]
 });
 
-// OSRM's raw route geometry has a vertex roughly every 5-20m, which would give
-// leaflet-draw a drag handle (plus a midpoint handle between every pair) at
-// every one of those - far too dense to usefully drag. Thin the line down to
-// a manageable number of edit points via Douglas-Peucker simplification
-// before it becomes editable; this only reduces the number of *handles*, the
-// route still visually follows the same path. Projects to a local
-// meters-based plane first so the tolerance means the same distance
-// regardless of latitude.
-const simplifyForEditing = (points, toleranceMeters = 100) => {
-  if (!points || points.length <= 2) return points;
-  const lat0 = points[0][0];
-  const latToMeters = 111320;
-  const lngToMeters = 111320 * Math.cos((lat0 * Math.PI) / 180);
-  const projected = points.map(([lat, lng]) => L.point(lng * lngToMeters, lat * latToMeters));
-  const simplified = L.LineUtil.simplify(projected, toleranceMeters);
-  return simplified.map((p) => [p.y / latToMeters, p.x / lngToMeters]);
+const handleIcon = L.divIcon({
+  className: 'rgm-handle-icon',
+  html: '<div class="rgm-handle-dot"></div>',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7]
+});
+
+// How many draggable handles to place along the route, regardless of how many
+// raw points OSRM returned - a fixed count keeps the map usable whether the
+// route is a 2km local hop or a 200km highway run.
+const TARGET_HANDLES = 50;
+
+// Picks ~TARGET_HANDLES indices evenly spaced along the dense route (always
+// including the first and last point). This only decides which points get a
+// visible/draggable handle - it does not remove or alter any point in the
+// route itself, unlike simplification.
+const pickHandleIndices = (points) => {
+  const n = points.length;
+  if (n <= TARGET_HANDLES) return points.map((_, i) => i);
+  const step = (n - 1) / (TARGET_HANDLES - 1);
+  const indices = new Set();
+  for (let i = 0; i < TARGET_HANDLES; i++) {
+    indices.add(Math.round(i * step));
+  }
+  return Array.from(indices).sort((a, b) => a - b);
 };
 
-// Makes the already-fetched OSRM route polyline manually draggable, using
-// leaflet-draw's edit toolbar - the same mechanism GeofenceShapeMap.js's
-// DrawController uses for the destination geofence shape, just editing a
-// polyline instead of a polygon. Dragging a vertex (or a midpoint, which
-// leaflet-draw adds automatically between each pair of vertices) simply moves
-// the line; nothing gets recalculated against a routing service, so the
-// result is exactly whatever shape the user drags it into.
+// Keeps the FULL-resolution OSRM route as the line that's actually drawn and
+// saved, so it always hugs the road exactly - only a sparse subset of its
+// points get a draggable handle on top. Dragging a handle moves just that one
+// point in the dense array; every neighboring point (including the ones
+// immediately next to it, which aren't handles) stays exactly where OSRM put
+// it, so the line only visibly deforms right where the user drags, nowhere
+// else. Nothing gets recalculated against a routing service.
 const RouteEditController = ({ initialRoutePoints, onChange }) => {
   const map = useMap();
 
   useEffect(() => {
     if (!map || !initialRoutePoints || initialRoutePoints.length < 2) return undefined;
 
-    const featureGroup = new L.FeatureGroup();
-    map.addLayer(featureGroup);
+    const points = initialRoutePoints.map((p) => [p[0], p[1]]);
 
-    const editablePoints = simplifyForEditing(initialRoutePoints);
-    const polyline = new L.Polyline(editablePoints, {
+    const polyline = L.polyline(points, {
       color: '#1d4ed8',
       weight: 5,
       opacity: 0.9
+    }).addTo(map);
+
+    const handleIndices = pickHandleIndices(points);
+    const markers = handleIndices.map((index) => {
+      const [lat, lng] = points[index];
+      const marker = L.marker([lat, lng], { icon: handleIcon, draggable: true }).addTo(map);
+
+      marker.on('drag', () => {
+        const { lat: newLat, lng: newLng } = marker.getLatLng();
+        points[index] = [newLat, newLng];
+        polyline.setLatLngs(points);
+      });
+      marker.on('dragend', () => {
+        onChange(points.map((p) => [p[0], p[1]]));
+      });
+
+      return marker;
     });
-    featureGroup.addLayer(polyline);
-
-    const drawControl = new L.Control.Draw({
-      position: 'topright',
-      draw: false, // nothing to create - the route already exists, only editing it
-      edit: {
-        featureGroup,
-        remove: false // deleting the whole route doesn't make sense here, only reshaping it
-      }
-    });
-    map.addControl(drawControl);
-
-    const emitChange = () => {
-      const layers = featureGroup.getLayers();
-      if (layers.length === 0) {
-        onChange([]);
-        return;
-      }
-      const latLngs = layers[0].getLatLngs();
-      onChange(latLngs.map((p) => [p.lat, p.lng]));
-    };
-
-    map.on(L.Draw.Event.EDITED, emitChange);
 
     return () => {
-      map.off(L.Draw.Event.EDITED, emitChange);
-      map.removeControl(drawControl);
-      map.removeLayer(featureGroup);
+      map.removeLayer(polyline);
+      markers.forEach((m) => map.removeLayer(m));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
@@ -89,36 +87,7 @@ const RouteEditController = ({ initialRoutePoints, onChange }) => {
   return null;
 };
 
-// Draws a visual buffer corridor (widthMeters on each side) around the route
-// as a translucent band, purely illustrative - the actual deviation check
-// runs server-side against the same routePoints/widthMeters.
-const CorridorBand = ({ routePoints, widthMeters }) => {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!map) return undefined;
-    if (!routePoints || routePoints.length < 2 || !widthMeters) return undefined;
-
-    const latLngs = routePoints.map((p) => L.latLng(p[0], p[1]));
-    const band = L.polyline(latLngs, {
-      color: '#3b82f6',
-      weight: 2,
-      opacity: 0.35,
-      // Leaflet has no native "buffered line" primitive; approximate the
-      // corridor width visually via a thick, translucent stroke rather than
-      // true buffered geometry.
-      className: 'rgm-corridor-band'
-    }).addTo(map);
-
-    return () => {
-      map.removeLayer(band);
-    };
-  }, [map, routePoints, widthMeters]);
-
-  return null;
-};
-
-const RouteGeofenceMap = ({ waypoints, routePoints, widthMeters, onRouteChange }) => {
+const RouteGeofenceMap = ({ waypoints, routePoints, onRouteChange }) => {
   if (!waypoints || waypoints.length < 2) return null;
 
   const center = waypoints[0];
@@ -126,9 +95,9 @@ const RouteGeofenceMap = ({ waypoints, routePoints, widthMeters, onRouteChange }
   return (
     <div className="rgm-wrapper">
       <div className="rgm-hint">
-        The best route between your stops is drawn below. Click the edit tool (top-right of the
-        map) to drag any point - or any midpoint between two points - to reshape the route, then
-        save. The corridor width you set applies to both sides of the final route.
+        The best route between your stops is drawn below. Drag any of the highlighted points to
+        reshape that part of the route - the rest of the line stays exactly where it is. The
+        corridor width you set applies to both sides of the final route.
       </div>
       <div className="rgm-map-container">
         <MapContainer
@@ -151,7 +120,6 @@ const RouteGeofenceMap = ({ waypoints, routePoints, widthMeters, onRouteChange }
             initialRoutePoints={routePoints}
             onChange={onRouteChange}
           />
-          <CorridorBand routePoints={routePoints} widthMeters={widthMeters} />
         </MapContainer>
       </div>
     </div>

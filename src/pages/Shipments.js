@@ -3505,7 +3505,6 @@ const Shipments = () => {
                           key={routeVersion}
                           waypoints={routeWaypointInputs}
                           routePoints={routePoints}
-                          widthMeters={routeGeofenceWidth}
                           onRouteChange={handleRouteChange}
                         />
                       )}
