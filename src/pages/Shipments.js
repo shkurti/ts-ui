@@ -620,6 +620,9 @@ const Shipments = () => {
   const receivedAlertIdsRef = useRef(new Set());
   const alertEventIdsRef = useRef(new Set());
 
+  // Alerts tab: which alert/preset the "Alert Details" modal is currently showing (null = closed)
+  const [alertDetailModal, setAlertDetailModal] = useState(null);
+
   // LocalStorage key for persisting selected shipment
   const SELECTED_SHIPMENT_KEY = 'selectedShipmentId';
 
@@ -1118,6 +1121,40 @@ const Shipments = () => {
       return 'Invalid Date';
     }
   };
+
+  // Derives a human name/range/since-date for a configured alertPreset, since
+  // the stored geofence/corridor presets don't carry a display name or
+  // min/max threshold the way sensor-based alert presets do.
+  const describeAlertPreset = (preset) => {
+    if (preset.type === 'corridor') {
+      return {
+        name: 'Route Geofence',
+        range: `±${preset.widthMeters}m corridor`,
+        since: preset.updatedAt ? new Date(preset.updatedAt).toLocaleDateString() : null
+      };
+    }
+    if (preset.shape === 'polygon') {
+      return { name: 'Destination Geofence', range: 'Custom shape', since: null };
+    }
+    return { name: 'Destination Geofence', range: `${preset.radius}m radius`, since: null };
+  };
+
+  // Pans/zooms the shipment detail map to a configured preset's location (a
+  // point for a destination geofence, the whole route for a route geofence)
+  // or a triggered alert's recorded GPS location.
+  const handleViewOnMap = (target) => {
+    if (!mapRef.current) return;
+    if (target.type === 'corridor' && target.routePoints?.length >= 2) {
+      const bounds = L.latLngBounds(target.routePoints.map((p) => [p[0], p[1]]));
+      mapRef.current.fitBounds(bounds, { padding: [40, 40] });
+      return;
+    }
+    const lat = target.latitude ?? target.location?.latitude;
+    const lng = target.longitude ?? target.location?.longitude;
+    if (lat == null || lng == null) return;
+    mapRef.current.flyTo([lat, lng], 15);
+  };
+
   // Handle shipment detail view
   const handleShipmentClick = async (shipment) => {
     // Save selected shipment to localStorage for persistence
@@ -2504,20 +2541,33 @@ const Shipments = () => {
                         {selectedShipmentDetail?.legs?.[0]?.alertPresets?.length > 0 && (
                           <div className="alerts-section">
                             <h4 className="alerts-section-title">Configured</h4>
-                            {selectedShipmentDetail.legs[0].alertPresets.map((preset, index) => (
-                              <div key={index} className="alert-card alert-card--configured">
-                                <div className="alert-card-header">
-                                  <span className="alert-dot alert-dot--configured"></span>
-                                  <span className="alert-card-name">{preset.name}</span>
-                                  <span className="alert-badge alert-badge--active">Active</span>
+                            {selectedShipmentDetail.legs[0].alertPresets.map((preset, index) => {
+                              const info = describeAlertPreset(preset);
+                              return (
+                                <div key={index} className="alert-card alert-card--configured">
+                                  <div className="alert-card-header">
+                                    <span className="alert-dot alert-dot--configured"></span>
+                                    <span className="alert-card-name">{info.name}</span>
+                                    <span className={`alert-badge ${preset.enabled ? 'alert-badge--active' : 'alert-badge--inactive'}`}>
+                                      {preset.enabled ? 'Active' : 'Inactive'}
+                                    </span>
+                                  </div>
+                                  <div className="alert-card-meta">
+                                    <span>Type: {preset.type === 'corridor' ? 'Route geofence' : 'Destination geofence'}</span>
+                                    <span>Range: {info.range}</span>
+                                    {info.since && <span>Since: {info.since}</span>}
+                                  </div>
+                                  <div className="alert-card-actions">
+                                    <button type="button" className="alert-action-btn" onClick={() => handleViewOnMap(preset)}>
+                                      View on Map
+                                    </button>
+                                    <button type="button" className="alert-action-btn" onClick={() => setAlertDetailModal({ kind: 'preset', data: preset, info })}>
+                                      Alert Details
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="alert-card-meta">
-                                  <span>Type: {preset.type}</span>
-                                  <span>Range: {preset.minValue}{preset.unit} – {preset.maxValue}{preset.unit}</span>
-                                  <span>Since: {preset.createdAt ? new Date(preset.createdAt).toLocaleDateString() : 'N/A'}</span>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
 
@@ -2559,6 +2609,19 @@ const Shipments = () => {
                                   {alert.location?.latitude != null && alert.location?.longitude != null && (
                                     <span>Location: {Number(alert.location.latitude).toFixed(4)}, {Number(alert.location.longitude).toFixed(4)}</span>
                                   )}
+                                </div>
+                                <div className="alert-card-actions">
+                                  <button
+                                    type="button"
+                                    className="alert-action-btn"
+                                    onClick={() => handleViewOnMap(alert)}
+                                    disabled={alert.location?.latitude == null}
+                                  >
+                                    View on Map
+                                  </button>
+                                  <button type="button" className="alert-action-btn" onClick={() => setAlertDetailModal({ kind: 'triggered', data: alert })}>
+                                    Alert Details
+                                  </button>
                                 </div>
                               </div>
                             ))
@@ -3549,6 +3612,87 @@ const Shipments = () => {
               </button>
               <button className="sf-btn sf-btn-primary" onClick={handleCreateShipment}>
                 Create Shipment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alert Details modal */}
+      {alertDetailModal && (
+        <div className="sf-modal-overlay" onClick={() => setAlertDetailModal(null)}>
+          <div className="sf-modal-content alert-detail-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="sf-modal-header">
+              <div>
+                <h3>Alert Details</h3>
+                <p className="sf-modal-subtitle">
+                  {alertDetailModal.kind === 'preset' ? alertDetailModal.info.name : alertDetailModal.data.alertName}
+                </p>
+              </div>
+              <button type="button" className="sf-modal-close-btn" onClick={() => setAlertDetailModal(null)} aria-label="Close">
+                ×
+              </button>
+            </div>
+            <div className="sf-modal-body">
+              {alertDetailModal.kind === 'preset' ? (
+                <>
+                  <div className="alert-detail-row"><span>Type</span><span>{alertDetailModal.data.type === 'corridor' ? 'Route geofence' : 'Destination geofence'}</span></div>
+                  <div className="alert-detail-row"><span>Status</span><span>{alertDetailModal.data.enabled ? 'Active' : 'Inactive'}</span></div>
+                  <div className="alert-detail-row"><span>Range</span><span>{alertDetailModal.info.range}</span></div>
+                  {alertDetailModal.data.type === 'corridor' ? (
+                    <>
+                      <div className="alert-detail-row"><span>Route source</span><span>{alertDetailModal.data.routeSource || 'N/A'}</span></div>
+                      <div className="alert-detail-row"><span>Waypoints</span><span>{alertDetailModal.data.waypoints?.length || 0}</span></div>
+                      {alertDetailModal.info.since && (
+                        <div className="alert-detail-row"><span>Last updated</span><span>{alertDetailModal.info.since}</span></div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {alertDetailModal.data.latitude != null && (
+                        <div className="alert-detail-row">
+                          <span>Location</span>
+                          <span>{Number(alertDetailModal.data.latitude).toFixed(4)}, {Number(alertDetailModal.data.longitude).toFixed(4)}</span>
+                        </div>
+                      )}
+                      {alertDetailModal.data.shape === 'polygon' && (
+                        <div className="alert-detail-row"><span>Shape points</span><span>{alertDetailModal.data.points?.length || 0}</span></div>
+                      )}
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="alert-detail-row"><span>Type</span><span>{alertDetailModal.data.alertType}</span></div>
+                  <div className="alert-detail-row"><span>Severity</span><span>{alertDetailModal.data.severity}</span></div>
+                  {alertDetailModal.data.message && (
+                    <div className="alert-detail-row"><span>Message</span><span>{alertDetailModal.data.message}</span></div>
+                  )}
+                  <div className="alert-detail-row"><span>First seen</span><span>{alertDetailModal.data.timestamp || 'N/A'}</span></div>
+                  <div className="alert-detail-row"><span>Last triggered</span><span>{alertDetailModal.data.lastTriggeredAt || alertDetailModal.data.timestamp || 'N/A'}</span></div>
+                  <div className="alert-detail-row"><span>Occurrences</span><span>{alertDetailModal.data.occurrenceCount ?? 'N/A'}</span></div>
+                  {alertDetailModal.data.sensorValue != null && (
+                    <div className="alert-detail-row"><span>Value</span><span>{alertDetailModal.data.sensorValue}{alertDetailModal.data.unit}</span></div>
+                  )}
+                  <div className="alert-detail-row">
+                    <span>Threshold range</span>
+                    <span>{alertDetailModal.data.minThreshold}{alertDetailModal.data.unit} – {alertDetailModal.data.maxThreshold}{alertDetailModal.data.unit}</span>
+                  </div>
+                  {alertDetailModal.data.location?.latitude != null && (
+                    <div className="alert-detail-row">
+                      <span>Location</span>
+                      <span>{Number(alertDetailModal.data.location.latitude).toFixed(4)}, {Number(alertDetailModal.data.location.longitude).toFixed(4)}</span>
+                    </div>
+                  )}
+                  {alertDetailModal.data.destinationAddress && (
+                    <div className="alert-detail-row"><span>Destination</span><span>{alertDetailModal.data.destinationAddress}</span></div>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="sf-modal-footer">
+              <button className="sf-btn sf-btn-secondary" onClick={() => setAlertDetailModal(null)}>
+                Close
               </button>
             </div>
           </div>

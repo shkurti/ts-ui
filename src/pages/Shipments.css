@@ -2088,6 +2088,70 @@
   font-family: var(--font-sans);
 }
 
+.alert-badge--inactive {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+.alert-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.alert-action-btn {
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-primary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.alert-action-btn:hover {
+  background: #eff6ff;
+}
+
+.alert-action-btn:disabled {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+  background: #fff;
+}
+
+/* Alert Details modal — narrower than the shipment-creation modal, this is just a short key/value list */
+.alert-detail-modal {
+  max-width: 420px;
+}
+
+.alert-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 13px;
+}
+
+.alert-detail-row:last-child {
+  border-bottom: none;
+}
+
+.alert-detail-row span:first-child {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.alert-detail-row span:last-child {
+  color: var(--color-text);
+  text-align: right;
+  word-break: break-word;
+}
+
 .no-messages {
   font-size: 13px;
   color: var(--color-text-muted);
