@@ -1,0 +1,155 @@
+.gsm-wrapper {
+  margin-top: 10px;
+}
+
+.gsm-hint {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #4b5563;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.gsm-map-container {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #d1d5db;
+}
+
+.gsm-map {
+  height: 280px;
+  width: 100%;
+}
+
+.gsm-map-toolbar {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 500;
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 6px;
+  padding: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.gsm-style-btn {
+  border: none;
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #374151;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.gsm-style-btn:hover {
+  background: #f3f4f6;
+}
+
+.gsm-style-btn.active {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.gsm-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.gsm-status {
+  font-size: 12.5px;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.gsm-status.ok {
+  color: #16a34a;
+}
+
+.gsm-clear-btn {
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.gsm-clear-btn:hover {
+  background: #fee2e2;
+}
+
+/* Destination pin marker */
+.gsm-destination-icon {
+  background: transparent;
+  border: none;
+}
+
+.gsm-destination-pin {
+  font-size: 26px;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4));
+  transform: translateY(-4px);
+}
+
+/* Recolor leaflet-draw's default orange toolbar/vertex accents to match the app's blue theme */
+.leaflet-draw-toolbar a {
+  background-color: #fff;
+}
+
+.leaflet-draw-toolbar a:hover {
+  background-color: #eff6ff;
+}
+
+.leaflet-draw-actions a {
+  background-color: #374151 !important;
+}
+
+/* Dashed preview line shown while placing a point - brighter & fully opaque so it
+   stays visible while forming the shape (default leaflet-draw style is faint). */
+.gsm-map-container .leaflet-draw-guide-dash {
+  background: #1d4ed8 !important;
+  opacity: 1 !important;
+}
+
+/* Draggable vertex/edit handles - smaller and red so they read clearly as
+   "grab points" against both satellite and street tiles, without covering the shape. */
+.gsm-map-container .leaflet-div-icon,
+.gsm-map-container .leaflet-editing-icon {
+  width: 9px !important;
+  height: 9px !important;
+  margin-left: -5px !important;
+  margin-top: -5px !important;
+  background: #ef4444 !important;
+  border: 2px solid #fff !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
+
+.gsm-map-container .leaflet-edit-marker-selected {
+  width: 11px !important;
+  height: 11px !important;
+  margin-left: -6px !important;
+  margin-top: -6px !important;
+  background: #b91c1c !important;
+  border: 2px solid #fff !important;
+  border-radius: 50% !important;
+}
+
+.leaflet-draw-tooltip {
+  background: #1f2937;
+}
+
+.leaflet-draw-tooltip:before {
+  border-right-color: #1f2937;
+}

@@ -1,18 +1,19 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Polygon, Circle, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import './Shipments.css';
-import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock } from 'lucide-react';
+import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock, Maximize2, X, RotateCcw } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi } from '../services/apiService';
+import GeofenceShapeMap from '../components/GeofenceShapeMap';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocketContext } from '../context/WebSocketContext';
 
-// Fix for default markers
+// Fix for default markers.
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
@@ -118,6 +119,414 @@ const ShipmentClusterLayer = ({ points, onSelect }) => {
   return null;
 };
 
+const EARTH_RADIUS_METERS = 6371000;
+
+const haversineMeters = (lat1, lng1, lat2, lng2) => {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const GPS_STAY_CLUSTER_RADIUS_METERS = 60; // collapse GPS jitter while parked/dwelling in one spot
+
+// Collapse consecutive points that jitter within a small radius (e.g. multipath
+// GPS noise while parked) into a single representative point, so a stationary
+// dwell doesn't draw as a tangle of back-and-forth segments. `points` must
+// already be sorted by timestamp.
+const collapseStationaryClusters = (points) => {
+  if (points.length === 0) return points;
+
+  const centroid = (cluster) => {
+    const lat = cluster.reduce((sum, p) => sum + p.latitude, 0) / cluster.length;
+    const lng = cluster.reduce((sum, p) => sum + p.longitude, 0) / cluster.length;
+    return [lat, lng];
+  };
+
+  const collapsed = [];
+  let cluster = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i];
+    const [cLat, cLng] = centroid(cluster);
+    if (haversineMeters(cLat, cLng, p.latitude, p.longitude) <= GPS_STAY_CLUSTER_RADIUS_METERS) {
+      cluster.push(p);
+    } else {
+      const [lat, lng] = centroid(cluster);
+      collapsed.push({ latitude: lat, longitude: lng });
+      cluster = [p];
+    }
+  }
+  const [lat, lng] = centroid(cluster);
+  collapsed.push({ latitude: lat, longitude: lng });
+  return collapsed;
+};
+
+const EXPANDED_CHART_WIDTH = 640;
+const EXPANDED_CHART_HEIGHT = 168;
+
+const expandedGeneratePath = (data, valueKey, maxHeight = EXPANDED_CHART_HEIGHT, maxWidth = EXPANDED_CHART_WIDTH) => {
+  if (!data || data.length === 0) return '';
+  const values = data.map(item => item[valueKey]).filter(val => val !== null && !isNaN(val));
+  if (values.length === 0) return '';
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue || 1;
+  return values.map((value, index) => {
+    const x = values.length > 1 ? (index / (values.length - 1)) * maxWidth : maxWidth / 2;
+    const y = maxHeight - ((value - minValue) / range) * (maxHeight - 20) - 10;
+    return `${x},${y}`;
+  }).join(' ');
+};
+
+const expandedFindClosestPoint = (data, valueKey, mouseX, maxWidth = EXPANDED_CHART_WIDTH) => {
+  if (!data || data.length === 0) return null;
+  const values = data.map(item => ({ value: item[valueKey], timestamp: item.timestamp }))
+    .filter(item => item.value !== null && !isNaN(item.value));
+  if (values.length === 0) return null;
+  const stepSize = values.length > 1 ? maxWidth / (values.length - 1) : maxWidth;
+  const index = values.length > 1 ? Math.round(mouseX / stepSize) : 0;
+  const clampedIndex = Math.max(0, Math.min(index, values.length - 1));
+  return { ...values[clampedIndex], index: clampedIndex, x: values.length > 1 ? clampedIndex * stepSize : maxWidth / 2 };
+};
+
+const expandedFormatTimestamp = (timestamp) => {
+  if (!timestamp || timestamp === 'N/A') return 'N/A';
+  try {
+    return new Date(timestamp).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  } catch {
+    return timestamp;
+  }
+};
+
+// Expanded sensor chart, rendered as a bottom-sheet overlay above the map. Dragging across
+// it selects a time range that both re-scales this chart to that window and drives the map
+// (via onBrushCommit) to fit the matching stretch of the route.
+// Defined at module scope (not nested in Shipments) so its drag state survives frequent
+// re-renders of the parent (e.g. from live websocket sensor updates).
+const SensorChartOverlay = ({ sensorRow, zoomRange, onBrushCommit, onResetZoom, onClose, onHoverChange, onHeightChange }) => {
+  const [dragStartX, setDragStartX] = useState(null);
+  const [dragCurrentX, setDragCurrentX] = useState(null);
+  // The point currently under the cursor — while set, the header shows this reading
+  // (value + the exact time it was recorded) instead of the latest one.
+  const [hoverPoint, setHoverPoint] = useState(null);
+  const svgRef = useRef(null);
+  const panelRef = useRef(null);
+
+  // Reports this panel's actual rendered height to the parent so the map can pad its
+  // "fit to route" bounds by exactly that much, keeping the full route visible above it.
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el || !onHeightChange) return;
+    const report = () => onHeightChange(el.offsetHeight);
+    report();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onHeightChange]);
+
+  const displayedData = useMemo(() => {
+    if (!zoomRange) return sensorRow.data;
+    return sensorRow.data.filter((item) => {
+      const t = new Date(item.timestamp).getTime();
+      return t >= zoomRange.start && t <= zoomRange.end;
+    });
+  }, [sensorRow.data, zoomRange]);
+
+  const pathPoints = expandedGeneratePath(displayedData, sensorRow.field);
+  const values = displayedData.map(d => d[sensorRow.field]).filter(v => v !== null && !isNaN(v));
+  const currentValue = values.length > 0 ? values[values.length - 1] : null;
+  const isHovering = hoverPoint && typeof hoverPoint.value === 'number';
+  const headerValue = isHovering ? hoverPoint.value : currentValue;
+
+  // Y position of the hovered point, using the same scale as expandedGeneratePath, so the
+  // crosshair's dot lands exactly on the line rather than just tracking the cursor's x.
+  const hoverY = useMemo(() => {
+    if (!isHovering || values.length === 0) return null;
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const range = maxValue - minValue || 1;
+    return EXPANDED_CHART_HEIGHT - ((hoverPoint.value - minValue) / range) * (EXPANDED_CHART_HEIGHT - 20) - 10;
+  }, [isHovering, hoverPoint, values]);
+
+  const toViewBoxX = (clientX) => {
+    if (!svgRef.current) return 0;
+    const rect = svgRef.current.getBoundingClientRect();
+    return Math.max(0, Math.min(EXPANDED_CHART_WIDTH, ((clientX - rect.left) / rect.width) * EXPANDED_CHART_WIDTH));
+  };
+
+  const handlePointerDown = (clientX) => {
+    const x = toViewBoxX(clientX);
+    setDragStartX(x);
+    setDragCurrentX(x);
+  };
+  // Mirrors the small sidebar charts: hovering (or dragging — the cursor position is still
+  // meaningful mid-drag) drives a matching dot on the map polyline.
+  const handlePointerMove = (clientX) => {
+    const x = toViewBoxX(clientX);
+    if (dragStartX !== null) {
+      setDragCurrentX(x);
+    }
+    const point = expandedFindClosestPoint(displayedData, sensorRow.field, x);
+    if (point) {
+      setHoverPoint(point);
+      if (onHoverChange) onHoverChange(point.timestamp);
+    }
+  };
+  const handlePointerUp = () => {
+    if (dragStartX === null || dragCurrentX === null) {
+      setDragStartX(null);
+      setDragCurrentX(null);
+      return;
+    }
+    const dragWidth = Math.abs(dragCurrentX - dragStartX);
+    if (dragWidth > 6) {
+      const p1 = expandedFindClosestPoint(displayedData, sensorRow.field, Math.min(dragStartX, dragCurrentX));
+      const p2 = expandedFindClosestPoint(displayedData, sensorRow.field, Math.max(dragStartX, dragCurrentX));
+      if (p1 && p2) {
+        const t1 = new Date(p1.timestamp).getTime();
+        const t2 = new Date(p2.timestamp).getTime();
+        if (Number.isFinite(t1) && Number.isFinite(t2) && t1 !== t2) {
+          onBrushCommit({ start: Math.min(t1, t2), end: Math.max(t1, t2) });
+        }
+      }
+    }
+    setDragStartX(null);
+    setDragCurrentX(null);
+  };
+  const handlePointerLeave = () => {
+    handlePointerUp();
+    setHoverPoint(null);
+    if (onHoverChange) onHoverChange(null);
+  };
+
+  const selectionRect = dragStartX !== null && dragCurrentX !== null
+    ? { x: Math.min(dragStartX, dragCurrentX), width: Math.abs(dragCurrentX - dragStartX) }
+    : null;
+
+  const firstTs = displayedData[0]?.timestamp;
+  const lastTs = displayedData[displayedData.length - 1]?.timestamp;
+
+  return (
+    <div ref={panelRef} className="expanded-chart-overlay" role="dialog" aria-label={`${sensorRow.label} expanded chart`}>
+      <div className="expanded-chart-grip" aria-hidden="true"></div>
+      <div className="expanded-chart-header">
+        <span className="expanded-chart-title">
+          <span className={`sensor-dot sensor-dot--${sensorRow.key}`}></span>
+          {sensorRow.label}
+          {typeof headerValue === 'number' && (
+            <span className="expanded-chart-current-value" style={{ color: sensorRow.color }}>
+              {headerValue.toFixed(1)}{sensorRow.unit}
+            </span>
+          )}
+          {isHovering && (
+            <span className="sensor-hover-time">{expandedFormatTimestamp(hoverPoint.timestamp)}</span>
+          )}
+        </span>
+        <span className="expanded-chart-actions">
+          {zoomRange && (
+            <button type="button" className="expanded-chart-btn" onClick={onResetZoom} title="Reset zoom" aria-label="Reset zoom">
+              <RotateCcw size={13} /> Reset zoom
+            </button>
+          )}
+          <button type="button" className="expanded-chart-btn expanded-chart-btn--close" onClick={onClose} title="Close expanded chart" aria-label="Close expanded chart">
+            <X size={15} />
+          </button>
+        </span>
+      </div>
+      <div className="expanded-chart-hint">Drag across the chart to zoom into a time range — the map follows</div>
+      <svg
+        ref={svgRef}
+        className="expanded-chart-svg"
+        width="100%"
+        height={EXPANDED_CHART_HEIGHT}
+        viewBox={`0 0 ${EXPANDED_CHART_WIDTH} ${EXPANDED_CHART_HEIGHT}`}
+        preserveAspectRatio="none"
+        style={{ touchAction: 'none' }}
+        onMouseDown={(e) => handlePointerDown(e.clientX)}
+        onMouseMove={(e) => handlePointerMove(e.clientX)}
+        onMouseUp={handlePointerUp}
+        onMouseLeave={handlePointerLeave}
+        onTouchStart={(e) => e.touches[0] && handlePointerDown(e.touches[0].clientX)}
+        onTouchMove={(e) => e.touches[0] && handlePointerMove(e.touches[0].clientX)}
+        onTouchEnd={handlePointerUp}
+      >
+        {displayedData.length > 0 ? (
+          <>
+            <line x1="0" y1={EXPANDED_CHART_HEIGHT - 1} x2={EXPANDED_CHART_WIDTH} y2={EXPANDED_CHART_HEIGHT - 1} stroke="var(--color-border)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            <polygon fill={sensorRow.fill} points={pathPoints + ` ${EXPANDED_CHART_WIDTH},${EXPANDED_CHART_HEIGHT} 0,${EXPANDED_CHART_HEIGHT}`} />
+            <polyline fill="none" stroke={sensorRow.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" points={pathPoints} />
+            {selectionRect && (
+              <rect x={selectionRect.x} y="0" width={selectionRect.width} height={EXPANDED_CHART_HEIGHT} fill="rgba(37,99,235,0.16)" stroke="rgba(37,99,235,0.65)" strokeWidth="1" />
+            )}
+            {isHovering && (
+              <>
+                <line
+                  x1={hoverPoint.x} y1="0" x2={hoverPoint.x} y2={EXPANDED_CHART_HEIGHT}
+                  stroke="#475569" strokeWidth="1" strokeDasharray="4,4" opacity="0.7"
+                  vectorEffect="non-scaling-stroke"
+                />
+                {hoverY !== null && (
+                  <circle cx={hoverPoint.x} cy={hoverY} r="3.5" fill={sensorRow.color} stroke="#fff" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                )}
+              </>
+            )}
+          </>
+        ) : (
+          <text x={EXPANDED_CHART_WIDTH / 2} y={EXPANDED_CHART_HEIGHT / 2} textAnchor="middle" fill="#94a3b8" fontSize="12" fontFamily="var(--font-sans)">No data</text>
+        )}
+      </svg>
+      {displayedData.length > 0 && (
+        <div className="expanded-chart-range-labels">
+          <span>{expandedFormatTimestamp(firstTs)}</span>
+          <span>{expandedFormatTimestamp(lastTs)}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// The four map child components below are defined at module scope, not nested inside
+// Shipments, specifically so their function identity is stable across Shipments re-renders.
+// A nested component (`const Foo = () => {...}` inside another component's body) is a new
+// function — and therefore a new React element type — every render; React then remounts it
+// at that tree position, which reruns its effects unconditionally (mount always runs an
+// effect regardless of its dependency array). Shipments re-renders very frequently while a
+// chart is being hovered (every mousemove updates hover-marker state), so a nested
+// map-bounds-fitting component would re-fit/re-zoom the map on every single mouse move.
+// Being module-scope components, these instead only run their effects when the actual
+// values passed to them as props change.
+
+// Fits the map to the full route + alert markers whenever the selected shipment or its
+// route data changes.
+const MapBoundsHandler = ({ selectedShipmentId, routeCoordinates, alertMarkers }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!selectedShipmentId) return;
+    const alertCoordinates = alertMarkers.map((m) => [m.lat, m.lng]);
+    const coordinates = [...routeCoordinates, ...alertCoordinates];
+    if (coordinates.length > 0) {
+      const bounds = L.latLngBounds(coordinates);
+      map.fitBounds(bounds, { padding: [20, 20], maxZoom: 15 });
+    }
+  }, [map, selectedShipmentId, routeCoordinates, alertMarkers]);
+
+  return null;
+};
+
+// Keeps the world map filling the container width with no gaps on either side
+const MapFitWidthHandler = () => {
+  const map = useMap();
+
+  useEffect(() => {
+    const applyMinZoom = () => {
+      const width = map.getSize().x;
+      if (!width) return;
+      // Fractional zoom so the world map's pixel width matches the
+      // container width exactly (no gaps, no cropping from over-zooming).
+      const minZoom = Math.max(2, Math.log2(width / 256));
+      map.setMinZoom(minZoom);
+      if (map.getZoom() < minZoom) {
+        map.setZoom(minZoom);
+      }
+    };
+
+    applyMinZoom();
+    map.on('resize', applyMinZoom);
+
+    const handleWindowResize = () => map.invalidateSize();
+    window.addEventListener('resize', handleWindowResize);
+
+    return () => {
+      map.off('resize', applyMinZoom);
+      window.removeEventListener('resize', handleWindowResize);
+    };
+  }, [map]);
+
+  return null;
+};
+
+// Keeps the map's view synced to the expanded sensor chart's brushed time range: fits to
+// just that stretch of the route when a range is selected, and back to the full route
+// when the brush is cleared while the chart panel is still open. Does NOT react to
+// hovering the chart — only to a committed brush selection — so panning the mouse across
+// the chart moves the hover dot (handled elsewhere) without touching the map's zoom.
+const ChartZoomMapSync = ({ expandedSensorKey, chartZoomRange, locationData, routeCoordinates, overlayHeight }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!expandedSensorKey) return;
+
+    // The expanded chart overlay docks to the bottom of the map, so bounds must be padded
+    // by its actual height (plus a little breathing room) on that side specifically —
+    // otherwise "fit to route" leaves the lower part of the route hidden underneath it.
+    // Falls back to a conservative estimate before the overlay's real height is measured.
+    const bottomPad = (overlayHeight || 260) + 24;
+
+    if (chartZoomRange) {
+      const pts = locationData
+        .filter((p) => {
+          const t = new Date(p.timestamp).getTime();
+          return t >= chartZoomRange.start && t <= chartZoomRange.end;
+        })
+        .map((p) => [p.latitude, p.longitude]);
+      if (pts.length > 0) {
+        map.fitBounds(L.latLngBounds(pts), {
+          paddingTopLeft: [50, 50],
+          paddingBottomRight: [50, bottomPad],
+          maxZoom: 17
+        });
+      }
+      return;
+    }
+
+    if (routeCoordinates.length > 0) {
+      map.fitBounds(L.latLngBounds(routeCoordinates), {
+        paddingTopLeft: [20, 20],
+        paddingBottomRight: [20, bottomPad],
+        maxZoom: 15
+      });
+    }
+  }, [map, chartZoomRange, expandedSensorKey, locationData, routeCoordinates, overlayHeight]);
+
+  return null;
+};
+
+// MapTiler Geocoding Control React wrapper
+const MapTilerGeocodingControl = ({ apiKey }) => {
+  const map = useMap();
+  useEffect(() => {
+    // Only run if window.L and window.maptiler exist (CDN loaded)
+    if (window.L && window.maptiler && window.maptiler.geocoding) {
+      const geocodingControl = window.maptiler.geocoding.control({
+        apiKey,
+        marker: true,
+        showResultsWhileTyping: true,
+        collapsed: false,
+        placeholder: 'Search address…'
+      }).addTo(map);
+
+      // Optionally, listen for geocode result events
+      geocodingControl.on('select', (e) => {
+        // e.data contains the selected result
+        // e.data.lat, e.data.lon
+        // You can update your state or do something here if needed
+      });
+
+      return () => {
+        map.removeControl(geocodingControl);
+      };
+    }
+  }, [map, apiKey]);
+  return null;
+};
+
 const Shipments = () => {
   const { user, isAuthenticated, loading } = useAuth();
   const { connected: wsConnected, sensorData } = useWebSocketContext();
@@ -133,8 +542,6 @@ const Shipments = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [shipments, setShipments] = useState([]);
   const [trackers, setTrackers] = useState([]);
-  // Latest known {lat, lng} per trackerId, used to plot all shipments on the overview map
-  const [trackerLocations, setTrackerLocations] = useState({});
   const [selectedTracker, setSelectedTracker] = useState('');
   const [formData, setFormData] = useState({
     legs: [{
@@ -159,6 +566,11 @@ const Shipments = () => {
   const [lightData, setLightData] = useState([]);
   const [locationData, setLocationData] = useState([]);
   const [isLoadingSensorData, setIsLoadingSensorData] = useState(false);
+  const [useSnappedRoute, setUseSnappedRoute] = useState(false);
+  const [snappedCoordinates, setSnappedCoordinates] = useState([]);
+  const [isSnappingRoute, setIsSnappingRoute] = useState(false);
+  const [snapError, setSnapError] = useState(null);
+  const [snapRouteParams, setSnapRouteParams] = useState(null);
   const [alertsData, setAlertsData] = useState([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [alertEvents, setAlertEvents] = useState([]);
@@ -166,10 +578,25 @@ const Shipments = () => {
   // Add state for hover marker on polyline
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
   const [hoverMarkerData, setHoverMarkerData] = useState(null);
-  
+  // When true, a chart click has frozen the marker in place (e.g. so the user can take a screenshot)
+  // and further hover/touch movement is ignored until it's unpinned.
+  const [isMarkerPinned, setIsMarkerPinned] = useState(false);
+
+  // Which sensor card is expanded into the overlay above the map, and the brushed
+  // time range (epoch ms) it's currently zoomed to. Both drive the map's fitted bounds.
+  const [expandedSensorKey, setExpandedSensorKey] = useState(null);
+  const [chartZoomRange, setChartZoomRange] = useState(null);
+  // Actual rendered height of the expanded chart overlay, reported by it via a
+  // ResizeObserver — used to pad the map's fitted bounds so the whole route stays
+  // visible above the panel instead of running underneath it.
+  const [expandedChartHeight, setExpandedChartHeight] = useState(0);
+
   // Add state for geocoded leg coordinates and geofence radii
   const [legCoordinates, setLegCoordinates] = useState({});
   const [geofenceRadii, setGeofenceRadii] = useState({});
+  // 'circle' (radius slider, default) or 'polygon' (hand-drawn custom shape)
+  const [geofenceShapeMode, setGeofenceShapeMode] = useState({});
+  const [geofencePolygons, setGeofencePolygons] = useState({});
   const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
   
   // User timezone (you can make this configurable)
@@ -235,59 +662,6 @@ const Shipments = () => {
     fetchTrackers();
   }, [loading]); // Only depend on loading from AuthContext
 
-  // Bulk-fetch the latest GPS position for every tracker, so the overview map
-  // can plot where all shipments currently are without opening each one.
-  useEffect(() => {
-    if (loading) return;
-
-    let cancelled = false;
-    const fetchTrackerLocations = async () => {
-      try {
-        const data = await trackerApi.getLocations();
-        if (!cancelled) setTrackerLocations(data || {});
-      } catch (error) {
-        console.error('Error fetching tracker locations:', error);
-      }
-    };
-
-    fetchTrackerLocations();
-    const intervalId = setInterval(fetchTrackerLocations, 60000);
-    return () => {
-      cancelled = true;
-      clearInterval(intervalId);
-    };
-  }, [loading]);
-
-  // Keep overview positions fresh in real time from the same WebSocket feed
-  // used for the single-shipment detail view (sensorData is keyed by trackerId for ALL trackers).
-  useEffect(() => {
-    const trackerIds = Object.keys(sensorData || {});
-    if (trackerIds.length === 0) return;
-
-    setTrackerLocations(prev => {
-      let changed = false;
-      const next = { ...prev };
-      trackerIds.forEach(trackerId => {
-        const payload = sensorData[trackerId];
-        const reading = Array.isArray(payload?.data) && payload.data.length > 0
-          ? payload.data[payload.data.length - 1]
-          : payload;
-        const lat = reading?.Lat ?? reading?.latitude;
-        const lng = reading?.Lng ?? reading?.longitude;
-        if (lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng))) {
-          next[trackerId] = {
-            tracker_id: trackerId,
-            latitude: parseFloat(lat),
-            longitude: parseFloat(lng),
-            timestamp: reading?.DT ?? reading?.timestamp ?? new Date().toISOString(),
-          };
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-  }, [sensorData]);
-
   // Filter shipments based on search term
   const filteredShipments = useMemo(() => shipments.filter(shipment => {
     const trackerId = shipment.trackerId?.toString().toLowerCase() || '';
@@ -312,76 +686,36 @@ const Shipments = () => {
     return 'Delivered';
   };
 
-  // Delivered shipments don't have a "current" GPS fix worth showing (their
-  // tracker has likely moved on to a new shipment), so each one is anchored
-  // to its own last-known position from its own ship/arrival window instead
-  // of the tracker's live location. Cached per shipment id since it never
-  // changes once fetched.
-  const [deliveredShipmentPositions, setDeliveredShipmentPositions] = useState({});
-  const fetchedDeliveredPositionIdsRef = useRef(new Set());
+  // The overview map plots shipments by their declared address, not live GPS —
+  // trackers get reused across shipments, so a device's actual last fix often
+  // belongs to a completely different (and differently located) shipment.
+  // Geocoding the address is the only thing that reliably matches what the
+  // shipment list itself says. Delivered shipments use their destination
+  // (where they ended up); Pending/In Transit use their origin (the one
+  // address that's fixed and known before the tracker moves at all).
+  // Cached per address string via MapTiler, since many shipments reuse the
+  // same warehouse/stop addresses.
+  const [geocodedAddresses, setGeocodedAddresses] = useState({});
+  const fetchedAddressesRef = useRef(new Set());
+
+  const addressForShipment = (shipment) => {
+    const status = getShipmentStatus(shipment);
+    const legs = shipment.legs || [];
+    return status === 'Delivered'
+      ? legs[legs.length - 1]?.stopAddress
+      : legs[0]?.shipFromAddress;
+  };
 
   useEffect(() => {
-    const toFetch = filteredShipments.filter(shipment => {
-      if (getShipmentStatus(shipment) !== 'Delivered') return false;
-      if (fetchedDeliveredPositionIdsRef.current.has(shipment._id)) return false;
-      const trackerId = shipment.trackerId;
-      const shipDate = shipment.legs?.[0]?.shipDate;
-      const arrivalDate = shipment.legs?.[shipment.legs.length - 1]?.arrivalDate;
-      return Boolean(trackerId && shipDate && arrivalDate);
-    });
-    if (toFetch.length === 0) return;
+    const toFetch = filteredShipments
+      .map(shipment => addressForShipment(shipment))
+      .filter(address => address && !fetchedAddressesRef.current.has(address));
+    const uniqueToFetch = [...new Set(toFetch)];
+    if (uniqueToFetch.length === 0) return;
 
     let cancelled = false;
     (async () => {
-      const entries = await Promise.all(toFetch.map(async shipment => {
-        const trackerId = shipment.trackerId;
-        const shipDate = shipment.legs?.[0]?.shipDate;
-        const arrivalDate = shipment.legs?.[shipment.legs.length - 1]?.arrivalDate;
-        try {
-          const data = await shipmentApi.getRouteData(trackerId, shipDate, arrivalDate, userTimezone);
-          const lastRecord = Array.isArray(data) && data.length > 0 ? data[data.length - 1] : null;
-          const lat = parseFloat(lastRecord?.latitude ?? lastRecord?.Lat ?? lastRecord?.lat);
-          const lng = parseFloat(lastRecord?.longitude ?? lastRecord?.Lng ?? lastRecord?.lng);
-          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-          // Only mark as fetched once we actually have a position — a failed
-          // or empty response shouldn't permanently suppress retries, or the
-          // shipment gets stuck falling back to the tracker's live location.
-          fetchedDeliveredPositionIdsRef.current.add(shipment._id);
-          return [shipment._id, { latitude: lat, longitude: lng }];
-        } catch (error) {
-          console.error(`Error fetching last position for shipment ${shipment._id}:`, error);
-          return null;
-        }
-      }));
-      if (cancelled) return;
-      const validEntries = entries.filter(Boolean);
-      if (validEntries.length === 0) return;
-      setDeliveredShipmentPositions(prev => ({ ...prev, ...Object.fromEntries(validEntries) }));
-    })();
-
-    return () => { cancelled = true; };
-  }, [filteredShipments, userTimezone]);
-
-  // Scheduled-but-not-started shipments haven't produced any GPS fix yet, so
-  // their tracker's "live" location is really wherever the device sat after
-  // its *previous* shipment — misleading. Anchor them to their planned origin
-  // address instead (geocoded via MapTiler, same as the leg pins in the
-  // detail view). Cached per shipment id since the origin address is static.
-  const [pendingShipmentPositions, setPendingShipmentPositions] = useState({});
-  const fetchedPendingPositionIdsRef = useRef(new Set());
-
-  useEffect(() => {
-    const toFetch = filteredShipments.filter(shipment => {
-      if (getShipmentStatus(shipment) !== 'Pending') return false;
-      if (fetchedPendingPositionIdsRef.current.has(shipment._id)) return false;
-      return Boolean(shipment.legs?.[0]?.shipFromAddress);
-    });
-    if (toFetch.length === 0) return;
-
-    let cancelled = false;
-    (async () => {
-      const entries = await Promise.all(toFetch.map(async shipment => {
-        const address = shipment.legs[0].shipFromAddress;
+      const entries = await Promise.all(uniqueToFetch.map(async address => {
         try {
           const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(address)}.json?key=${MAPTILER_API_KEY}`;
           const res = await fetch(url);
@@ -389,49 +723,34 @@ const Shipments = () => {
           const feature = data?.features?.[0];
           if (!feature) return null;
           // Only mark as fetched once we actually have a position — a failed
-          // or empty response shouldn't permanently suppress retries, or the
-          // shipment gets stuck falling back to the tracker's live location.
-          fetchedPendingPositionIdsRef.current.add(shipment._id);
-          return [shipment._id, { latitude: feature.geometry.coordinates[1], longitude: feature.geometry.coordinates[0] }];
+          // or empty response shouldn't permanently suppress retries.
+          fetchedAddressesRef.current.add(address);
+          return [address, { latitude: feature.geometry.coordinates[1], longitude: feature.geometry.coordinates[0] }];
         } catch (error) {
-          console.error(`Error geocoding origin for shipment ${shipment._id}:`, error);
+          console.error(`Error geocoding address "${address}":`, error);
           return null;
         }
       }));
       if (cancelled) return;
       const validEntries = entries.filter(Boolean);
       if (validEntries.length === 0) return;
-      setPendingShipmentPositions(prev => ({ ...prev, ...Object.fromEntries(validEntries) }));
+      setGeocodedAddresses(prev => ({ ...prev, ...Object.fromEntries(validEntries) }));
     })();
 
     return () => { cancelled = true; };
   }, [filteredShipments]);
 
   // Shipments with a known position, for the clustered overview map.
-  // - Delivered: own historical last-known position (avoids collapsing onto
-  //   a reused tracker's current spot).
-  // - Pending: geocoded planned origin (the tracker hasn't started moving on
-  //   this shipment yet, so its live position isn't relevant).
-  // - In Transit: tracker's live location.
-  // Any of these fall back to the tracker's live location if their preferred
-  // position isn't available yet, rather than hiding the shipment.
   const shipmentMapPoints = useMemo(() => {
     return filteredShipments
       .map(shipment => {
-        const status = getShipmentStatus(shipment);
-        if (status === 'Delivered') {
-          const pos = deliveredShipmentPositions[shipment._id];
-          if (pos) return { shipment, lat: pos.latitude, lng: pos.longitude, isPending: false };
-        } else if (status === 'Pending') {
-          const pos = pendingShipmentPositions[shipment._id];
-          if (pos) return { shipment, lat: pos.latitude, lng: pos.longitude, isPending: true };
-        }
-        const loc = trackerLocations[shipment.trackerId] ?? trackerLocations[String(shipment.trackerId)];
-        if (!loc) return null;
-        return { shipment, lat: loc.latitude, lng: loc.longitude, isPending: status === 'Pending' };
+        const address = addressForShipment(shipment);
+        const pos = address ? geocodedAddresses[address] : null;
+        if (!pos) return null;
+        return { shipment, lat: pos.latitude, lng: pos.longitude, isPending: getShipmentStatus(shipment) === 'Pending' };
       })
       .filter(Boolean);
-  }, [filteredShipments, trackerLocations, deliveredShipmentPositions, pendingShipmentPositions]);
+  }, [filteredShipments, geocodedAddresses]);
 
   const handleSelectAll = () => {
     if (selectAll) {
@@ -538,6 +857,14 @@ const Shipments = () => {
     });
   };
 
+  const setGeofenceMode = (legIndex, mode) => {
+    setGeofenceShapeMode(prev => ({ ...prev, [legIndex]: mode }));
+  };
+
+  const handlePolygonChange = (legIndex, points) => {
+    setGeofencePolygons(prev => ({ ...prev, [legIndex]: points }));
+  };
+
   const handleAddStop = () => {
     setFormData(prev => ({
       ...prev,
@@ -576,20 +903,41 @@ const Shipments = () => {
       return;
     }
 
+    // A leg with geofence enabled in "custom shape" mode must have a finished polygon
+    // (at least 3 points) before we can save it - otherwise there's nothing to alert on.
+    const hasIncompleteShape = formData.legs.some((leg, index) => {
+      if (geofenceRadii[index] === undefined) return false;
+      if (geofenceShapeMode[index] !== 'polygon') return false;
+      return !(geofencePolygons[index] && geofencePolygons[index].length >= 3);
+    });
+
+    if (hasIncompleteShape) {
+      alert('One of your destinations has "Custom shape" selected but no shape has been drawn yet. Please finish drawing the geofence shape, or switch back to "Radius circle".');
+      return;
+    }
+
     try {
+      const buildGeofencePreset = (index) => {
+        if (!legCoordinates[index]) return [];
+        const base = {
+          type: 'geofence',
+          latitude: legCoordinates[index].latitude,
+          longitude: legCoordinates[index].longitude,
+          enabled: true
+        };
+        if (geofenceShapeMode[index] === 'polygon' && geofencePolygons[index]?.length >= 3) {
+          return [{ ...base, shape: 'polygon', points: geofencePolygons[index] }];
+        }
+        return [{ ...base, shape: 'circle', radius: geofenceRadii[index] || 1000 }];
+      };
+
       const shipmentData = {
         trackerId: selectedTracker,
         legs: formData.legs.map((leg, index) => ({
           legNumber: index + 1,
           shipFromAddress: index === 0 ? leg.shipFrom : undefined,
           shipDate: leg.shipDate,
-          alertPresets: legCoordinates[index] ? [{
-            type: 'geofence',
-            latitude: legCoordinates[index].latitude,
-            longitude: legCoordinates[index].longitude,
-            radius: geofenceRadii[index] || 1000,
-            enabled: true
-          }] : [],
+          alertPresets: buildGeofencePreset(index),
           mode: leg.transportMode,
           carrier: leg.carrier,
           stopAddress: leg.stopAddress || leg.shipTo,
@@ -622,6 +970,8 @@ const Shipments = () => {
     setSelectedTracker('');
     setLegCoordinates({});
     setGeofenceRadii({});
+    setGeofenceShapeMode({});
+    setGeofencePolygons({});
     setFormData({
       legs: [{
         shipFrom: '',
@@ -659,6 +1009,13 @@ const Shipments = () => {
     setSpeedData([]);
     setLightData([]);
     setLocationData([]);
+    setUseSnappedRoute(false);
+    setSnappedCoordinates([]);
+    setSnapError(null);
+    setSnapRouteParams(null);
+    setExpandedSensorKey(null);
+    setChartZoomRange(null);
+    setExpandedChartHeight(0);
     console.log('Clearing alerts data for new shipment');
     setAlertsData([]);
     setAlertEvents([]);
@@ -678,6 +1035,7 @@ const Shipments = () => {
       return;
     }
 
+    setSnapRouteParams({ trackerId, shipDate, arrivalDate });
     setIsLoadingSensorData(true);
     try {
       const data = await shipmentApi.getRouteData(trackerId, shipDate, arrivalDate, userTimezone);
@@ -759,7 +1117,12 @@ const Shipments = () => {
                   : record.lon !== undefined
                     ? parseFloat(record.lon)
                     : null,
-          })).filter(item => 
+            speed: record.speed !== undefined
+              ? parseFloat(record.speed)
+              : record.Speed !== undefined
+                ? parseFloat(record.Speed)
+                : null,
+          })).filter(item =>
             item.latitude !== null && 
             item.longitude !== null && 
             !isNaN(item.latitude) && 
@@ -1026,9 +1389,17 @@ const Shipments = () => {
     setSpeedData([]);
     setLightData([]);
     setLocationData([]);
+    setUseSnappedRoute(false);
+    setSnappedCoordinates([]);
+    setSnapError(null);
+    setSnapRouteParams(null);
     // Clear hover marker
     setHoverMarkerPosition(null);
     setHoverMarkerData(null);
+    setIsMarkerPinned(false);
+    setExpandedSensorKey(null);
+    setChartZoomRange(null);
+    setExpandedChartHeight(0);
   };
   // Helper function to generate SVG path from data points
   const generateSVGPath = (data, valueKey, maxHeight = 60, maxWidth = 300) => {
@@ -1089,21 +1460,112 @@ const Shipments = () => {
   // Helper function to find the closest data point to mouse position
   const findClosestDataPoint = (data, valueKey, mouseX, maxWidth = 300) => {
     if (!data || data.length === 0) return null;
-    
+
     const values = data.map(item => ({ value: item[valueKey], timestamp: item.timestamp }))
                         .filter(item => item.value !== null && !isNaN(item.value));
     if (values.length === 0) return null;
-    
+
     const stepSize = maxWidth / (values.length - 1);
     const index = Math.round(mouseX / stepSize);
     const clampedIndex = Math.max(0, Math.min(index, values.length - 1));
-    
+
     return {
       ...values[clampedIndex],
       index: clampedIndex,
       x: clampedIndex * stepSize
     };
-  };  // Helper function to find location data point by timestamp
+  };
+
+  // Same sensor rows shown in the "Sensors" tab, exposed here so the shared hover/sync
+  // logic can look up every sensor's own data array (each has independent timestamps).
+  const getSensorRowsConfig = () => ([
+    { key: 'temp', label: 'Temperature', data: temperatureData, field: 'temperature', unit: '°C', color: '#ef4444', fill: 'rgba(239,68,68,0.08)' },
+    { key: 'humidity', label: 'Humidity', data: humidityData, field: 'humidity', unit: '%', color: '#3b82f6', fill: 'rgba(59,130,246,0.08)' },
+    { key: 'battery', label: 'Battery', data: batteryData, field: 'battery', unit: '%', color: '#22c55e', fill: 'rgba(34,197,94,0.08)' },
+    { key: 'speed', label: 'Speed', data: speedData, field: 'speed', unit: ' km/h', color: '#ea580c', fill: 'rgba(234,88,12,0.08)' },
+    { key: 'light', label: 'Light', data: lightData, field: 'light', unit: ' Lux', color: '#ca8a04', fill: 'rgba(202,138,4,0.08)' },
+  ]);
+
+  // Finds the point in `data` whose timestamp is closest to `timestamp` (rather than by
+  // mouse x), so charts with different point counts/timestamps still line up correctly.
+  const findClosestPointByTimestamp = (data, valueKey, timestamp, maxWidth = 300) => {
+    if (!data || data.length === 0 || !timestamp) return null;
+
+    const values = data.map(item => ({ value: item[valueKey], timestamp: item.timestamp }))
+                        .filter(item => item.value !== null && !isNaN(item.value));
+    if (values.length === 0) return null;
+
+    const targetTime = new Date(timestamp).getTime();
+    let closestIndex = 0;
+    let minDiff = Infinity;
+    values.forEach((item, i) => {
+      const diff = Math.abs(new Date(item.timestamp).getTime() - targetTime);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIndex = i;
+      }
+    });
+
+    const stepSize = values.length > 1 ? maxWidth / (values.length - 1) : 0;
+    return {
+      ...values[closestIndex],
+      index: closestIndex,
+      x: values.length > 1 ? closestIndex * stepSize : maxWidth / 2
+    };
+  };
+
+  // Draws (or hides) the dashed crosshair line on every sensor chart at the position
+  // matching `timestamp`, so hovering one chart lines up the same instant on all of them.
+  const syncAllChartVerticalLines = (timestamp) => {
+    getSensorRowsConfig().forEach((row) => {
+      const verticalLineId = `chart-vertical-line-${row.key}`;
+      const chartEl = document.getElementById(`chart-svg-${row.key}`);
+      const point = findClosestPointByTimestamp(row.data, row.field, timestamp);
+
+      let verticalLine = document.getElementById(verticalLineId);
+      if (!point || !chartEl) {
+        if (verticalLine) verticalLine.style.display = 'none';
+        return;
+      }
+
+      if (!verticalLine) {
+        verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        verticalLine.id = verticalLineId;
+        verticalLine.setAttribute('stroke', '#666');
+        verticalLine.setAttribute('stroke-width', '1');
+        verticalLine.setAttribute('stroke-dasharray', '3,3');
+        verticalLine.setAttribute('opacity', '0.7');
+        chartEl.appendChild(verticalLine);
+      }
+
+      const xPos = isNaN(point.x) ? 0 : point.x;
+      verticalLine.setAttribute('x1', xPos);
+      verticalLine.setAttribute('y1', '0');
+      verticalLine.setAttribute('x2', xPos);
+      verticalLine.setAttribute('y2', '60');
+      verticalLine.style.display = 'block';
+    });
+  };
+
+  // Hides the synced crosshair on every sensor chart at once.
+  const hideAllChartVerticalLines = () => {
+    getSensorRowsConfig().forEach((row) => {
+      const verticalLine = document.getElementById(`chart-vertical-line-${row.key}`);
+      if (verticalLine) verticalLine.style.display = 'none';
+    });
+  };
+
+  // Builds the combined tooltip: every sensor's reading at the hovered timestamp.
+  const buildSyncedTooltipHtml = (timestamp) => {
+    const rows = getSensorRowsConfig().map((row) => {
+      const point = findClosestPointByTimestamp(row.data, row.field, timestamp);
+      const valueStr = point && typeof point.value === 'number' ? `${point.value.toFixed(1)}${row.unit}` : 'N/A';
+      return `<span style="color:${row.color}">●</span> ${row.label}: <strong>${valueStr}</strong>`;
+    }).join('<br/>');
+    return `${rows}<br/><strong>Time:</strong> ${formatTimestamp(timestamp)}`;
+  };
+
+  // Helper function to find location data point by timestamp
   const findLocationByTimestamp = (timestamp) => {
     if (!locationData || locationData.length === 0 || !timestamp || timestamp === 'N/A') {
       return null;
@@ -1127,17 +1589,36 @@ const Shipments = () => {
     return closestPoint;
   };
 
+  // Small lucide-style icon per sensor type, used on the map hover card
+  const getSensorIcon = (key) => {
+    const common = { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'white', strokeWidth: 2.5, strokeLinecap: 'round', strokeLinejoin: 'round' };
+    switch (key) {
+      case 'temp':
+        return <svg {...common}><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>;
+      case 'humidity':
+        return <svg {...common}><path d="M12 2.7 17.7 9a8 8 0 1 1-11.4 0Z"/></svg>;
+      case 'battery':
+        return <svg {...common}><rect x="2" y="7" width="16" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/></svg>;
+      case 'speed':
+        return <svg {...common}><path d="M12 14 15 10"/><path d="M3.5 19a9 9 0 1 1 17 0"/></svg>;
+      case 'light':
+        return <svg {...common}><circle cx="12" cy="12" r="4"/><path d="M12 3v2"/><path d="M12 19v2"/><path d="m5 5 1.4 1.4"/><path d="m17.6 17.6 1.4 1.4"/><path d="M3 12h2"/><path d="M19 12h2"/><path d="m5 19 1.4-1.4"/><path d="m17.6 6.4 1.4-1.4"/></svg>;
+      default:
+        return null;
+    }
+  };
+
   // Helper function to handle chart hover
-  const handleChartHover = (e, data, valueKey, sensorName, unit) => {
+  const handleChartHover = (e, data, valueKey, sensorName, unit, sensorKey, color) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const mouseX = ((e.clientX - rect.left) / rect.width) * 300; // Scale to viewBox width
-    
+
     const closestPoint = findClosestDataPoint(data, valueKey, mouseX);
-    
+
     if (closestPoint) {
       // Find corresponding location on polyline
       const locationPoint = findLocationByTimestamp(closestPoint.timestamp);
-      
+
       if (locationPoint) {
         setHoverMarkerPosition([locationPoint.latitude, locationPoint.longitude]);
         setHoverMarkerData({
@@ -1145,7 +1626,9 @@ const Shipments = () => {
           sensorName: sensorName,
           sensorValue: closestPoint.value,
           unit: unit,
-          location: locationPoint
+          location: locationPoint,
+          key: sensorKey,
+          color: color
         });
       }
 
@@ -1206,13 +1689,61 @@ const Shipments = () => {
     }
   };
 
+  // Resolves a chart-local x coordinate to a data point + map location, then updates the
+  // hover marker/vertical-line/tooltip. Shared by live hover, touch, and click-to-pin.
+  const applyChartPoint = (chartEl, pageX, pageY, xViewBox, data, valueKey, sensorName, unit, sensorKey, color, { pin, showCursorTooltip }) => {
+    const closestPoint = findClosestDataPoint(data, valueKey, xViewBox);
+    if (!closestPoint) return;
+
+    const locationPoint = findLocationByTimestamp(closestPoint.timestamp);
+
+    if (locationPoint) {
+      setHoverMarkerPosition([locationPoint.latitude, locationPoint.longitude]);
+      setHoverMarkerData({
+        timestamp: closestPoint.timestamp,
+        sensorName: sensorName,
+        sensorValue: closestPoint.value,
+        unit: unit,
+        location: locationPoint,
+        key: sensorKey,
+        color: color
+      });
+    }
+    if (pin) {
+      setIsMarkerPinned(true);
+    }
+
+    // Sync the dashed crosshair across every sensor chart to this same timestamp,
+    // not just the one being hovered/touched.
+    syncAllChartVerticalLines(closestPoint.timestamp);
+
+    // Show tooltip for desktop (don't show on mobile as it can interfere with touch).
+    // It now lists every sensor's reading at this timestamp, not just the hovered one.
+    if (showCursorTooltip) {
+      const tooltip = document.getElementById('chart-tooltip');
+      if (tooltip) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = pageX + 15 + 'px';
+        tooltip.style.top = pageY - 60 + 'px';
+        tooltip.innerHTML = `
+          ${buildSyncedTooltipHtml(closestPoint.timestamp)}<br/>
+          <strong>Location:</strong> ${locationPoint ? `${locationPoint.latitude.toFixed(4)}, ${locationPoint.longitude.toFixed(4)}` : 'N/A'}
+        `;
+      }
+    }
+  };
+
   // Helper function to handle chart hover and touch events
-  const handleChartInteraction = (e, data, valueKey, sensorName, unit) => {
+  const handleChartInteraction = (e, data, valueKey, sensorName, unit, sensorKey, color) => {
     e.preventDefault(); // Prevent default touch behaviors
-    
+
+    // A click already froze the marker in place — ignore further hover/touch movement
+    // until the user unpins it, so the pinned reading doesn't jump while they screenshot.
+    if (isMarkerPinned) return;
+
     const rect = e.currentTarget.getBoundingClientRect();
     let clientX;
-    
+
     // Handle both mouse and touch events
     if (e.type === 'touchstart' || e.type === 'touchmove') {
       if (e.touches && e.touches.length > 0) {
@@ -1223,88 +1754,61 @@ const Shipments = () => {
     } else {
       clientX = e.clientX;
     }
-    
-    const mouseX = ((clientX - rect.left) / rect.width) * 300; // Scale to viewBox width
-    
-    const closestPoint = findClosestDataPoint(data, valueKey, mouseX);
-    
-    if (closestPoint) {
-      // Find corresponding location on polyline
-      const locationPoint = findLocationByTimestamp(closestPoint.timestamp);
-      
-      if (locationPoint) {
-        setHoverMarkerPosition([locationPoint.latitude, locationPoint.longitude]);
-        setHoverMarkerData({
-          timestamp: closestPoint.timestamp,
-          sensorName: sensorName,
-          sensorValue: closestPoint.value,
-          unit: unit,
-          location: locationPoint
-        });
-      }
 
-      // Create unique ID for each chart's vertical line
-      const chartId = sensorName.toLowerCase().replace(' ', '-');
-      const verticalLineId = `chart-vertical-line-${chartId}`;
-      
-      // Show vertical line
-      let verticalLine = document.getElementById(verticalLineId);
-      if (!verticalLine) {
-        verticalLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        verticalLine.id = verticalLineId;
-        verticalLine.setAttribute('stroke', '#666');
-        verticalLine.setAttribute('stroke-width', '1');
-        verticalLine.setAttribute('stroke-dasharray', '3,3');
-        verticalLine.setAttribute('opacity', '0.7');
-        e.currentTarget.appendChild(verticalLine);
-      }
-      
-      const xPos = isNaN(closestPoint.x) ? 0 : closestPoint.x;
-      verticalLine.setAttribute('x1', xPos);
-      verticalLine.setAttribute('y1', '0');
-      verticalLine.setAttribute('x2', xPos);
-      verticalLine.setAttribute('y2', '60');
-      verticalLine.style.display = 'block';
-      
-      // Show tooltip for desktop (don't show on mobile as it can interfere with touch)
-      if (e.type !== 'touchstart' && e.type !== 'touchmove') {
-        const tooltip = document.getElementById('chart-tooltip');
-        if (tooltip) {
-          tooltip.style.display = 'block';
-          tooltip.style.left = clientX + 15 + 'px';
-          tooltip.style.top = e.pageY - 60 + 'px';
-          tooltip.innerHTML = `
-            <strong>${sensorName}:</strong> ${closestPoint.value.toFixed(1)}${unit}<br/>
-            <strong>Time:</strong> ${formatTimestamp(closestPoint.timestamp)}<br/>
-            <strong>Location:</strong> ${locationPoint ? `${locationPoint.latitude.toFixed(4)}, ${locationPoint.longitude.toFixed(4)}` : 'N/A'}
-          `;
-        }
-      }
-    }
+    const mouseX = ((clientX - rect.left) / rect.width) * 300; // Scale to viewBox width
+    const isTouch = e.type === 'touchstart' || e.type === 'touchmove';
+
+    applyChartPoint(e.currentTarget, clientX, e.pageY, mouseX, data, valueKey, sensorName, unit, sensorKey, color, {
+      pin: false,
+      showCursorTooltip: !isTouch
+    });
   };
 
-  // Helper function to handle chart leave and touch end
+  // Click (desktop) or tap (mobile) a specific spot on the chart to freeze the marker there —
+  // handy for lining up the map and chart before taking a screenshot.
+  const handleChartPin = (e, data, valueKey, sensorName, unit, sensorKey, color) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clientX = e.type.startsWith('touch') ? (e.changedTouches?.[0]?.clientX ?? e.clientX) : e.clientX;
+    const pageY = e.type.startsWith('touch') ? (e.changedTouches?.[0]?.pageY ?? e.pageY) : e.pageY;
+    const mouseX = ((clientX - rect.left) / rect.width) * 300;
+
+    applyChartPoint(e.currentTarget, clientX, pageY, mouseX, data, valueKey, sensorName, unit, sensorKey, color, {
+      pin: true,
+      showCursorTooltip: false
+    });
+  };
+
+  // Unfreezes the marker, returning to normal chart-hover behavior
+  const handleUnpinMarker = () => {
+    setIsMarkerPinned(false);
+    setHoverMarkerPosition(null);
+    setHoverMarkerData(null);
+  };
+
+  // Helper function to hide the hover marker when the mouse leaves the chart
+  // (touch end now pins instead of hiding — see handleChartPin)
   const handleChartLeaveOrEnd = (sensorName, e) => {
     // Only hide on mouse leave or touch end, not on touch move
     if (e && (e.type === 'touchmove' || e.type === 'touchstart')) {
       return;
     }
-    
+
+    // A pinned marker stays put until explicitly unpinned
+    if (isMarkerPinned) {
+      return;
+    }
+
     // Hide hover marker after a delay on mobile to allow for better UX
     const isMobile = window.innerWidth <= 768;
     const delay = isMobile ? 2000 : 0; // 2 second delay on mobile
-    
+
     setTimeout(() => {
+      if (isMarkerPinned) return;
       setHoverMarkerPosition(null);
       setHoverMarkerData(null);
-      
-      const chartId = sensorName.toLowerCase().replace(' ', '-');
-      const verticalLineId = `chart-vertical-line-${chartId}`;
-      const verticalLine = document.getElementById(verticalLineId);
-      if (verticalLine) {
-        verticalLine.style.display = 'none';
-      }
-      
+
+      hideAllChartVerticalLines();
+
       const tooltip = document.getElementById('chart-tooltip');
       if (tooltip) {
         tooltip.style.display = 'none';
@@ -1315,93 +1819,68 @@ const Shipments = () => {
   // Create polyline coordinates from location data
   const getPolylineCoordinates = () => {
     if (!locationData || locationData.length === 0) return [];
-    
+
     // Sort by timestamp to ensure correct order
-    const sortedData = [...locationData].sort((a, b) => 
+    const sortedData = [...locationData].sort((a, b) =>
       new Date(a.timestamp) - new Date(b.timestamp)
     );
-    
-    return sortedData.map(point => [point.latitude, point.longitude]);
+
+    const clustered = collapseStationaryClusters(sortedData);
+    return clustered.map(point => [point.latitude, point.longitude]);
   };
 
-  // Component to handle map bounds fitting
-  const MapBoundsHandler = () => {
-    const map = useMap();
-    
-    useEffect(() => {
-      if (!selectedShipmentDetail) return;
-      const routeCoordinates = getPolylineCoordinates();
-      const alertCoordinates = combinedAlertMarkers.map((m) => [m.lat, m.lng]);
-      const coordinates = [...routeCoordinates, ...alertCoordinates];
-      if (coordinates.length > 0) {
-        const bounds = L.latLngBounds(coordinates);
-        map.fitBounds(bounds, { padding: [20, 20], maxZoom: 15 });
+  // Coordinates drawn on the map: the road-snapped route when available and enabled,
+  // otherwise the raw (optionally noise-filtered) GPS trace.
+  const getDisplayPolylineCoordinates = () => {
+    if (useSnappedRoute && snappedCoordinates.length > 0) {
+      return snappedCoordinates;
+    }
+    return getPolylineCoordinates();
+  };
+
+  // Memoized so the array reference only changes when the underlying route data actually
+  // does — MapBoundsHandler/ChartZoomMapSync depend on it, and a fresh array on every
+  // render (e.g. from hover-driven state updates elsewhere on the page) would make them
+  // think the route changed and re-fit the map on every hover move.
+  const displayPolylineCoordinates = useMemo(
+    () => getDisplayPolylineCoordinates(),
+    [locationData, useSnappedRoute, snappedCoordinates]
+  );
+
+  const fetchSnappedRoute = async (trackerId, shipDate, arrivalDate) => {
+    if (!trackerId || !shipDate || !arrivalDate) return;
+    setIsSnappingRoute(true);
+    setSnapError(null);
+    try {
+      const result = await shipmentApi.getSnappedRoute(trackerId, shipDate, arrivalDate, userTimezone);
+      setSnappedCoordinates(result?.matched_coordinates || []);
+    } catch (error) {
+      console.error('Error fetching snapped route:', error);
+      setSnappedCoordinates([]);
+      setSnapError('Snap unavailable, showing raw trace');
+    } finally {
+      setIsSnappingRoute(false);
+    }
+  };
+
+  const handleToggleSnappedRoute = () => {
+    const next = !useSnappedRoute;
+    setUseSnappedRoute(next);
+    if (next) {
+      if (snapRouteParams && locationData.length >= 2) {
+        fetchSnappedRoute(snapRouteParams.trackerId, snapRouteParams.shipDate, snapRouteParams.arrivalDate);
       }
-    }, [map, selectedShipmentDetail?._id, locationData, combinedAlertMarkers]);
-
-    return null;
+    } else {
+      setSnapError(null);
+    }
   };
 
-  // Keeps the world map filling the container width with no gaps on either side
-  const MapFitWidthHandler = () => {
-    const map = useMap();
-
-    useEffect(() => {
-      const applyMinZoom = () => {
-        const width = map.getSize().x;
-        if (!width) return;
-        // Fractional zoom so the world map's pixel width matches the
-        // container width exactly (no gaps, no cropping from over-zooming).
-        const minZoom = Math.max(2, Math.log2(width / 256));
-        map.setMinZoom(minZoom);
-        if (map.getZoom() < minZoom) {
-          map.setZoom(minZoom);
-        }
-      };
-
-      applyMinZoom();
-      map.on('resize', applyMinZoom);
-
-      const handleWindowResize = () => map.invalidateSize();
-      window.addEventListener('resize', handleWindowResize);
-
-      return () => {
-        map.off('resize', applyMinZoom);
-        window.removeEventListener('resize', handleWindowResize);
-      };
-    }, [map]);
-
-    return null;
-  };
-
-  // MapTiler Geocoding Control React wrapper
-  const MapTilerGeocodingControl = ({ apiKey }) => {
-    const map = useMap();
-    useEffect(() => {
-      // Only run if window.L and window.maptiler exist (CDN loaded)
-      if (window.L && window.maptiler && window.maptiler.geocoding) {
-        const geocodingControl = window.maptiler.geocoding.control({
-          apiKey,
-          marker: true,
-          showResultsWhileTyping: true,
-          collapsed: false,
-          placeholder: 'Search address…'
-        }).addTo(map);
-
-        // Optionally, listen for geocode result events
-        geocodingControl.on('select', (e) => {
-          // e.data contains the selected result
-          // e.data.lat, e.data.lon
-          // You can update your state or do something here if needed
-        });
-
-        return () => {
-          map.removeControl(geocodingControl);
-        };
-      }
-    }, [map, apiKey]);
-    return null;
-  };
+  // MapBoundsHandler, MapFitWidthHandler, ChartZoomMapSync, and MapTilerGeocodingControl
+  // are defined at module scope (near the top of the file) rather than nested here — as
+  // nested components their function identity changed on every Shipments render, which
+  // made React remount them (and re-run their effects, unconditionally) on every render,
+  // including the high-frequency ones from chart-hover state updates. That caused the map
+  // to repeatedly re-fit/zoom while hovering a chart. See their definitions for details.
 
   // Teardrop pin for fixed points (origin/destination) — icon names the role instead of relying on color alone
   const createPinIcon = (role) => {
@@ -1822,13 +2301,7 @@ const Shipments = () => {
                     </button>
                   </div>                  <div className="tab-content">
                     {activeTab === 'sensors' && (() => {
-                      const sensorRows = [
-                        { key: 'temp', label: 'Temperature', data: temperatureData, field: 'temperature', unit: '°C', color: '#ef4444', fill: 'rgba(239,68,68,0.08)' },
-                        { key: 'humidity', label: 'Humidity', data: humidityData, field: 'humidity', unit: '%', color: '#3b82f6', fill: 'rgba(59,130,246,0.08)' },
-                        { key: 'battery', label: 'Battery', data: batteryData, field: 'battery', unit: '%', color: '#22c55e', fill: 'rgba(34,197,94,0.08)' },
-                        { key: 'speed', label: 'Speed', data: speedData, field: 'speed', unit: ' km/h', color: '#ea580c', fill: 'rgba(234,88,12,0.08)' },
-                        { key: 'light', label: 'Light', data: lightData, field: 'light', unit: ' Lux', color: '#ca8a04', fill: 'rgba(202,138,4,0.08)' },
-                      ];
+                      const sensorRows = getSensorRowsConfig();
                       const CHART_H = 64;
 
                       return (
@@ -1844,25 +2317,39 @@ const Shipments = () => {
                                 const lastPoint = getLastPoint(row.data, row.field, CHART_H);
                                 const currentValue = getCurrentValue(row.data, row.field);
                                 return (
-                                  <div key={row.key} className={`sensor-card sensor-card--${row.key}`}>
-                                    <div className="sensor-card-header">
+                                  <div key={row.key} className={`sensor-card sensor-card--${row.key}${expandedSensorKey === row.key ? ' sensor-card--expanded' : ''}`}>
+                                    <button
+                                      type="button"
+                                      className="sensor-card-header sensor-card-header--expandable"
+                                      onClick={() => {
+                                        setExpandedSensorKey(row.key);
+                                        setChartZoomRange(null);
+                                      }}
+                                      title={`Expand ${row.label} chart`}
+                                      aria-label={`Expand ${row.label} chart above the map`}
+                                    >
                                       <span className="sensor-name">
                                         <span className={`sensor-dot sensor-dot--${row.key}`}></span>
                                         {row.label}
                                       </span>
-                                      <span className="sensor-value">
-                                        {typeof currentValue === 'number' ? currentValue.toFixed(1) + row.unit : '—'}
+                                      <span className="sensor-header-right">
+                                        <span className="sensor-value">
+                                          {typeof currentValue === 'number' ? currentValue.toFixed(1) + row.unit : '—'}
+                                        </span>
+                                        <Maximize2 size={13} className="sensor-expand-icon" aria-hidden="true" />
                                       </span>
-                                    </div>
+                                    </button>
                                     <div className="sensor-chart-area">
                                       <svg
+                                        id={`chart-svg-${row.key}`}
                                         width="100%" height={CHART_H} viewBox={`0 0 300 ${CHART_H}`} preserveAspectRatio="none"
                                         style={{ cursor: 'crosshair', display: 'block', touchAction: 'none' }}
-                                        onMouseMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
+                                        onMouseMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
                                         onMouseLeave={(e) => handleChartLeaveOrEnd(row.label, e)}
-                                        onTouchStart={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
-                                        onTouchMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit)}
-                                        onTouchEnd={(e) => handleChartLeaveOrEnd(row.label, e)}
+                                        onClick={(e) => handleChartPin(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
+                                        onTouchStart={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
+                                        onTouchMove={(e) => handleChartInteraction(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
+                                        onTouchEnd={(e) => handleChartPin(e, row.data, row.field, row.label, row.unit, row.key, row.color)}
                                       >
                                         {row.data.length > 0 ? (
                                           <>
@@ -2240,7 +2727,65 @@ const Shipments = () => {
         )}
       </div>
 
-      <div className="map-container">
+      <div className="map-container" style={{ '--sidebar-inset': sidebarCollapsed ? '60px' : '370px' }}>
+        {selectedShipmentDetail && locationData.length > 1 && (
+          <button
+            type="button"
+            onClick={handleToggleSnappedRoute}
+            title={snapError || 'Snap the GPS trace to roads (OSRM)'}
+            style={{
+              position: 'absolute',
+              top: 10,
+              right: 10,
+              zIndex: 1000,
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #ccc',
+              background: useSnappedRoute ? '#667eea' : '#fff',
+              color: useSnappedRoute ? '#fff' : '#333',
+              fontSize: 13,
+              cursor: 'pointer',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
+            }}
+          >
+            {isSnappingRoute ? 'Snapping…' : snapError ? 'Snap unavailable' : 'Snap to roads'}
+          </button>
+        )}
+        {selectedShipmentDetail && expandedSensorKey && (() => {
+          const expandedRow = getSensorRowsConfig().find(r => r.key === expandedSensorKey);
+          if (!expandedRow) return null;
+          return (
+            <SensorChartOverlay
+              sensorRow={expandedRow}
+              zoomRange={chartZoomRange}
+              onBrushCommit={setChartZoomRange}
+              onResetZoom={() => setChartZoomRange(null)}
+              onClose={() => { setExpandedSensorKey(null); setChartZoomRange(null); setExpandedChartHeight(0); }}
+              onHeightChange={setExpandedChartHeight}
+              onHoverChange={(timestamp) => {
+                if (isMarkerPinned) return;
+                if (!timestamp) {
+                  setHoverMarkerPosition(null);
+                  setHoverMarkerData(null);
+                  return;
+                }
+                const locationPoint = findLocationByTimestamp(timestamp);
+                if (!locationPoint) return;
+                const valuePoint = findClosestPointByTimestamp(expandedRow.data, expandedRow.field, timestamp);
+                setHoverMarkerPosition([locationPoint.latitude, locationPoint.longitude]);
+                setHoverMarkerData({
+                  timestamp,
+                  sensorName: expandedRow.label,
+                  sensorValue: valuePoint?.value ?? null,
+                  unit: expandedRow.unit,
+                  location: locationPoint,
+                  key: expandedRow.key,
+                  color: expandedRow.color
+                });
+              }}
+            />
+          );
+        })()}
         <MapContainer
           ref={mapRef}
           center={[20, 0]} // Default world view
@@ -2268,8 +2813,19 @@ const Shipments = () => {
             noWrap={true}
           />
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
-          <MapBoundsHandler />
+          <MapBoundsHandler
+            selectedShipmentId={selectedShipmentDetail?._id}
+            routeCoordinates={displayPolylineCoordinates}
+            alertMarkers={combinedAlertMarkers}
+          />
           <MapFitWidthHandler />
+          <ChartZoomMapSync
+            expandedSensorKey={expandedSensorKey}
+            chartZoomRange={chartZoomRange}
+            locationData={locationData}
+            routeCoordinates={displayPolylineCoordinates}
+            overlayHeight={expandedChartHeight}
+          />
 
           {/* Overview mode: cluster every shipment by current location. Clicking a
               lone marker drills into that shipment; clicking a cluster zooms in,
@@ -2278,29 +2834,49 @@ const Shipments = () => {
             <ShipmentClusterLayer points={shipmentMapPoints} onSelect={handleShipmentClick} />
           )}
 
-          {/* Show geofence circles for each leg with alertPresets */}
+          {/* Show geofence zones (circle or hand-drawn polygon) for each leg with alertPresets */}
           {selectedShipmentDetail && selectedShipmentDetail.legs && selectedShipmentDetail.legs.map((leg, legIndex) => {
             const geofencePreset = leg.alertPresets?.find(preset => preset.type === 'geofence' && preset.enabled);
             if (!geofencePreset) return null;
-            
+
             const destLat = geofencePreset.latitude;
             const destLng = geofencePreset.longitude;
-            const radius = geofencePreset.radius || 1000;
-            
             if (destLat == null || destLng == null) return null;
-            
+
+            const geofencePathOptions = {
+              color: '#3b82f6',
+              fillColor: '#3b82f6',
+              fillOpacity: 0.15,
+              weight: 2,
+              dashArray: '5, 5'
+            };
+
+            if (geofencePreset.shape === 'polygon' && geofencePreset.points?.length >= 3) {
+              return (
+                <Polygon
+                  key={`geofence-${legIndex}`}
+                  positions={geofencePreset.points}
+                  pathOptions={geofencePathOptions}
+                >
+                  <Popup>
+                    <div>
+                      <strong>Geofence Alert Zone</strong><br />
+                      Shape: Custom<br />
+                      Leg: {leg.legNumber || legIndex + 1}<br />
+                      Destination: {leg.stopAddress || 'N/A'}
+                    </div>
+                  </Popup>
+                </Polygon>
+              );
+            }
+
+            const radius = geofencePreset.radius || 1000;
             return (
               <Circle
                 key={`geofence-${legIndex}`}
                 center={[destLat, destLng]}
                 radius={radius}
-                pathOptions={{
-                  color: '#3b82f6',
-                  fillColor: '#3b82f6',
-                  fillOpacity: 0.15,
-                  weight: 2,
-                  dashArray: '5, 5'
-                }}
+                pathOptions={geofencePathOptions}
               >
                 <Popup>
                   <div>
@@ -2352,18 +2928,6 @@ const Shipments = () => {
                 weight: 3,
                 opacity: 0.7,
                 dashArray: '8, 8'
-              }}
-            />
-          )}
-
-          {/* Draw actual GPS path as solid line */}
-          {selectedShipmentDetail && locationData.length > 1 && (
-            <Polyline
-              positions={locationData.map(p => [p.latitude, p.longitude])}
-              pathOptions={{
-                color: '#ff4444',
-                weight: 4,
-                opacity: 0.95
               }}
             />
           )}
@@ -2420,44 +2984,88 @@ const Shipments = () => {
           {selectedShipmentDetail && locationData.length > 0 && (
             <>
               <Polyline
-                positions={getPolylineCoordinates()}
+                positions={displayPolylineCoordinates}
                 pathOptions={{
                   color: '#667eea',
-                  weight: 4,
-                  opacity: 0.8,
-                  dashArray: '10, 5'
+                  weight: 5,
+                  opacity: 0.85
                 }}
               />
-              
-              {/* Hover marker that follows chart interactions */}
-              {hoverMarkerPosition && (
-                <Marker 
+
+              {/* Highlights the stretch of the route matching the expanded chart's brushed
+                  time range, drawn over the base route so the selected window reads clearly. */}
+              {expandedSensorKey && chartZoomRange && (() => {
+                const segment = locationData
+                  .filter((p) => {
+                    const t = new Date(p.timestamp).getTime();
+                    return t >= chartZoomRange.start && t <= chartZoomRange.end;
+                  })
+                  .map((p) => [p.latitude, p.longitude]);
+                if (segment.length < 2) return null;
+                return (
+                  <Polyline
+                    positions={segment}
+                    pathOptions={{
+                      color: '#f59e0b',
+                      weight: 6,
+                      opacity: 0.95
+                    }}
+                  />
+                );
+              })()}
+
+              {/* Hover marker that follows chart interactions, colored to match the active sensor.
+                  Clicking a point on the chart pins it here so it holds still for a screenshot. */}
+              {hoverMarkerPosition && hoverMarkerData && (
+                <Marker
                   position={hoverMarkerPosition}
                   icon={L.divIcon({
                     className: 'route-marker hover-marker',
                     html: `
-                      <div style="
+                      <div class="hover-marker-dot${isMarkerPinned ? ' is-pinned' : ''}" style="
                         width: 16px;
                         height: 16px;
-                        background: #ff6b35;
+                        background: ${hoverMarkerData.color};
+                        color: ${hoverMarkerData.color};
                         border: 3px solid white;
                         border-radius: 50%;
-                        box-shadow: 0 0 0 2px #ff6b35, 0 2px 8px rgba(0,0,0,0.3);
-                        animation: pulse 1.5s infinite;
+                        box-shadow: 0 0 0 2px ${hoverMarkerData.color}, 0 2px 8px rgba(0,0,0,0.35);
                       "></div>
                     `,
                     iconSize: [16, 16],
                     iconAnchor: [8, 8]
                   })}
+                  eventHandlers={isMarkerPinned ? { click: handleUnpinMarker } : undefined}
                 >
-                  <Popup>
-                    <div>
-                      <strong>Sensor Reading</strong><br />
-                      <strong>{hoverMarkerData?.sensorName}:</strong> {hoverMarkerData?.sensorValue?.toFixed(1)}{hoverMarkerData?.unit}<br />
-                      <strong>Time:</strong> {formatTimestamp(hoverMarkerData?.timestamp)}<br />
-                      <strong>Coordinates:</strong> {hoverMarkerData?.location?.latitude?.toFixed(6)}, {hoverMarkerData?.location?.longitude?.toFixed(6)}
+                  <Tooltip
+                    permanent
+                    direction="top"
+                    offset={[0, -12]}
+                    opacity={1}
+                    className="sensor-hover-tooltip"
+                  >
+                    <div className="sensor-hover-card" style={{ '--sensor-color': hoverMarkerData.color }}>
+                      <span className="sensor-hover-icon">{getSensorIcon(hoverMarkerData.key)}</span>
+                      <div className="sensor-hover-body">
+                        <span className="sensor-hover-label">{hoverMarkerData.sensorName}</span>
+                        <span className="sensor-hover-value">
+                          {hoverMarkerData.sensorValue?.toFixed(1)}{hoverMarkerData.unit}
+                        </span>
+                      </div>
+                      <span className="sensor-hover-time">{formatTimestamp(hoverMarkerData.timestamp)}</span>
+                      {isMarkerPinned && (
+                        <button
+                          type="button"
+                          className="sensor-hover-close"
+                          onClick={(e) => { e.stopPropagation(); handleUnpinMarker(); }}
+                          aria-label="Unpin marker"
+                          title="Unpin"
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
-                  </Popup>
+                  </Tooltip>
                 </Marker>
               )}
               
@@ -2647,24 +3255,52 @@ const Shipments = () => {
 
                       {geofenceRadii[index] !== undefined && (
                         <>
-                          <label className="sf-geofence-radius-label">
-                            Geofence radius: <strong>{geofenceRadii[index]}m</strong>
-                            <span className="sf-geofence-radius-hint">(alert when within this distance)</span>
-                          </label>
-                          <input
-                            type="range"
-                            min="100"
-                            max="5000"
-                            step="100"
-                            value={geofenceRadii[index]}
-                            onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
-                            className="sf-geofence-slider"
-                          />
-                          <div className="sf-geofence-scale">
-                            <span>100m</span>
-                            <span>2.5km</span>
-                            <span>5km</span>
+                          <div className="sf-geofence-mode-toggle">
+                            <button
+                              type="button"
+                              className={`sf-geofence-mode-btn ${(geofenceShapeMode[index] || 'circle') === 'circle' ? 'active' : ''}`}
+                              onClick={() => setGeofenceMode(index, 'circle')}
+                            >
+                              ◯ Radius circle
+                            </button>
+                            <button
+                              type="button"
+                              className={`sf-geofence-mode-btn ${geofenceShapeMode[index] === 'polygon' ? 'active' : ''}`}
+                              onClick={() => setGeofenceMode(index, 'polygon')}
+                            >
+                              ⬠ Custom shape
+                            </button>
                           </div>
+
+                          {(geofenceShapeMode[index] || 'circle') === 'circle' ? (
+                            <>
+                              <label className="sf-geofence-radius-label">
+                                Geofence radius: <strong>{geofenceRadii[index]}m</strong>
+                                <span className="sf-geofence-radius-hint">(alert when within this distance)</span>
+                              </label>
+                              <input
+                                type="range"
+                                min="100"
+                                max="5000"
+                                step="100"
+                                value={geofenceRadii[index]}
+                                onChange={(e) => handleRadiusChange(index, parseInt(e.target.value))}
+                                className="sf-geofence-slider"
+                              />
+                              <div className="sf-geofence-scale">
+                                <span>100m</span>
+                                <span>2.5km</span>
+                                <span>5km</span>
+                              </div>
+                            </>
+                          ) : (
+                            <GeofenceShapeMap
+                              center={legCoordinates[index]}
+                              initialPoints={geofencePolygons[index]}
+                              onChange={(points) => handlePolygonChange(index, points)}
+                            />
+                          )}
+
                           <div className="sf-geofence-destination">
                             📍 Destination: {index === 0 ? leg.stopAddress : leg.shipTo}
                           </div>
@@ -2732,8 +3368,9 @@ const Shipments = () => {
           display: 'none',
           boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
           border: '1px solid rgba(255,255,255,0.15)',
-          maxWidth: '200px',
-          whiteSpace: 'nowrap'
+          maxWidth: '220px',
+          lineHeight: 1.6,
+          whiteSpace: 'normal'
         }}
       />
     </div>

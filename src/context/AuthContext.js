@@ -156,6 +156,34 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const updateSettings = async (settings) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/me`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settings),
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+        return { success: true };
+      } else {
+        const errorData = await response.json();
+        return {
+          success: false,
+          error: errorData.detail || 'Failed to update settings',
+        };
+      }
+    } catch (error) {
+      console.error('Error updating settings:', error);
+      return { success: false, error: 'Network error. Please try again.' };
+    }
+  };
+
   const value = {
     user,
     token,
@@ -163,6 +191,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    updateSettings,
     isAuthenticated: !!user,
   };
 

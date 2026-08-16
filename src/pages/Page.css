@@ -59,6 +59,69 @@
   max-width: 600px;
 }
 
+/* Settings toggle row (Configure page) */
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.settings-row-info strong {
+  display: block;
+  color: var(--color-text);
+  margin-bottom: 0.25rem;
+}
+
+.settings-row-info p {
+  margin: 0;
+  max-width: 480px;
+}
+
+.settings-toggle {
+  flex-shrink: 0;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  border: none;
+  background: var(--color-border);
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s ease;
+  padding: 0;
+}
+
+.settings-toggle.on {
+  background: var(--color-primary);
+}
+
+.settings-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.settings-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.settings-toggle.on .settings-toggle-knob {
+  transform: translateX(20px);
+}
+
+.settings-error {
+  margin: 0.75rem 0 0 0;
+  color: var(--color-destructive);
+  font-size: 0.85rem;
+}
+
 .loading-container {
   text-align: center;
   padding: 2rem;

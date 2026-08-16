@@ -673,6 +673,149 @@
   color: inherit;
 }
 
+/* Expanded sensor chart: a bottom-sheet floating over the map, opened by clicking a
+   sensor card in the side panel. Sits above Leaflet's panes but below its zoom/attribution
+   controls (z-index 1000) so those stay reachable. */
+.expanded-chart-overlay {
+  position: absolute;
+  /* .map-container spans the full width behind the absolutely-positioned sidebar,
+     so without this the overlay's left edge would sit underneath it. --sidebar-inset
+     is set inline on .map-container to the sidebar's current (expanded/collapsed)
+     width; the mobile media query below resets it since the sidebar docks to the
+     bottom there instead of sitting beside the map. */
+  left: calc(var(--sidebar-inset, 0px) + 12px);
+  right: 12px;
+  bottom: 12px;
+  z-index: 950;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18), 0 2px 8px rgba(15, 23, 42, 0.08);
+  padding: 6px 18px 14px;
+  animation: expanded-chart-rise 0.22s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expanded-chart-overlay {
+    animation: none;
+  }
+}
+
+@keyframes expanded-chart-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.expanded-chart-grip {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-border);
+  margin: 8px auto 4px;
+}
+
+.expanded-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.expanded-chart-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #1e293b;
+  font-family: var(--font-sans);
+}
+
+.expanded-chart-current-value {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.expanded-chart-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.expanded-chart-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.expanded-chart-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.expanded-chart-btn:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.expanded-chart-btn--close {
+  padding: 5px;
+  width: 30px;
+  justify-content: center;
+  color: #64748b;
+}
+
+.expanded-chart-hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  margin: 2px 0 8px;
+}
+
+.expanded-chart-svg {
+  display: block;
+  width: 100%;
+  cursor: crosshair;
+  border-radius: 8px;
+}
+
+.expanded-chart-range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  margin-top: 6px;
+}
+
+@media (max-width: 768px) {
+  .expanded-chart-overlay {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    padding: 4px 12px 10px;
+  }
+
+  .expanded-chart-hint {
+    display: none;
+  }
+}
+
 /* Prefixed "sf-" (shipment form) throughout: several pages (Page.css,
    Trackers.css) declare their own global .modal-overlay/.form-group/.btn-*
    with no CSS-module scoping, so whichever stylesheet's <style> tag is
@@ -950,6 +1093,38 @@
   color: var(--color-text);
 }
 
+.sf-geofence-mode-toggle {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 4px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+}
+
+.sf-geofence-mode-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sf-geofence-mode-btn:hover {
+  background: var(--color-warning-bg, #f3f4f6);
+}
+
+.sf-geofence-mode-btn.active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
 .sf-geofence-radius-label {
   display: block;
   margin: 10px 0 8px;
@@ -1049,6 +1224,139 @@
 /* Hover marker specific styling */
 .route-marker.hover-marker {
   z-index: 1000;
+}
+
+/* Glide smoothly between points as the mouse moves across the sensor chart,
+   instead of snapping instantly — Leaflet just repositions via transform,
+   so a short CSS transition on that same property animates it for free. */
+.leaflet-marker-icon.hover-marker {
+  transition: transform 0.12s linear;
+}
+
+.hover-marker-dot {
+  animation: pulse 1.5s infinite;
+}
+
+/* A pinned marker holds still (no pulse) and gets a double-ring "locked" look,
+   so it's visually obvious it's frozen for a screenshot rather than live. */
+.hover-marker-dot.is-pinned {
+  animation: none;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px currentColor, 0 0 0 4px #fff, 0 0 0 5px currentColor, 0 2px 8px rgba(0,0,0,0.35) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leaflet-marker-icon.hover-marker {
+    transition: none;
+  }
+  .hover-marker-dot {
+    animation: none;
+  }
+}
+
+/* Sensor readout card that floats above the hover marker, colored per sensor */
+.sensor-hover-tooltip.leaflet-tooltip {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  pointer-events: none;
+  opacity: 1;
+}
+
+.sensor-hover-tooltip.leaflet-tooltip::before {
+  display: none;
+}
+
+.sensor-hover-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border-radius: 10px;
+  padding: 6px 10px 6px 6px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+
+.sensor-hover-card::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  transform: translateX(-50%) rotate(45deg);
+  box-shadow: 2px 2px 4px rgba(15, 23, 42, 0.08);
+}
+
+.sensor-hover-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--sensor-color);
+  flex-shrink: 0;
+}
+
+.sensor-hover-body {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.sensor-hover-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #6b7280);
+}
+
+.sensor-hover-value {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--sensor-color);
+}
+
+.sensor-hover-time {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-muted, #6b7280);
+  border-left: 1px solid var(--color-border, #e5e7eb);
+  padding-left: 8px;
+  margin-left: 2px;
+}
+
+/* Only present while pinned — the card is otherwise pointer-events:none so it never
+   steals hover/drag from the map underneath it. */
+.sensor-hover-close {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-border, #e5e7eb);
+  color: var(--color-text-muted, #6b7280);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sensor-hover-close:hover {
+  background: #ef4444;
+  color: #fff;
 }
 
 /* ── Mobile: bottom-sheet layout ──────────────────────────────────────────
@@ -1493,6 +1801,78 @@
   justify-content: space-between;
   align-items: baseline;
   padding: 14px 16px 0;
+}
+
+/* The header doubles as a button that expands this sensor's chart above the map —
+   reset native button chrome so it still reads as the plain header it was. */
+.sensor-card-header--expandable {
+  width: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  border-radius: 4px;
+  transition: background-color 0.15s ease-out;
+}
+
+.sensor-card-header--expandable:hover,
+.sensor-card-header--expandable:focus-visible {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.sensor-card-header--expandable:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.sensor-card--expanded .sensor-card-header--expandable {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.sensor-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sensor-expand-icon {
+  color: var(--color-text-muted);
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+
+/* Appears next to the value while hovering any sensor chart, replacing the implicit
+   "this is the latest reading" with the exact instant the value was recorded. */
+.sensor-hover-time {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  animation: sensor-hover-time-in 0.12s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sensor-hover-time {
+    animation: none;
+  }
+}
+
+@keyframes sensor-hover-time-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.sensor-card-header--expandable:hover .sensor-expand-icon,
+.sensor-card-header--expandable:focus-visible .sensor-expand-icon,
+.sensor-card--expanded .sensor-expand-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.sensor-card--expanded .sensor-expand-icon {
+  color: #2563eb;
 }
 
 .sensor-name {
