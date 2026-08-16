@@ -1,48 +1,11 @@
 import React, { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet-routing-machine/dist/leaflet-routing-machine.css';
-import 'leaflet-routing-machine';
-import { shipmentApi } from '../services/apiService';
+import 'leaflet-draw/dist/leaflet.draw.css';
+import 'leaflet-draw';
 import './RouteGeofenceMap.css';
 
 const MAPTILER_API_KEY = 'v36tenWyOBBH2yHOYH3b';
-
-// Proxies every routing request (the initial route AND every interactive
-// drag-reroute) through our own backend instead of calling a routing service
-// directly from the browser - the backend holds the OpenRouteService API key
-// server-side so it never reaches the JS bundle. This implements Leaflet
-// Routing Machine's IRouter interface, which is just a
-// `route(waypoints, callback, context)` method.
-const BackendRouter = {
-  route(waypoints, callback, context) {
-    if (waypoints.some((wp) => !wp.latLng)) {
-      callback.call(context, { status: -1, message: 'Missing waypoint' });
-      return;
-    }
-    const wps = waypoints.map((wp) => ({ latitude: wp.latLng.lat, longitude: wp.latLng.lng }));
-
-    shipmentApi.getRoutePreview(wps)
-      .then((result) => {
-        const coordinates = (result.routePoints || []).map(([lat, lng]) => L.latLng(lat, lng));
-        if (coordinates.length < 2) {
-          callback.call(context, { status: -1, message: 'No route found' });
-          return;
-        }
-        callback.call(context, null, [{
-          name: '',
-          coordinates,
-          instructions: [],
-          summary: { totalDistance: result.distanceMeters, totalTime: result.durationSeconds },
-          inputWaypoints: waypoints,
-          waypoints: [coordinates[0], coordinates[coordinates.length - 1]]
-        }]);
-      })
-      .catch((err) => {
-        callback.call(context, { status: -1, message: err.message || 'Route request failed' });
-      });
-  }
-};
 
 const waypointIcon = L.divIcon({
   className: 'rgm-waypoint-icon',
@@ -51,62 +14,99 @@ const waypointIcon = L.divIcon({
   iconAnchor: [13, 24]
 });
 
-// Attaches Leaflet Routing Machine directly to the native Leaflet map
-// instance, the same useMap()-based pattern GeofenceShapeMap.js uses for
-// leaflet-draw. Dragging a point on the drawn route inserts a waypoint there
-// and reroutes through it via BackendRouter - the same interaction Google
-// Maps and every other production route editor use, rather than freeform
-// geometry editing.
-const RouteRoutingController = ({ waypointCoords, retryToken, onRouteChange, onError }) => {
+// OpenRouteService's raw route geometry has a vertex roughly every 5-20m,
+// which would give leaflet-draw a drag handle (plus a midpoint handle between
+// every pair) at every one of those - far too dense to usefully drag. Thin it
+// down to a manageable, adaptive number of edit points via Douglas-Peucker
+// simplification before it becomes editable. The tolerance is chosen via
+// binary search to hit a target point count regardless of route length,
+// rather than a fixed distance - short routes stay closer to their real
+// shape, long routes still end up with a manageable handle count.
+const TARGET_EDIT_POINTS = 80;
+
+const simplifyForEditing = (points) => {
+  if (!points || points.length <= TARGET_EDIT_POINTS) return points;
+
+  const lat0 = points[0][0];
+  const latToMeters = 111320;
+  const lngToMeters = 111320 * Math.cos((lat0 * Math.PI) / 180);
+  const projected = points.map(([lat, lng]) => L.point(lng * lngToMeters, lat * latToMeters));
+
+  let lo = 1;
+  let hi = 2000; // meters
+  let best = projected;
+  for (let i = 0; i < 12; i++) {
+    const mid = (lo + hi) / 2;
+    const candidate = L.LineUtil.simplify(projected, mid);
+    if (candidate.length > TARGET_EDIT_POINTS) {
+      lo = mid;
+    } else {
+      best = candidate;
+      hi = mid;
+    }
+  }
+
+  return best.map((p) => [p.y / latToMeters, p.x / lngToMeters]);
+};
+
+// Makes the ORS-fetched route polyline manually draggable via leaflet-draw's
+// edit toolbar - the exact same mechanism GeofenceShapeMap.js's DrawController
+// uses for the destination geofence shape, just editing a polyline instead of
+// a polygon. Dragging a vertex (or a midpoint, which leaflet-draw adds
+// automatically between each pair of vertices) simply moves the line; there
+// is no routing call involved, so the user has full manual control and the
+// line goes exactly where it's dragged.
+const RouteEditController = ({ initialRoutePoints, onChange }) => {
   const map = useMap();
 
   useEffect(() => {
-    if (!map || !waypointCoords || waypointCoords.length < 2) return undefined;
+    if (!map || !initialRoutePoints || initialRoutePoints.length < 2) return undefined;
 
-    const lastIndex = waypointCoords.length - 1;
+    const featureGroup = new L.FeatureGroup();
+    map.addLayer(featureGroup);
 
-    const control = L.Routing.control({
-      waypoints: waypointCoords.map((w) => L.latLng(w.latitude, w.longitude)),
-      router: BackendRouter,
-      routeWhileDragging: true,
-      addWaypoints: true, // dragging a point ON the route inserts a waypoint there and reroutes through it
-      draggableWaypoints: true,
-      fitSelectedRoutes: true,
-      show: false,
-      // Suppress LRM's own markers for the original Ship From/Stop addresses -
-      // we render fixed pins for those below instead, since they come from the
-      // geocoded address fields, not the map. Any via-point the user adds by
-      // dragging the line still gets a normal draggable marker, so it stays
-      // adjustable after the initial drag.
-      createMarker: (i, wp) => (i === 0 || i === lastIndex ? null : L.marker(wp.latLng, { draggable: true })),
-      lineOptions: {
-        styles: [{ color: '#1d4ed8', weight: 5, opacity: 0.9 }]
+    const editablePoints = simplifyForEditing(initialRoutePoints);
+    const polyline = new L.Polyline(editablePoints, {
+      color: '#1d4ed8',
+      weight: 5,
+      opacity: 0.9
+    });
+    featureGroup.addLayer(polyline);
+
+    const drawControl = new L.Control.Draw({
+      position: 'topright',
+      draw: false, // nothing to create - the route already exists, only editing it
+      edit: {
+        featureGroup,
+        remove: false // deleting the whole route doesn't make sense here, only reshaping it
       }
-    }).addTo(map);
+    });
+    map.addControl(drawControl);
 
-    const handleRoutesFound = (e) => {
-      const route = e.routes[0];
-      onRouteChange(route.coordinates.map((c) => [c.lat, c.lng]));
-    };
-    const handleRoutingError = (e) => {
-      onError((e.error && e.error.message) || 'Route lookup failed - try again.');
+    const emitChange = () => {
+      const layers = featureGroup.getLayers();
+      if (layers.length === 0) {
+        onChange([]);
+        return;
+      }
+      const latLngs = layers[0].getLatLngs();
+      onChange(latLngs.map((p) => [p.lat, p.lng]));
     };
 
-    control.on('routesfound', handleRoutesFound);
-    control.on('routingerror', handleRoutingError);
+    map.on(L.Draw.Event.EDITED, emitChange);
 
     return () => {
-      control.off('routesfound', handleRoutesFound);
-      control.off('routingerror', handleRoutingError);
-      map.removeControl(control);
+      map.off(L.Draw.Event.EDITED, emitChange);
+      map.removeControl(drawControl);
+      map.removeLayer(featureGroup);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, waypointCoords, retryToken]);
+  }, [map]);
 
   return null;
 };
 
-const RouteGeofenceMap = ({ waypoints, retryToken, onRouteChange, onError }) => {
+const RouteGeofenceMap = ({ waypoints, routePoints, onRouteChange }) => {
   if (!waypoints || waypoints.length < 2) return null;
 
   const center = waypoints[0];
@@ -114,9 +114,10 @@ const RouteGeofenceMap = ({ waypoints, retryToken, onRouteChange, onError }) => 
   return (
     <div className="rgm-wrapper">
       <div className="rgm-hint">
-        The best route between your stops is drawn below. Drag any point on the route to insert a
-        stop there and reroute through it - the same way Google Maps lets you customize a route.
-        The corridor width you set applies to both sides of the final route.
+        The best route between your stops is drawn below. Click the edit tool (top-right of the
+        map) to drag any point - or any midpoint between two points - to manually reshape the
+        route, then save. Nothing gets rerouted automatically - the line goes exactly where you
+        drag it. The corridor width you set applies to both sides of the final route.
       </div>
       <div className="rgm-map-container">
         <MapContainer
@@ -135,11 +136,9 @@ const RouteGeofenceMap = ({ waypoints, retryToken, onRouteChange, onError }) => 
           {waypoints.map((w, i) => (
             <Marker key={i} position={[w.latitude, w.longitude]} icon={waypointIcon} />
           ))}
-          <RouteRoutingController
-            waypointCoords={waypoints}
-            retryToken={retryToken}
-            onRouteChange={onRouteChange}
-            onError={onError}
+          <RouteEditController
+            initialRoutePoints={routePoints}
+            onChange={onRouteChange}
           />
         </MapContainer>
       </div>

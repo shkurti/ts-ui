@@ -605,7 +605,10 @@ const Shipments = () => {
   const [routePoints, setRoutePoints] = useState([]);
   const [routeWaypoints, setRouteWaypoints] = useState([]);
   const [routeFetchStatus, setRouteFetchStatus] = useState('idle'); // idle|loading|ready|error|stale
-  const [routeRetryToken, setRouteRetryToken] = useState(0); // bumped to force RouteGeofenceMap to retry without an address change
+  // Bumped only on a genuine fetch/re-fetch (not on every manual edit) - used as
+  // RouteGeofenceMap's React key so a fresh fetch remounts the editable layer,
+  // while the user's own drag edits don't get reset by unrelated re-renders.
+  const [routeRetryToken, setRouteRetryToken] = useState(0);
   const MAPTILER_API_KEY = "v36tenWyOBBH2yHOYH3b";
   
   // User timezone (you can make this configurable)
@@ -887,6 +890,25 @@ const Shipments = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shipFromCoordinates, legCoordinates, formData.legs.length]);
 
+  // Fetches the ORS-computed route ONE TIME (not on every edit) - this is
+  // just the starting shape. Editing afterward is pure client-side dragging,
+  // no further routing calls, so the user has full manual control instead of
+  // every drag being forced through a re-routed path.
+  const fetchRoutePreview = async () => {
+    if (!routeWaypointInputs || routeWaypointInputs.length < 2) return;
+    setRouteFetchStatus('loading');
+    try {
+      const result = await shipmentApi.getRoutePreview(routeWaypointInputs);
+      setRoutePoints(result.routePoints || []);
+      setRouteWaypoints(result.waypoints || routeWaypointInputs);
+      setRouteFetchStatus('ready');
+      setRouteRetryToken((t) => t + 1); // forces the editable layer to reload from the fresh fetch
+    } catch (error) {
+      console.error('Error fetching route preview:', error);
+      setRouteFetchStatus('error');
+    }
+  };
+
   const toggleRouteGeofence = () => {
     if (routeGeofenceEnabled) {
       setRouteGeofenceEnabled(false);
@@ -896,22 +918,13 @@ const Shipments = () => {
       return;
     }
     setRouteGeofenceEnabled(true);
-    setRouteFetchStatus('loading');
+    fetchRoutePreview();
   };
 
   const handleRouteChange = (points) => {
     setRoutePoints(points);
     setRouteWaypoints(routeWaypointInputs || []);
     setRouteFetchStatus('ready');
-  };
-
-  const handleRouteError = () => {
-    setRouteFetchStatus('error');
-  };
-
-  const retryRoute = () => {
-    setRouteFetchStatus('loading');
-    setRouteRetryToken((t) => t + 1);
   };
 
   const handleRadiusChange = (legIndex, radius) => {
@@ -3476,7 +3489,7 @@ const Shipments = () => {
                       {routeFetchStatus === 'error' && (
                         <div className="sf-route-status-error">
                           ⚠️ Could not calculate a route.
-                          <button type="button" className="sf-route-retry-btn" onClick={retryRoute}>
+                          <button type="button" className="sf-route-retry-btn" onClick={fetchRoutePreview}>
                             Retry
                           </button>
                         </div>
@@ -3485,18 +3498,20 @@ const Shipments = () => {
                       {routeFetchStatus === 'stale' && (
                         <div className="sf-route-status-error">
                           ⚠️ Addresses changed since this route was calculated.
-                          <button type="button" className="sf-route-retry-btn" onClick={retryRoute}>
+                          <button type="button" className="sf-route-retry-btn" onClick={fetchRoutePreview}>
                             Recalculate route
                           </button>
                         </div>
                       )}
 
-                      <RouteGeofenceMap
-                        waypoints={routeWaypointInputs}
-                        retryToken={routeRetryToken}
-                        onRouteChange={handleRouteChange}
-                        onError={handleRouteError}
-                      />
+                      {routeFetchStatus === 'ready' && routePoints.length >= 2 && (
+                        <RouteGeofenceMap
+                          key={routeRetryToken}
+                          waypoints={routeWaypointInputs}
+                          routePoints={routePoints}
+                          onRouteChange={handleRouteChange}
+                        />
+                      )}
                     </>
                   )}
                 </div>
