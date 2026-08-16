@@ -3,6 +3,8 @@ import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
+import buffer from '@turf/buffer';
+import { lineString } from '@turf/helpers';
 import './RouteGeofenceMap.css';
 
 const MAPTILER_API_KEY = 'v36tenWyOBBH2yHOYH3b';
@@ -106,7 +108,49 @@ const RouteEditController = ({ initialRoutePoints, onChange }) => {
   return null;
 };
 
-const RouteGeofenceMap = ({ waypoints, routePoints, onRouteChange }) => {
+// Renders the allowed-deviation corridor as a light, filled band around the
+// route - matching the same blue used for the destination geofence circle/
+// polygon elsewhere in this app - so the user can see exactly how far off the
+// line an alert would trigger. Purely illustrative; the actual deviation
+// check runs server-side against the same routePoints/widthMeters using
+// point-to-segment distance, not this polygon. Reflects the currently saved
+// route (updates after an edit is saved, and live as the width slider moves).
+const CorridorBand = ({ routePoints, widthMeters }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map || !routePoints || routePoints.length < 2 || !widthMeters) return undefined;
+
+    let layer;
+    try {
+      const line = lineString(routePoints.map(([lat, lng]) => [lng, lat]));
+      const buffered = buffer(line, widthMeters / 1000, { units: 'kilometers' });
+      if (buffered) {
+        layer = L.geoJSON(buffered, {
+          style: {
+            color: '#3b82f6',
+            weight: 1,
+            opacity: 0.4,
+            fillColor: '#3b82f6',
+            fillOpacity: 0.12
+          }
+        }).addTo(map);
+        layer.bringToBack();
+      }
+    } catch (e) {
+      // Buffering can fail on degenerate geometry (e.g. a route collapsed to
+      // one point) - it's purely illustrative, so fail silently.
+    }
+
+    return () => {
+      if (layer) map.removeLayer(layer);
+    };
+  }, [map, routePoints, widthMeters]);
+
+  return null;
+};
+
+const RouteGeofenceMap = ({ waypoints, routePoints, widthMeters, onRouteChange }) => {
   if (!waypoints || waypoints.length < 2) return null;
 
   const center = waypoints[0];
@@ -136,6 +180,7 @@ const RouteGeofenceMap = ({ waypoints, routePoints, onRouteChange }) => {
           {waypoints.map((w, i) => (
             <Marker key={i} position={[w.latitude, w.longitude]} icon={waypointIcon} />
           ))}
+          <CorridorBand routePoints={routePoints} widthMeters={widthMeters} />
           <RouteEditController
             initialRoutePoints={routePoints}
             onChange={onRouteChange}
