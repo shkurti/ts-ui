@@ -3745,6 +3745,7 @@ const Shipments = () => {
                       <RouteGeofenceMap
                         waypoints={alertDetailModal.data.waypoints}
                         routePoints={alertDetailModal.editRoutePoints}
+                        widthMeters={alertDetailModal.editWidthMeters}
                         onRouteChange={(points) => setAlertDetailModal((prev) => ({ ...prev, editRoutePoints: points }))}
                       />
                     </>
