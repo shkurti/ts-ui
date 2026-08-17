@@ -622,6 +622,8 @@ const Shipments = () => {
 
   // Alerts tab: which alert/preset the "Alert Details" modal is currently showing (null = closed)
   const [alertDetailModal, setAlertDetailModal] = useState(null);
+  const [isSavingAlertEdit, setIsSavingAlertEdit] = useState(false);
+  const [alertEditError, setAlertEditError] = useState(null);
 
   // LocalStorage key for persisting selected shipment
   const SELECTED_SHIPMENT_KEY = 'selectedShipmentId';
@@ -1153,6 +1155,75 @@ const Shipments = () => {
     const lng = target.longitude ?? target.location?.longitude;
     if (lat == null || lng == null) return;
     mapRef.current.flyTo([lat, lng], 15);
+  };
+
+  // Opens the Alert Details modal for a configured preset, seeded with
+  // editable copies of its current values (radius/shape/points for a
+  // geofence, route/width for a corridor) - editing happens on these copies,
+  // the stored preset is only touched on Save.
+  const openPresetDetails = (preset, index) => {
+    setAlertEditError(null);
+    setAlertDetailModal({
+      kind: 'preset',
+      data: preset,
+      info: describeAlertPreset(preset),
+      presetIndex: index,
+      editEnabled: preset.enabled !== false,
+      editMode: preset.shape || 'circle',
+      editRadius: preset.radius || 1000,
+      editPolygonPoints: preset.points || [],
+      editRoutePoints: preset.routePoints || [],
+      editWidthMeters: preset.widthMeters || 1000
+    });
+  };
+
+  const handleSaveAlertEdit = async () => {
+    if (!alertDetailModal || alertDetailModal.kind !== 'preset' || !selectedShipmentDetail) return;
+
+    const { data: preset, presetIndex, editEnabled, editMode, editRadius, editPolygonPoints, editRoutePoints, editWidthMeters } = alertDetailModal;
+
+    let updatedPreset;
+    if (preset.type === 'corridor') {
+      if (editRoutePoints.length < 2) {
+        setAlertEditError('The route needs at least 2 points.');
+        return;
+      }
+      updatedPreset = {
+        ...preset,
+        enabled: editEnabled,
+        widthMeters: editWidthMeters,
+        routePoints: editRoutePoints,
+        updatedAt: new Date().toISOString()
+      };
+    } else {
+      if (editMode === 'polygon' && editPolygonPoints.length < 3) {
+        setAlertEditError('Draw a complete custom shape (at least 3 points) before saving.');
+        return;
+      }
+      updatedPreset = editMode === 'polygon'
+        ? { ...preset, enabled: editEnabled, shape: 'polygon', points: editPolygonPoints, radius: undefined }
+        : { ...preset, enabled: editEnabled, shape: 'circle', radius: editRadius, points: undefined };
+    }
+
+    const legNumber = selectedShipmentDetail.legs?.[0]?.legNumber || 1;
+    const updatedPresets = selectedShipmentDetail.legs[0].alertPresets.map((p, i) => (i === presetIndex ? updatedPreset : p));
+
+    setIsSavingAlertEdit(true);
+    setAlertEditError(null);
+    try {
+      await shipmentApi.updateAlerts(selectedShipmentDetail._id, updatedPresets, legNumber);
+      setSelectedShipmentDetail((prev) => ({
+        ...prev,
+        legs: prev.legs.map((leg, i) => (i === 0 ? { ...leg, alertPresets: updatedPresets } : leg))
+      }));
+      setAlertDetailModal(null);
+      fetchAlertsForShipment(selectedShipmentDetail._id, selectedShipmentDetail.trackerId);
+    } catch (error) {
+      console.error('Error updating alert preset:', error);
+      setAlertEditError(error.message || 'Failed to save changes.');
+    } finally {
+      setIsSavingAlertEdit(false);
+    }
   };
 
   // Handle shipment detail view
@@ -2561,7 +2632,7 @@ const Shipments = () => {
                                     <button type="button" className="alert-action-btn" onClick={() => handleViewOnMap(preset)}>
                                       View on Map
                                     </button>
-                                    <button type="button" className="alert-action-btn" onClick={() => setAlertDetailModal({ kind: 'preset', data: preset, info })}>
+                                    <button type="button" className="alert-action-btn" onClick={() => openPresetDetails(preset, index)}>
                                       Alert Details
                                     </button>
                                   </div>
@@ -3621,7 +3692,10 @@ const Shipments = () => {
       {/* Alert Details modal */}
       {alertDetailModal && (
         <div className="sf-modal-overlay" onClick={() => setAlertDetailModal(null)}>
-          <div className="sf-modal-content alert-detail-modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className={`sf-modal-content alert-detail-modal ${alertDetailModal.kind === 'preset' ? 'alert-detail-modal--edit' : ''}`}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="sf-modal-header">
               <div>
                 <h3>Alert Details</h3>
@@ -3636,30 +3710,95 @@ const Shipments = () => {
             <div className="sf-modal-body">
               {alertDetailModal.kind === 'preset' ? (
                 <>
-                  <div className="alert-detail-row"><span>Type</span><span>{alertDetailModal.data.type === 'corridor' ? 'Route geofence' : 'Destination geofence'}</span></div>
-                  <div className="alert-detail-row"><span>Status</span><span>{alertDetailModal.data.enabled ? 'Active' : 'Inactive'}</span></div>
-                  <div className="alert-detail-row"><span>Range</span><span>{alertDetailModal.info.range}</span></div>
+                  <div className="sf-geofence-toggle-row">
+                    <input
+                      type="checkbox"
+                      id="alert-edit-enabled"
+                      checked={alertDetailModal.editEnabled}
+                      onChange={(e) => setAlertDetailModal((prev) => ({ ...prev, editEnabled: e.target.checked }))}
+                    />
+                    <label htmlFor="alert-edit-enabled">
+                      {alertDetailModal.data.type === 'corridor' ? 'Enable geofence alert for this route' : 'Enable geofence alert for this destination'}
+                    </label>
+                  </div>
+
                   {alertDetailModal.data.type === 'corridor' ? (
                     <>
-                      <div className="alert-detail-row"><span>Route source</span><span>{alertDetailModal.data.routeSource || 'N/A'}</span></div>
-                      <div className="alert-detail-row"><span>Waypoints</span><span>{alertDetailModal.data.waypoints?.length || 0}</span></div>
-                      {alertDetailModal.info.since && (
-                        <div className="alert-detail-row"><span>Last updated</span><span>{alertDetailModal.info.since}</span></div>
-                      )}
+                      <label className="sf-geofence-radius-label">
+                        Allowed deviation: <strong>{alertDetailModal.editWidthMeters}m</strong>
+                        <span className="sf-geofence-radius-hint">(alert when this far off-route, either side)</span>
+                      </label>
+                      <input
+                        type="range"
+                        min="100"
+                        max="5000"
+                        step="100"
+                        value={alertDetailModal.editWidthMeters}
+                        onChange={(e) => setAlertDetailModal((prev) => ({ ...prev, editWidthMeters: parseInt(e.target.value) }))}
+                        className="sf-geofence-slider"
+                      />
+                      <div className="sf-geofence-scale">
+                        <span>100m</span>
+                        <span>2.5km</span>
+                        <span>5km</span>
+                      </div>
+                      <RouteGeofenceMap
+                        waypoints={alertDetailModal.data.waypoints}
+                        routePoints={alertDetailModal.editRoutePoints}
+                        onRouteChange={(points) => setAlertDetailModal((prev) => ({ ...prev, editRoutePoints: points }))}
+                      />
                     </>
                   ) : (
                     <>
-                      {alertDetailModal.data.latitude != null && (
-                        <div className="alert-detail-row">
-                          <span>Location</span>
-                          <span>{Number(alertDetailModal.data.latitude).toFixed(4)}, {Number(alertDetailModal.data.longitude).toFixed(4)}</span>
-                        </div>
-                      )}
-                      {alertDetailModal.data.shape === 'polygon' && (
-                        <div className="alert-detail-row"><span>Shape points</span><span>{alertDetailModal.data.points?.length || 0}</span></div>
+                      <div className="sf-geofence-mode-toggle">
+                        <button
+                          type="button"
+                          className={`sf-geofence-mode-btn ${alertDetailModal.editMode === 'circle' ? 'active' : ''}`}
+                          onClick={() => setAlertDetailModal((prev) => ({ ...prev, editMode: 'circle' }))}
+                        >
+                          ◯ Radius circle
+                        </button>
+                        <button
+                          type="button"
+                          className={`sf-geofence-mode-btn ${alertDetailModal.editMode === 'polygon' ? 'active' : ''}`}
+                          onClick={() => setAlertDetailModal((prev) => ({ ...prev, editMode: 'polygon' }))}
+                        >
+                          ⬠ Custom shape
+                        </button>
+                      </div>
+
+                      {alertDetailModal.editMode === 'circle' ? (
+                        <>
+                          <label className="sf-geofence-radius-label">
+                            Geofence radius: <strong>{alertDetailModal.editRadius}m</strong>
+                            <span className="sf-geofence-radius-hint">(alert when within this distance)</span>
+                          </label>
+                          <input
+                            type="range"
+                            min="100"
+                            max="5000"
+                            step="100"
+                            value={alertDetailModal.editRadius}
+                            onChange={(e) => setAlertDetailModal((prev) => ({ ...prev, editRadius: parseInt(e.target.value) }))}
+                            className="sf-geofence-slider"
+                          />
+                          <div className="sf-geofence-scale">
+                            <span>100m</span>
+                            <span>2.5km</span>
+                            <span>5km</span>
+                          </div>
+                        </>
+                      ) : (
+                        <GeofenceShapeMap
+                          center={{ latitude: alertDetailModal.data.latitude, longitude: alertDetailModal.data.longitude }}
+                          initialPoints={alertDetailModal.editPolygonPoints}
+                          onChange={(points) => setAlertDetailModal((prev) => ({ ...prev, editPolygonPoints: points }))}
+                        />
                       )}
                     </>
                   )}
+
+                  {alertEditError && <div className="sf-route-status-error">⚠️ {alertEditError}</div>}
                 </>
               ) : (
                 <>
@@ -3691,9 +3830,20 @@ const Shipments = () => {
               )}
             </div>
             <div className="sf-modal-footer">
-              <button className="sf-btn sf-btn-secondary" onClick={() => setAlertDetailModal(null)}>
-                Close
-              </button>
+              {alertDetailModal.kind === 'preset' ? (
+                <>
+                  <button className="sf-btn sf-btn-secondary" onClick={() => setAlertDetailModal(null)} disabled={isSavingAlertEdit}>
+                    Cancel
+                  </button>
+                  <button className="sf-btn sf-btn-primary" onClick={handleSaveAlertEdit} disabled={isSavingAlertEdit}>
+                    {isSavingAlertEdit ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </>
+              ) : (
+                <button className="sf-btn sf-btn-secondary" onClick={() => setAlertDetailModal(null)}>
+                  Close
+                </button>
+              )}
             </div>
           </div>
         </div>

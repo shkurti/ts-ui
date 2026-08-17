@@ -2127,6 +2127,12 @@
   max-width: 420px;
 }
 
+/* The editable preset view embeds a GeofenceShapeMap/RouteGeofenceMap, same
+   width as the shipment-creation modal so those maps have room to be usable. */
+.alert-detail-modal--edit {
+  max-width: 640px;
+}
+
 .alert-detail-row {
   display: flex;
   justify-content: space-between;
