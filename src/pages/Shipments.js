@@ -8,7 +8,7 @@ import 'leaflet.markercluster';
 import './Shipments.css';
 import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock, Maximize2, X, RotateCcw } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import apiService, { shipmentApi, trackerApi } from '../services/apiService';
+import apiService, { shipmentApi, trackerApi, reportApi } from '../services/apiService';
 import GeofenceShapeMap from '../components/GeofenceShapeMap';
 import RouteGeofenceMap from '../components/RouteGeofenceMap';
 import { useAuth } from '../context/AuthContext';
@@ -575,6 +575,16 @@ const Shipments = () => {
   const [alertsData, setAlertsData] = useState([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [alertEvents, setAlertEvents] = useState([]);
+  const [reportsData, setReportsData] = useState([]);
+  const [isLoadingReports, setIsLoadingReports] = useState(false);
+  const [showCreateReportModal, setShowCreateReportModal] = useState(false);
+  const [isCreatingReport, setIsCreatingReport] = useState(false);
+  const [reportFormData, setReportFormData] = useState({
+    label: '',
+    dataTypes: { temperature: true, humidity: true, speed: false, battery: false, light: false },
+    start: '',
+    end: '',
+  });
   
   // Add state for hover marker on polyline
   const [hoverMarkerPosition, setHoverMarkerPosition] = useState(null);
@@ -1251,6 +1261,7 @@ const Shipments = () => {
     console.log('Clearing alerts data for new shipment');
     setAlertsData([]);
     setAlertEvents([]);
+    setReportsData([]);
     receivedAlertIdsRef.current = new Set();
     alertEventIdsRef.current = new Set();
     setIsLoadingAlerts(true);
@@ -1371,6 +1382,7 @@ const Shipments = () => {
 
     fetchAlertsForShipment(shipment._id, trackerId, { shipment });
     fetchAlertEvents(shipment._id, trackerId, { start: shipDate, end: arrivalDate });
+    fetchReportsForShipment(shipment._id);
   };
 
   const buildAlertKey = (alert) =>
@@ -1558,6 +1570,85 @@ const Shipments = () => {
       console.error("Error fetching alerts:", error);
     } finally {
       if (!skipLoading) setIsLoadingAlerts(false);
+    }
+  };
+
+  const fetchReportsForShipment = async (shipmentId) => {
+    if (!shipmentId) return;
+    setIsLoadingReports(true);
+    try {
+      const data = await reportApi.getAll(shipmentId);
+      setReportsData(data);
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+    } finally {
+      setIsLoadingReports(false);
+    }
+  };
+
+  const openCreateReportModal = () => {
+    const legs = selectedShipmentDetail?.legs || [];
+    const shipDate = legs[0]?.shipDate ? legs[0].shipDate.slice(0, 16) : '';
+    const arrivalDate = legs[legs.length - 1]?.arrivalDate ? legs[legs.length - 1].arrivalDate.slice(0, 16) : '';
+    setReportFormData({
+      label: '',
+      dataTypes: { temperature: true, humidity: true, speed: false, battery: false, light: false },
+      start: shipDate,
+      end: arrivalDate,
+    });
+    setShowCreateReportModal(true);
+  };
+
+  const handleCreateReport = async () => {
+    if (!selectedShipmentDetail) return;
+    const dataTypes = Object.entries(reportFormData.dataTypes)
+      .filter(([, checked]) => checked)
+      .map(([key]) => key);
+
+    if (dataTypes.length === 0) {
+      alert('Select at least one data type to include.');
+      return;
+    }
+    if (!reportFormData.start || !reportFormData.end) {
+      alert('Select a start and end date.');
+      return;
+    }
+
+    setIsCreatingReport(true);
+    try {
+      await reportApi.create(selectedShipmentDetail._id, {
+        label: reportFormData.label,
+        dataTypes,
+        start: reportFormData.start,
+        end: reportFormData.end,
+        timezone: 'America/New_York',
+      });
+      setShowCreateReportModal(false);
+      fetchReportsForShipment(selectedShipmentDetail._id);
+    } catch (error) {
+      console.error('Error creating report:', error);
+      alert(error.message || 'Failed to create report.');
+    } finally {
+      setIsCreatingReport(false);
+    }
+  };
+
+  const handleDownloadReport = async (report) => {
+    try {
+      await reportApi.download(report._id, `${report.label || 'shipment_report'}.pdf`);
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      alert(error.message || 'Failed to download report.');
+    }
+  };
+
+  const handleDeleteReport = async (report) => {
+    try {
+      await reportApi.remove(report._id);
+      setReportsData((prev) => prev.filter((r) => r._id !== report._id));
+    } catch (error) {
+      console.error('Error deleting report:', error);
+      alert(error.message || 'Failed to delete report.');
     }
   };
 
@@ -2706,18 +2797,43 @@ const Shipments = () => {
 
                     {activeTab === 'reports' && (
                       <div className="reports-content">
-                        <div className="report-item">
-                          <h4>Trip Summary</h4>
-                          <p>Total distance: 1,250 km</p>
-                          <p>Average speed: 62 km/h</p>
-                          <p>Time in transit: 18 hours</p>
-                        </div>
-                        <div className="report-item">
-                          <h4>Environmental Conditions</h4>
-                          <p>Avg temperature: 22.3°C</p>
-                          <p>Avg humidity: 58%</p>
-                          <p>Temperature violations: 2</p>
-                        </div>
+                        <button type="button" className="report-create-btn" onClick={openCreateReportModal}>
+                          + Create Report
+                        </button>
+
+                        {isLoadingReports ? (
+                          <div className="list-state-msg">
+                            <div className="list-spinner"></div>
+                            Loading reports…
+                          </div>
+                        ) : reportsData.length === 0 ? (
+                          <div className="alerts-empty">No reports created yet for this shipment.</div>
+                        ) : (
+                          reportsData.map((report) => (
+                            <div key={report._id} className="report-card">
+                              <div className="report-card-header">
+                                <span className="report-card-name">{report.label || 'Untitled report'}</span>
+                              </div>
+                              <div className="report-card-tags">
+                                {report.data_types.map((dt) => (
+                                  <span key={dt} className="report-tag">{dt}</span>
+                                ))}
+                              </div>
+                              <div className="report-card-meta">
+                                <span>Range: {report.start} – {report.end}</span>
+                                <span>Created: {new Date(report.created_at).toLocaleString()}</span>
+                              </div>
+                              <div className="report-card-actions">
+                                <button type="button" className="alert-action-btn" onClick={() => handleDownloadReport(report)}>
+                                  Download PDF
+                                </button>
+                                <button type="button" className="alert-action-btn alert-action-btn--danger" onClick={() => handleDeleteReport(report)}>
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     )}
 
@@ -3385,7 +3501,79 @@ const Shipments = () => {
         </MapContainer>
       </div>
 
-      {/* Modal for new shipment form */}
+      {showCreateReportModal && (
+        <div className="sf-modal-overlay" onClick={() => setShowCreateReportModal(false)}>
+          <div className="sf-modal-content report-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="sf-modal-header">
+              <div>
+                <h3>Create Report</h3>
+                <p className="sf-modal-subtitle">Choose what to include and the date range for this report</p>
+              </div>
+              <button type="button" className="sf-modal-close-btn" onClick={() => setShowCreateReportModal(false)} aria-label="Close">
+                ×
+              </button>
+            </div>
+            <div className="sf-modal-body">
+              <div className="sf-form-group">
+                <label>Report Name (optional)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Delivery Confirmation Report"
+                  value={reportFormData.label}
+                  onChange={(e) => setReportFormData((prev) => ({ ...prev, label: e.target.value }))}
+                />
+              </div>
+
+              <div className="sf-form-group">
+                <label>Include</label>
+                <div className="report-checkbox-row">
+                  {Object.keys(reportFormData.dataTypes).map((key) => (
+                    <label key={key} className="report-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={reportFormData.dataTypes[key]}
+                        onChange={(e) => setReportFormData((prev) => ({
+                          ...prev,
+                          dataTypes: { ...prev.dataTypes, [key]: e.target.checked },
+                        }))}
+                      />
+                      {key.charAt(0).toUpperCase() + key.slice(1)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="sf-form-row">
+                <div className="sf-form-group">
+                  <label>Start</label>
+                  <input
+                    type="datetime-local"
+                    value={reportFormData.start}
+                    onChange={(e) => setReportFormData((prev) => ({ ...prev, start: e.target.value }))}
+                  />
+                </div>
+                <div className="sf-form-group">
+                  <label>End</label>
+                  <input
+                    type="datetime-local"
+                    value={reportFormData.end}
+                    onChange={(e) => setReportFormData((prev) => ({ ...prev, end: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="sf-modal-footer">
+              <button type="button" className="sf-btn sf-btn-secondary" onClick={() => setShowCreateReportModal(false)}>
+                Cancel
+              </button>
+              <button type="button" className="sf-btn sf-btn-primary" onClick={handleCreateReport} disabled={isCreatingReport}>
+                {isCreatingReport ? 'Creating…' : 'Create Report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showNewShipmentForm && (
         <div className="sf-modal-overlay">
           <div className="sf-modal-content">

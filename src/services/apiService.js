@@ -111,6 +111,34 @@ export const shipmentApi = {
   },
 };
 
+export const reportApi = {
+  create: (shipmentId, payload) => apiService.post(`/shipments/${shipmentId}/reports`, payload),
+  getAll: (shipmentId) => apiService.get(`/shipments/${shipmentId}/reports`),
+  remove: (reportId) => apiService.delete(`/reports/${reportId}`),
+  download: async (reportId, filename) => {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${API_BASE_URL}/reports/${reportId}/download`, {
+      method: 'GET',
+      headers: {
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+      },
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || `report_${reportId}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
+};
+
 export const analysisApi = {
   getCarriers: () => apiService.get('/carriers'),
   getAnalytics: (params = {}) => {
