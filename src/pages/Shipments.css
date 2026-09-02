@@ -610,15 +610,17 @@
   margin-right: 10px;
 }
 
-/* Styled to match Leaflet's own zoom control (.leaflet-bar), sitting directly
-   below it in the same right-aligned column. Width/height/top are set inline
-   from the zoom control's measured size so the two stay aligned even when
-   Leaflet renders it at touch-device dimensions (30px) instead of desktop
-   (26px). */
+/* Same box model as a single Leaflet zoom button (.leaflet-bar a: 26x26,
+   4px radius, same shadow) so it reads as a matching control, placed with
+   a clear gap below the zoom control (top: 10px control margin + 52px for
+   the two stacked zoom buttons + 20px gap = 82px). */
 .snap-to-roads-btn {
   position: absolute;
+  top: 82px;
   right: 10px;
   z-index: 1000;
+  width: 26px;
+  height: 26px;
   padding: 0;
   display: flex;
   align-items: center;

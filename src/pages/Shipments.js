@@ -660,21 +660,6 @@ const Shipments = () => {
 
   // Add ref for map instance
   const mapRef = useRef();
-  // Measured size/position of Leaflet's own zoom control so the "snap to
-  // roads" button can sit directly beneath it, matching its dimensions
-  // exactly (Leaflet renders that control at 26px on desktop but 30px on
-  // touch devices, so a hardcoded size would drift out of alignment).
-  const [zoomControlBox, setZoomControlBox] = useState({ width: 26, height: 52 });
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const zoomEl = map.getContainer()?.querySelector('.leaflet-control-zoom');
-    if (!zoomEl) return;
-    const rect = zoomEl.getBoundingClientRect();
-    if (rect.width && rect.height) {
-      setZoomControlBox({ width: rect.width, height: rect.height });
-    }
-  }, [selectedShipmentDetail]);
   const currentTrackerIdRef = useRef(null);
   const receivedAlertIdsRef = useRef(new Set());
   const alertEventIdsRef = useRef(new Set());
@@ -3179,14 +3164,11 @@ const Shipments = () => {
             title={snapError || 'Snap the GPS trace to roads (OSRM)'}
             disabled={isSnappingRoute}
             style={{
-              top: 10 + zoomControlBox.height + 12,
-              width: zoomControlBox.width,
-              height: zoomControlBox.width,
               background: useSnappedRoute ? '#667eea' : '#fff',
               color: useSnappedRoute ? '#fff' : '#333',
             }}
           >
-            <Route size={Math.round(zoomControlBox.width * 0.55)} className={isSnappingRoute ? 'snap-to-roads-spin' : ''} />
+            <Route size={15} className={isSnappingRoute ? 'snap-to-roads-spin' : ''} />
           </button>
         )}
         {selectedShipmentDetail && expandedSensorKey && (() => {
