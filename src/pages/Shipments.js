@@ -165,6 +165,40 @@ const collapseStationaryClusters = (points) => {
   return collapsed;
 };
 
+const DEFAULT_ARRIVAL_RADIUS_METERS = 500; // used when a leg has no configured geofence
+
+// Where a leg's destination actually is, for comparing against GPS telemetry.
+// Prefers the leg's own configured geofence (real alert radius); falls back to
+// the geocoded stop address with a generic arrival radius.
+const legDestinationCoords = (leg, legIndex, legPoints) => {
+  const geofencePreset = leg.alertPresets?.find((p) => p.type === 'geofence' && p.enabled);
+  if (geofencePreset?.latitude != null && geofencePreset?.longitude != null) {
+    return {
+      lat: geofencePreset.latitude,
+      lng: geofencePreset.longitude,
+      radius: geofencePreset.radius || DEFAULT_ARRIVAL_RADIUS_METERS,
+    };
+  }
+  const point = legPoints.find((p) => p.number === legIndex + 2);
+  if (point) return { lat: point.lat, lng: point.lng, radius: DEFAULT_ARRIVAL_RADIUS_METERS };
+  return null;
+};
+
+// A leg is only "completed" once GPS telemetry actually places the tracker at
+// its destination — not merely because the scheduled arrival date has passed.
+// A shipment that never left the yard must not show as delivered just because
+// today's date rolled past its planned dates.
+const hasArrivedAtLegDestination = (leg, legIndex, legPoints, locationData) => {
+  const dest = legDestinationCoords(leg, legIndex, legPoints);
+  if (!dest || !locationData || locationData.length === 0) return false;
+  return locationData.some(
+    (pt) =>
+      pt.latitude != null &&
+      pt.longitude != null &&
+      haversineMeters(dest.lat, dest.lng, pt.latitude, pt.longitude) <= dest.radius
+  );
+};
+
 const EXPANDED_CHART_WIDTH = 640;
 const EXPANDED_CHART_HEIGHT = 168;
 
@@ -711,6 +745,25 @@ const Shipments = () => {
     if (now < shipDate) return 'Pending';
     if (now >= shipDate && now < arrivalDate) return 'In Transit';
     return 'Delivered';
+  };
+
+  // Same as getShipmentStatus, but for the open shipment detail view where we
+  // actually have GPS telemetry (locationData) to confirm arrival, instead of
+  // trusting the scheduled arrival date alone. Only valid for the currently
+  // selected shipment — locationData/legPoints belong to it, not to arbitrary
+  // shipments in the list.
+  const getDetailShipmentStatus = (shipment) => {
+    const now = new Date();
+    const legs = shipment.legs || [];
+    const shipDate = new Date(legs[0]?.shipDate);
+    const lastLegIndex = legs.length - 1;
+    const lastLeg = legs[lastLegIndex];
+
+    if (now < shipDate) return 'Pending';
+    if (lastLeg && hasArrivedAtLegDestination(lastLeg, lastLegIndex, legPoints, locationData)) {
+      return 'Delivered';
+    }
+    return 'In Transit';
   };
 
   // The overview map plots shipments by their declared address, not live GPS —
@@ -2544,8 +2597,8 @@ const Shipments = () => {
                       <span className="detail-header-eyebrow">Tracker</span>
                       <h2 className="detail-header-id">#{selectedShipmentDetail.trackerId}</h2>
                     </div>
-                    <span className={`status ${getShipmentStatus(selectedShipmentDetail).toLowerCase().replace(' ', '-')}`}>
-                      {getShipmentStatus(selectedShipmentDetail)}
+                    <span className={`status ${getDetailShipmentStatus(selectedShipmentDetail).toLowerCase().replace(' ', '-')}`}>
+                      {getDetailShipmentStatus(selectedShipmentDetail)}
                     </span>
                   </div>
                 </div>
@@ -2841,10 +2894,12 @@ const Shipments = () => {
                       const legs = selectedShipmentDetail?.legs || [];
                       const now = new Date();
 
-                      const getLegStatus = (leg) => {
-                        const arrival = leg.arrivalDate ? new Date(leg.arrivalDate) : null;
+                      const getLegStatus = (leg, legIndex) => {
+                        // "Completed" requires GPS proof the tracker actually reached the
+                        // destination — the scheduled arrival date passing isn't enough,
+                        // otherwise a shipment that never left would still show as done.
                         const departure = (leg.departureDate || leg.shipDate) ? new Date(leg.departureDate || leg.shipDate) : null;
-                        if (arrival && now > arrival) return 'completed';
+                        if (hasArrivedAtLegDestination(leg, legIndex, legPoints, locationData)) return 'completed';
                         if (departure && now > departure) return 'in-progress';
                         return 'pending';
                       };
@@ -2854,8 +2909,7 @@ const Shipments = () => {
                         if (legIndex < 0) return false;
                         const leg = legs[legIndex];
                         if (!leg) return false;
-                        const arrival = leg.arrivalDate ? new Date(leg.arrivalDate) : null;
-                        return arrival && now > arrival;
+                        return hasArrivedAtLegDestination(leg, legIndex, legPoints, locationData);
                       };
 
                       const formatLegDate = (dateStr) => {
@@ -2904,7 +2958,7 @@ const Shipments = () => {
                             const fromPoint = index + 1;
                             const toPoint = index + 2;
 
-                            const status = getLegStatus(leg);
+                            const status = getLegStatus(leg, index);
                             // "from" stop is visited if the previous leg completed (or it's the origin and departure has passed)
                             const fromVisited = index === 0
                               ? ((leg.departureDate || leg.shipDate) ? now > new Date(leg.departureDate || leg.shipDate) : false)
