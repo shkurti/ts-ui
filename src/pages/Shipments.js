@@ -455,6 +455,64 @@ const MapBoundsHandler = ({ selectedShipmentId, routeCoordinates, alertMarkers }
   return null;
 };
 
+// A real Leaflet control (not an absolutely-positioned div) for "snap to
+// roads". Added to the SAME corner container as the default zoom control
+// ('topleft' — this app's CSS then visually flips that whole column to the
+// right edge), so Leaflet's own control-stacking rule
+// (`.leaflet-top .leaflet-control { margin-top: 10px }`) places it directly
+// below the zoom control with a consistent gap automatically. Because it
+// reuses Leaflet's own `.leaflet-bar a` button markup, it is pixel-identical
+// in size to the +/- buttons in every environment (26px desktop, 30px touch)
+// instead of a guessed hardcoded size.
+const SnapToRoadsControl = ({ onClick, active, spinning, title }) => {
+  const map = useMap();
+  const linkRef = useRef(null);
+  // Keeps the click handler calling the latest onClick without needing to
+  // tear down and recreate the Leaflet control every time the parent
+  // re-renders with a new onClick reference.
+  const onClickRef = useRef(onClick);
+  onClickRef.current = onClick;
+
+  useEffect(() => {
+    const control = L.control({ position: 'topleft' });
+    control.onAdd = () => {
+      const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control snap-to-roads-control');
+      const link = L.DomUtil.create('a', '', container);
+      link.href = '#';
+      link.innerHTML = renderToStaticMarkup(<Route size={15} />);
+      link.style.display = 'flex';
+      link.style.alignItems = 'center';
+      link.style.justifyContent = 'center';
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.on(link, 'click', (e) => {
+        L.DomEvent.preventDefault(e);
+        if (link.classList.contains('leaflet-disabled')) return;
+        link.blur();
+        onClickRef.current();
+      });
+      linkRef.current = link;
+      return container;
+    };
+    control.addTo(map);
+    return () => {
+      control.remove();
+      linkRef.current = null;
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const link = linkRef.current;
+    if (!link) return;
+    link.title = title;
+    link.style.background = active ? '#667eea' : '';
+    link.style.color = active ? '#fff' : '';
+    link.classList.toggle('leaflet-disabled', spinning);
+    link.querySelector('svg')?.classList.toggle('snap-to-roads-spin-icon', spinning);
+  }, [active, spinning, title]);
+
+  return null;
+};
+
 // Keeps the world map filling the container width with no gaps on either side
 const MapFitWidthHandler = () => {
   const map = useMap();
@@ -3156,21 +3214,6 @@ const Shipments = () => {
       </div>
 
       <div className="map-container" style={{ '--sidebar-inset': sidebarCollapsed ? '60px' : '370px' }}>
-        {selectedShipmentDetail && locationData.length > 1 && (
-          <button
-            type="button"
-            className="snap-to-roads-btn"
-            onClick={handleToggleSnappedRoute}
-            title={snapError || 'Snap the GPS trace to roads (OSRM)'}
-            disabled={isSnappingRoute}
-            style={{
-              background: useSnappedRoute ? '#667eea' : '#fff',
-              color: useSnappedRoute ? '#fff' : '#333',
-            }}
-          >
-            <Route size={15} className={isSnappingRoute ? 'snap-to-roads-spin' : ''} />
-          </button>
-        )}
         {selectedShipmentDetail && expandedSensorKey && (() => {
           const expandedRow = getSensorRowsConfig().find(r => r.key === expandedSensorKey);
           if (!expandedRow) return null;
@@ -3233,6 +3276,14 @@ const Shipments = () => {
             noWrap={true}
           />
           <MapTilerGeocodingControl apiKey={MAPTILER_API_KEY} />
+          {selectedShipmentDetail && locationData.length > 1 && (
+            <SnapToRoadsControl
+              onClick={handleToggleSnappedRoute}
+              active={useSnappedRoute}
+              spinning={isSnappingRoute}
+              title={snapError || 'Snap the GPS trace to roads (OSRM)'}
+            />
+          )}
           <MapBoundsHandler
             selectedShipmentId={selectedShipmentDetail?._id}
             routeCoordinates={displayPolylineCoordinates}

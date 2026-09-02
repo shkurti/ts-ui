@@ -610,37 +610,18 @@
   margin-right: 10px;
 }
 
-/* Same box model as a single Leaflet zoom button (.leaflet-bar a: 26x26,
-   4px radius, same shadow) so it reads as a matching control, placed with
-   a clear gap below the zoom control (top: 10px control margin + 52px for
-   the two stacked zoom buttons + 20px gap = 82px). */
-.snap-to-roads-btn {
-  position: absolute;
-  top: 82px;
-  right: 10px;
-  z-index: 1000;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 4px;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
+/* Same right-edge alignment as the zoom control's override above — both
+   controls live in the same (CSS-flipped) corner column, so this keeps
+   them flush to the same edge. Vertical spacing below the zoom control
+   comes for free from Leaflet's own `.leaflet-top .leaflet-control`
+   margin-top rule. */
+.map-container .snap-to-roads-control {
+  margin-left: 0;
+  margin-right: 10px;
   cursor: pointer;
 }
 
-.snap-to-roads-btn:hover:not(:disabled) {
-  background: #f4f4f4 !important;
-}
-
-.snap-to-roads-btn:disabled {
-  cursor: default;
-  opacity: 0.7;
-}
-
-.snap-to-roads-spin {
+.snap-to-roads-spin-icon {
   animation: snap-to-roads-spin 0.9s linear infinite;
 }
 
