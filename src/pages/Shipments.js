@@ -6,7 +6,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import './Shipments.css';
-import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock, Maximize2, X, RotateCcw } from 'lucide-react';
+import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock, Maximize2, X, RotateCcw, Route } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi, reportApi } from '../services/apiService';
 import GeofenceShapeMap from '../components/GeofenceShapeMap';
@@ -3159,24 +3159,16 @@ const Shipments = () => {
         {selectedShipmentDetail && locationData.length > 1 && (
           <button
             type="button"
+            className="snap-to-roads-btn"
             onClick={handleToggleSnappedRoute}
             title={snapError || 'Snap the GPS trace to roads (OSRM)'}
+            disabled={isSnappingRoute}
             style={{
-              position: 'absolute',
-              top: 10,
-              right: 10,
-              zIndex: 1000,
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: '1px solid #ccc',
               background: useSnappedRoute ? '#667eea' : '#fff',
               color: useSnappedRoute ? '#fff' : '#333',
-              fontSize: 13,
-              cursor: 'pointer',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
             }}
           >
-            {isSnappingRoute ? 'Snapping…' : snapError ? 'Snap unavailable' : 'Snap to roads'}
+            <Route size={15} className={isSnappingRoute ? 'snap-to-roads-spin' : ''} />
           </button>
         )}
         {selectedShipmentDetail && expandedSensorKey && (() => {
