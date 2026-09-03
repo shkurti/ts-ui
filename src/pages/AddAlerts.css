@@ -16,8 +16,78 @@
 .alerts-page-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 14px;
   margin-bottom: 1.75rem;
+}
+
+.alerts-page-title {
+  margin-right: auto;
+}
+
+/* ── Header summary strip: real counts, not decoration ───────────── */
+.alerts-stats-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.alerts-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border-left: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.alerts-stat:first-child {
+  border-left: none;
+}
+
+.alerts-stat svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.alerts-stat-value {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.alerts-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.alerts-stat-total {
+  background: var(--color-bg);
+}
+
+.alerts-stat-total .alerts-stat-value {
+  color: var(--color-primary);
+}
+
+.alerts-stat-temperature svg,
+.alerts-stat-temperature .alerts-stat-value {
+  color: var(--color-accent);
+}
+
+.alerts-stat-humidity svg,
+.alerts-stat-humidity .alerts-stat-value {
+  color: var(--color-secondary);
+}
+
+.alerts-stat-geofence svg,
+.alerts-stat-geofence .alerts-stat-value {
+  color: #7c3aed;
 }
 
 .alerts-page-icon {
@@ -65,53 +135,59 @@
   overflow: hidden;
 }
 
+/* The form is the primary action on this page, so it keeps pace with the
+   list as you scroll instead of getting left behind. */
+.create-alert-card {
+  position: sticky;
+  top: 1.25rem;
+}
+
 .alerts-list-header,
 .create-alert-header {
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--color-border);
-}
-
-.alerts-list-header {
   background: var(--color-bg);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
 }
 
-.create-alert-header {
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
-  color: #fff;
-  border-bottom-color: transparent;
+.alerts-list-header-icon,
+.create-alert-header-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 0.0625rem;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--color-primary);
+}
+
+.alerts-list-header-text,
+.create-alert-header-text {
+  min-width: 0;
 }
 
 .alerts-list-header h3,
 .create-alert-header h3 {
   font-size: 1.0625rem;
   font-weight: 700;
-  margin: 0 0 0.375rem 0;
+  margin: 0 0 0.1875rem 0;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  letter-spacing: -0.01em;
-}
-
-.alerts-list-header h3 {
-  color: var(--color-text);
-}
-
-.alerts-list-header h3 svg {
-  color: var(--color-primary);
 }
 
 .alerts-list-header p,
 .create-alert-header p {
   margin: 0;
   font-size: 0.8125rem;
-}
-
-.alerts-list-header p {
   color: var(--color-text-muted);
-}
-
-.create-alert-header p {
-  opacity: 0.88;
 }
 
 .alerts-count {
@@ -845,6 +921,7 @@
 
   .create-alert-card {
     order: 1;
+    position: static;
   }
 }
 
@@ -887,6 +964,15 @@
 
   .alerts-group-header {
     flex-wrap: wrap;
+  }
+
+  .alerts-page-title {
+    margin-right: 0;
+  }
+
+  .alerts-stats-row {
+    width: 100%;
+    overflow-x: auto;
   }
 }
 

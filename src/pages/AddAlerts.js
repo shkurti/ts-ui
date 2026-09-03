@@ -231,6 +231,15 @@ const AddAlerts = () => {
     );
   };
 
+  // Breakdown of every configured alert by type, for the summary strip
+  const getAlertTypeCounts = () => {
+    const counts = { temperature: 0, humidity: 0, geofence: 0 };
+    getAllAlerts().forEach(({ alert }) => {
+      if (counts[alert.type] !== undefined) counts[alert.type] += 1;
+    });
+    return counts;
+  };
+
   const getFilteredAlerts = () => {
     const query = alertSearch.trim().toLowerCase();
     return getAllAlerts().filter(({ alert, shipmentId, shipmentName }) => {
@@ -301,6 +310,9 @@ const AddAlerts = () => {
     }
   };
 
+  const allAlerts = getAllAlerts();
+  const typeCounts = getAlertTypeCounts();
+
   return (
     <div className="alerts-page">
       <div className="alerts-page-header">
@@ -313,20 +325,46 @@ const AddAlerts = () => {
           <h1>Alert Management</h1>
           <p>Manage environmental alert configurations for your shipments</p>
         </div>
+
+        {allAlerts.length > 0 && (
+          <div className="alerts-stats-row">
+            <div className="alerts-stat alerts-stat-total">
+              <span className="alerts-stat-value">{allAlerts.length}</span>
+              <span className="alerts-stat-label">Total</span>
+            </div>
+            <div className="alerts-stat alerts-stat-temperature">
+              <ThermometerIcon />
+              <span className="alerts-stat-value">{typeCounts.temperature}</span>
+              <span className="alerts-stat-label">Temperature</span>
+            </div>
+            <div className="alerts-stat alerts-stat-humidity">
+              <DropletIcon />
+              <span className="alerts-stat-value">{typeCounts.humidity}</span>
+              <span className="alerts-stat-label">Humidity</span>
+            </div>
+            <div className="alerts-stat alerts-stat-geofence">
+              <PinIcon />
+              <span className="alerts-stat-value">{typeCounts.geofence}</span>
+              <span className="alerts-stat-label">Geofence</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="alerts-layout">
         {/* Left Panel - Existing Alerts */}
         <div className="alerts-list-panel">
           <div className="alerts-list-header">
-            <h3>
-              <ListIcon />
-              Existing Alerts
-              {getAllAlerts().length > 0 && (
-                <span className="alerts-count">{getAllAlerts().length}</span>
-              )}
-            </h3>
-            <p>Every alert configured, across all shipments</p>
+            <div className="alerts-list-header-icon"><ListIcon width={16} height={16} /></div>
+            <div className="alerts-list-header-text">
+              <h3>
+                Existing Alerts
+                {allAlerts.length > 0 && (
+                  <span className="alerts-count">{allAlerts.length}</span>
+                )}
+              </h3>
+              <p>Every alert configured, across all shipments</p>
+            </div>
           </div>
 
           <div className="alerts-list-content">
@@ -381,7 +419,7 @@ const AddAlerts = () => {
               </div>
             </div>
 
-            {getAllAlerts().length === 0 ? (
+            {allAlerts.length === 0 ? (
               <div className="alerts-empty-state">
                 <div className="alerts-empty-icon success"><CheckCircleIcon /></div>
                 <div>
@@ -451,8 +489,11 @@ const AddAlerts = () => {
         {/* Right Panel - Create New Alert */}
         <div className="create-alert-card">
           <div className="create-alert-header">
-            <h3><PlusIcon /> Create New Alert</h3>
-            <p>Add environmental monitoring alerts</p>
+            <div className="create-alert-header-icon"><PlusIcon width={16} height={16} /></div>
+            <div className="create-alert-header-text">
+              <h3>Create New Alert</h3>
+              <p>Add environmental monitoring alerts</p>
+            </div>
           </div>
 
           <div className="create-alert-body">
