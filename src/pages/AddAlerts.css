@@ -122,29 +122,39 @@
   color: var(--color-text-muted);
 }
 
+/* Both panels stretch to the row's height (the taller of the two) instead of
+   each hugging its own content - otherwise a short alert list leaves the
+   left card looking cut off next to a taller form. The list's own content
+   area then flexes to fill that height and scrolls internally if it's the
+   one that ends up longer. */
 .alerts-layout {
   display: grid;
   grid-template-columns: 1fr 1.1fr;
   gap: 1.5rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 /* ── Shared panel shell ───────────────────────────────────────────── */
 .alerts-list-panel,
 .create-alert-card {
+  display: flex;
+  flex-direction: column;
   background: #fff;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   border: 1px solid var(--color-border);
-  height: fit-content;
   overflow: hidden;
 }
 
 /* The form is the primary action on this page, so it keeps pace with the
-   list as you scroll instead of getting left behind. */
+   list as you scroll instead of getting left behind. It keeps its own
+   natural height (align-self: start opts it out of the grid's stretch)
+   rather than being force-grown to match the list - the list is the one
+   that adapts to it, not the other way around. */
 .create-alert-card {
   position: sticky;
   top: 1.25rem;
+  align-self: start;
 }
 
 .alerts-list-header,
@@ -210,7 +220,11 @@
 }
 
 .alerts-list-content {
-  max-height: 560px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-height: 700px;
   overflow-y: auto;
 }
 
@@ -730,6 +744,7 @@
 
 /* ── Existing alerts list ─────────────────────────────────────────── */
 .alerts-empty-state {
+  flex: 1;
   text-align: center;
   color: var(--color-text-muted);
   padding: 2.5rem 1.5rem;
@@ -740,6 +755,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0.875rem;
 }
 
