@@ -67,9 +67,18 @@ const TrashIcon = (props) => (
   </svg>
 );
 
+const RouteIcon = (props) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+    <circle cx="5" cy="19" r="2.25" stroke="currentColor" strokeWidth="1.8"/>
+    <circle cx="19" cy="5" r="2.25" stroke="currentColor" strokeWidth="1.8"/>
+    <path d="M7 19h6a4 4 0 0 0 4-4v-1a4 4 0 0 0-4-4H9a4 4 0 0 1-4-4v-1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeDasharray="1 3.2"/>
+  </svg>
+);
+
 const AlertTypeIcon = ({ type, ...props }) => {
   if (type === 'temperature') return <ThermometerIcon {...props} />;
   if (type === 'geofence') return <PinIcon {...props} />;
+  if (type === 'corridor') return <RouteIcon {...props} />;
   return <DropletIcon {...props} />;
 };
 
@@ -77,7 +86,8 @@ const ALERT_TYPE_FILTERS = [
   { value: 'all', label: 'All types' },
   { value: 'temperature', label: 'Temperature' },
   { value: 'humidity', label: 'Humidity' },
-  { value: 'geofence', label: 'Geofence' },
+  { value: 'geofence', label: 'Destination geofence' },
+  { value: 'corridor', label: 'Route geofence' },
 ];
 
 const describeAlertRange = (alert) => {
@@ -86,12 +96,17 @@ const describeAlertRange = (alert) => {
     if (alert.radius != null) return `${alert.radius}m radius`;
     return 'Zone alert';
   }
+  if (alert.type === 'corridor') {
+    if (alert.widthMeters != null) return `±${alert.widthMeters}m corridor`;
+    return 'Route alert';
+  }
   return `Range: ${alert.minValue}${alert.unit} to ${alert.maxValue}${alert.unit}`;
 };
 
 const getAlertDisplayName = (alert) => {
   if (alert.name) return alert.name;
-  if (alert.type === 'geofence') return 'Geofence Alert';
+  if (alert.type === 'geofence') return 'Destination Geofence';
+  if (alert.type === 'corridor') return 'Route Geofence';
   return `${alert.type.charAt(0).toUpperCase()}${alert.type.slice(1)} Alert`;
 };
 
@@ -233,7 +248,7 @@ const AddAlerts = () => {
 
   // Breakdown of every configured alert by type, for the summary strip
   const getAlertTypeCounts = () => {
-    const counts = { temperature: 0, humidity: 0, geofence: 0 };
+    const counts = { temperature: 0, humidity: 0, geofence: 0, corridor: 0 };
     getAllAlerts().forEach(({ alert }) => {
       if (counts[alert.type] !== undefined) counts[alert.type] += 1;
     });
@@ -345,7 +360,12 @@ const AddAlerts = () => {
             <div className="alerts-stat alerts-stat-geofence">
               <PinIcon />
               <span className="alerts-stat-value">{typeCounts.geofence}</span>
-              <span className="alerts-stat-label">Geofence</span>
+              <span className="alerts-stat-label">Destination</span>
+            </div>
+            <div className="alerts-stat alerts-stat-corridor">
+              <RouteIcon />
+              <span className="alerts-stat-value">{typeCounts.corridor}</span>
+              <span className="alerts-stat-label">Route</span>
             </div>
           </div>
         )}

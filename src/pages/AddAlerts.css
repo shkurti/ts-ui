@@ -90,6 +90,11 @@
   color: #7c3aed;
 }
 
+.alerts-stat-corridor svg,
+.alerts-stat-corridor .alerts-stat-value {
+  color: #0d9488;
+}
+
 .alerts-page-icon {
   width: 42px;
   height: 42px;
@@ -350,6 +355,12 @@
   border-color: #7c3aed;
   background: #f5f3ff;
   color: #7c3aed;
+}
+
+.alerts-type-chip.corridor.active {
+  border-color: #0d9488;
+  background: #f0fdfa;
+  color: #0d9488;
 }
 
 .alerts-clear-filters-btn {
@@ -816,6 +827,11 @@
   color: #7c3aed;
 }
 
+.alert-icon.corridor {
+  background: #f0fdfa;
+  color: #0d9488;
+}
+
 .alert-details {
   display: flex;
   flex-direction: column;
@@ -872,6 +888,11 @@
 .alert-type-badge.geofence {
   background: #f5f3ff;
   color: #7c3aed;
+}
+
+.alert-type-badge.corridor {
+  background: #f0fdfa;
+  color: #0d9488;
 }
 
 .remove-existing-alert-btn {
