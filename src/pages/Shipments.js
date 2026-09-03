@@ -13,6 +13,8 @@ import GeofenceShapeMap from '../components/GeofenceShapeMap';
 import RouteGeofenceMap from '../components/RouteGeofenceMap';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocketContext } from '../context/WebSocketContext';
+import buffer from '@turf/buffer';
+import { lineString } from '@turf/helpers';
 
 // Fix for default markers.
 delete L.Icon.Default.prototype._getIconUrl;
@@ -130,6 +132,28 @@ const haversineMeters = (lat1, lng1, lat2, lng2) => {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+// Buffers a saved route-geofence's routePoints into a filled band, mirroring
+// CorridorBand in RouteGeofenceMap.js - that component only mounts inside the
+// create/edit modals, so without this the corridor a user configures never
+// actually appears on the shipment's live map once saved.
+const getCorridorPolygonLatLngs = (routePoints, widthMeters) => {
+  if (!routePoints || routePoints.length < 2 || !widthMeters) return null;
+  try {
+    const line = lineString(routePoints.map(([lat, lng]) => [lng, lat]));
+    const buffered = buffer(line, widthMeters / 1000, { units: 'kilometers' });
+    if (!buffered) return null;
+    const toLatLngRing = (ring) => ring.map(([lng, lat]) => [lat, lng]);
+    const { geometry } = buffered;
+    if (geometry.type === 'Polygon') return geometry.coordinates.map(toLatLngRing);
+    if (geometry.type === 'MultiPolygon') return geometry.coordinates.map((poly) => poly.map(toLatLngRing));
+    return null;
+  } catch {
+    // Buffering can fail on degenerate geometry (e.g. a route collapsed to
+    // one point) - it's purely illustrative, so fail silently.
+    return null;
+  }
 };
 
 const GPS_STAY_CLUSTER_RADIUS_METERS = 60; // collapse GPS jitter while parked/dwelling in one spot
@@ -3360,6 +3384,41 @@ const Shipments = () => {
               </Circle>
             );
           })}
+
+          {/* Show the route (corridor) geofence, if configured, as a light buffered
+              band along the route - same treatment as the destination geofence
+              circle/polygon above, so the shipment-wide alert is actually visible
+              once saved, not just while being configured in the create/edit modal. */}
+          {selectedShipmentDetail && (() => {
+            const corridorPreset = (selectedShipmentDetail.legs || [])
+              .flatMap((leg) => leg.alertPresets || [])
+              .find((preset) => preset.type === 'corridor' && preset.enabled);
+            if (!corridorPreset) return null;
+
+            const corridorLatLngs = getCorridorPolygonLatLngs(corridorPreset.routePoints, corridorPreset.widthMeters);
+            if (!corridorLatLngs) return null;
+
+            return (
+              <Polygon
+                key="route-geofence"
+                positions={corridorLatLngs}
+                pathOptions={{
+                  color: '#3b82f6',
+                  weight: 1,
+                  opacity: 0.4,
+                  fillColor: '#3b82f6',
+                  fillOpacity: 0.12
+                }}
+              >
+                <Popup>
+                  <div>
+                    <strong>Route Geofence</strong><br />
+                    Allowed deviation: ±{corridorPreset.widthMeters}m
+                  </div>
+                </Popup>
+              </Polygon>
+            );
+          })()}
 
           {/* Show all leg markers: origin + destination as role pins, intermediate stops as numbered waypoints */}
           {selectedShipmentDetail && legPoints.length > 0 && legPoints.map((point, idx) => {
