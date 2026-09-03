@@ -117,7 +117,7 @@ const Navbar = () => {
                   className="dropdown-link"
                   onClick={handleConfigureItemClick}
                 >
-                  Add Alerts
+                  Alert Rules
                 </Link>
               </li>
             </ul>
