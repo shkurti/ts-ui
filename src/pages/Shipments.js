@@ -2859,7 +2859,7 @@ const Shipments = () => {
                                       View on Map
                                     </button>
                                     <button type="button" className="alert-action-btn" onClick={() => openPresetDetails(preset, index)}>
-                                      Alert Details
+                                      Edit
                                     </button>
                                   </div>
                                 </div>
@@ -4042,7 +4042,7 @@ const Shipments = () => {
           >
             <div className="sf-modal-header">
               <div>
-                <h3>Alert Details</h3>
+                <h3>{alertDetailModal.kind === 'preset' ? 'Edit Alert' : 'Alert Details'}</h3>
                 <p className="sf-modal-subtitle">
                   {alertDetailModal.kind === 'preset' ? alertDetailModal.info.name : alertDetailModal.data.alertName}
                 </p>
