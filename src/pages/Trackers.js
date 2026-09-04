@@ -269,20 +269,20 @@ const Trackers = () => {
 
         {/* Stat Tiles */}
         <div className="stats-row">
-          <div className="stat-tile">
-            <span className="stat-tile-label"><span className="stat-dot total" />Total</span>
+          <div className="stat-tile total">
+            <span className="stat-tile-label">Total</span>
             <span className="stat-tile-value">{trackers.length}</span>
           </div>
-          <div className="stat-tile">
-            <span className="stat-tile-label"><span className="stat-dot active" />Active</span>
+          <div className="stat-tile active">
+            <span className="stat-tile-label">Active</span>
             <span className="stat-tile-value">{activeCount}</span>
           </div>
-          <div className="stat-tile">
-            <span className="stat-tile-label"><span className="stat-dot offline" />Offline</span>
+          <div className="stat-tile offline">
+            <span className="stat-tile-label">Offline</span>
             <span className="stat-tile-value">{offlineCount}</span>
           </div>
-          <div className="stat-tile">
-            <span className="stat-tile-label"><span className="stat-dot battery" />Avg. Battery</span>
+          <div className="stat-tile battery">
+            <span className="stat-tile-label">Avg. Battery</span>
             <span className="stat-tile-value">{avgBattery !== null ? `${avgBattery}%` : '—'}</span>
           </div>
         </div>
@@ -316,33 +316,32 @@ const Trackers = () => {
           </div>
         </div>
 
-        {/* Status Tabs */}
-        <div className="status-tabs">
-          <button 
-            className={`tab-btn ${statusFilter === 'All Trackers' ? 'active' : ''}`}
-            onClick={() => setStatusFilter('All Trackers')}
-          >
-            All Trackers ({trackers.length})
-          </button>
-          <button 
-            className={`tab-btn ${statusFilter === 'Active' ? 'active' : ''}`}
-            onClick={() => setStatusFilter('Active')}
-          >
-            Active ({activeCount})
-          </button>
-          <button 
-            className={`tab-btn ${statusFilter === 'Offline' ? 'active' : ''}`}
-            onClick={() => setStatusFilter('Offline')}
-          >
-            Offline ({offlineCount})
-          </button>
-        </div>
+        {/* Status Tabs + Filters */}
+        <div className="toolbar-row">
+          <div className="status-tabs">
+            <button
+              className={`tab-btn ${statusFilter === 'All Trackers' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('All Trackers')}
+            >
+              All Trackers ({trackers.length})
+            </button>
+            <button
+              className={`tab-btn ${statusFilter === 'Active' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('Active')}
+            >
+              Active ({activeCount})
+            </button>
+            <button
+              className={`tab-btn ${statusFilter === 'Offline' ? 'active' : ''}`}
+              onClick={() => setStatusFilter('Offline')}
+            >
+              Offline ({offlineCount})
+            </button>
+          </div>
 
-        {/* Filters */}
-        <div className="filters-row">
           <div className="filter-group">
-            <label>Device Type:</label>
-            <select 
+            <label>Device Type</label>
+            <select
               value={deviceTypeFilter}
               onChange={(e) => setDeviceTypeFilter(e.target.value)}
               className="filter-dropdown"

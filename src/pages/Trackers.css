@@ -27,7 +27,8 @@
 .panel-header {
   display: flex;
   align-items: center;
-  padding: 18px 24px;
+  justify-content: space-between;
+  padding: 20px 24px;
   border-bottom: 1px solid var(--color-border);
   gap: 14px;
   flex-shrink: 0;
@@ -103,39 +104,6 @@
   outline-offset: 2px;
 }
 
-.header-controls {
-  display: flex;
-  gap: 8px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.control-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: #fff;
-  border: 1px solid var(--color-border);
-  padding: 8px 12px;
-  border-radius: var(--radius-md);
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all 0.16s ease;
-}
-
-.control-btn:hover {
-  background: var(--color-bg);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-.control-btn:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
 /* ── Stat Tiles ───────────────────────────────────────────────────── */
 .stats-row {
   display: grid;
@@ -150,11 +118,12 @@
 .stat-tile {
   background: #fff;
   border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
   box-shadow: var(--shadow-sm);
   transition: box-shadow 0.18s ease, transform 0.18s ease;
 }
@@ -164,10 +133,12 @@
   transform: translateY(-1px);
 }
 
+.stat-tile.total { border-left-color: var(--color-primary); }
+.stat-tile.active { border-left-color: var(--color-success); }
+.stat-tile.offline { border-left-color: var(--color-destructive); }
+.stat-tile.battery { border-left-color: var(--color-warning); }
+
 .stat-tile-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -175,20 +146,8 @@
   color: var(--color-text-muted);
 }
 
-.stat-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.stat-dot.total { background: var(--color-primary); }
-.stat-dot.active { background: var(--color-success); }
-.stat-dot.offline { background: var(--color-destructive); }
-.stat-dot.battery { background: var(--color-warning); }
-
 .stat-tile-value {
-  font-size: 22px;
+  font-size: 23px;
   font-weight: 700;
   color: var(--color-text);
   letter-spacing: -0.02em;
@@ -257,13 +216,20 @@
   color: var(--color-destructive);
 }
 
-/* ── Status Tabs ──────────────────────────────────────────────────── */
-.status-tabs {
+/* ── Toolbar: Status Tabs + Filters ──────────────────────────────────── */
+.toolbar-row {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 0 24px;
   border-bottom: 1px solid var(--color-border);
-  gap: 4px;
+  gap: 16px;
   flex-shrink: 0;
+}
+
+.status-tabs {
+  display: flex;
+  gap: 4px;
 }
 
 .tab-btn {
@@ -295,18 +261,7 @@
   border-radius: var(--radius-sm);
 }
 
-/* ── Filters Row ──────────────────────────────────────────────────── */
-.filters-row {
-  display: flex;
-  align-items: center;
-  padding: 10px 24px;
-  background: var(--color-bg);
-  border-bottom: 1px solid var(--color-border);
-  gap: 20px;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
-
+/* ── Filter Group ─────────────────────────────────────────────────── */
 .filter-group {
   display: flex;
   align-items: center;
@@ -325,7 +280,7 @@
   background: #fff;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: 5px 8px;
+  padding: 6px 10px;
   font-size: 13px;
   font-family: var(--font-sans);
   color: var(--color-text);
@@ -1085,7 +1040,7 @@ input[type="checkbox"] {
 }
 
 @media (max-width: 1024px) {
-  .filters-row {
+  .toolbar-row {
     gap: 12px;
   }
 }
@@ -1114,17 +1069,14 @@ input[type="checkbox"] {
     flex-wrap: wrap;
   }
 
-  .header-controls {
-    margin-left: 0;
-  }
-
   .stats-row {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .filters-row {
+  .toolbar-row {
     flex-wrap: wrap;
     gap: 12px;
+    padding: 10px 24px;
   }
 }
 
@@ -1136,13 +1088,12 @@ input[type="checkbox"] {
 
   .panel-header,
   .search-section,
-  .filters-row {
+  .toolbar-row {
     padding-left: 16px;
     padding-right: 16px;
   }
 
   .status-tabs {
-    padding: 0 16px;
     overflow-x: auto;
   }
 }
