@@ -118,7 +118,6 @@
 .stat-tile {
   background: #fff;
   border: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: 12px 14px;
   display: flex;
@@ -132,11 +131,6 @@
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
-
-.stat-tile.total { border-left-color: var(--color-primary); }
-.stat-tile.active { border-left-color: var(--color-success); }
-.stat-tile.offline { border-left-color: var(--color-destructive); }
-.stat-tile.battery { border-left-color: var(--color-warning); }
 
 .stat-tile-label {
   font-size: 11px;
