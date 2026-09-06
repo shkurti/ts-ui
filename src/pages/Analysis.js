@@ -120,6 +120,8 @@ const Analysis = () => {
   const [chartType, setChartType] = useState('donut'); // 'donut' or 'bar'
   const [carriers, setCarriers] = useState(['All']); // Default value
   const [selectedCarrier, setSelectedCarrier] = useState('All');
+  const [trackers, setTrackers] = useState([]); // [{ tracker_id, tracker_name }]
+  const [selectedTracker, setSelectedTracker] = useState('All');
   const [startDate, setStartDate] = useState('2023-01-01');
   const [endDate, setEndDate] = useState('2025-12-31');
   const [carrierPerformanceData, setCarrierPerformanceData] = useState([]);
@@ -182,14 +184,17 @@ const Analysis = () => {
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
   // Function to fetch analytics data with filters
-  const fetchFilteredAnalytics = async (carrier = selectedCarrier, start = startDate, end = endDate) => {
+  const fetchFilteredAnalytics = async (carrier = selectedCarrier, start = startDate, end = endDate, trackerId = selectedTracker) => {
     try {
       console.log('Fetching analytics data with filters - starting parallel requests...');
       const startTime = Date.now();
-      
+
       const params = {};
       if (carrier && carrier !== 'All') {
         params.carrier = carrier;
+      }
+      if (trackerId && trackerId !== 'All') {
+        params.tracker_id = trackerId;
       }
       if (start) {
         params.start_date = `${start}T00:00:00Z`;
@@ -309,11 +314,11 @@ const Analysis = () => {
         // Fetch initial analytics data with broader date range
         await fetchFilteredAnalytics('All', '2023-01-01', '2025-12-31');
         
-        // Fetch trackers for additional data
-        const trackersRes = await fetch(`${API_BASE}/registered_trackers`);
-        if (trackersRes.ok) {
-          const trackersData = await trackersRes.json();
-          console.log('Trackers data available:', trackersData.length);
+        // Fetch trackers so they can be selected as an exact, unambiguous
+        // alternative to filtering by carrier.
+        const trackersData = await trackerApi.getAll();
+        if (Array.isArray(trackersData)) {
+          setTrackers(trackersData);
         }
 
       } catch (err) {
@@ -330,7 +335,16 @@ const Analysis = () => {
   const handleCarrierChange = (newCarrier) => {
     setSelectedCarrier(newCarrier);
     console.log('Carrier changed to:', newCarrier);
-    fetchFilteredAnalytics(newCarrier, startDate, endDate);
+    fetchFilteredAnalytics(newCarrier, startDate, endDate, selectedTracker);
+  };
+
+  // Handle tracker change - an exact, unambiguous alternative (or
+  // complement) to filtering by carrier, since a carrier is just a label
+  // on a leg while a tracker is a specific physical device.
+  const handleTrackerChange = (newTracker) => {
+    setSelectedTracker(newTracker);
+    console.log('Tracker changed to:', newTracker);
+    fetchFilteredAnalytics(selectedCarrier, startDate, endDate, newTracker);
   };
 
   // Handle date range changes
@@ -338,14 +352,14 @@ const Analysis = () => {
     setStartDate(newStartDate);
     setDateRange(`${newStartDate} - ${endDate}`);
     console.log('Start date changed to:', newStartDate);
-    fetchFilteredAnalytics(selectedCarrier, newStartDate, endDate);
+    fetchFilteredAnalytics(selectedCarrier, newStartDate, endDate, selectedTracker);
   };
 
   const handleEndDateChange = (newEndDate) => {
     setEndDate(newEndDate);
     setDateRange(`${startDate} - ${newEndDate}`);
     console.log('End date changed to:', newEndDate);
-    fetchFilteredAnalytics(selectedCarrier, startDate, newEndDate);
+    fetchFilteredAnalytics(selectedCarrier, startDate, newEndDate, selectedTracker);
   };
 
   // Custom tooltip for carrier charts
@@ -1371,10 +1385,25 @@ const Analysis = () => {
           className="analysis-select"
           value={selectedCarrier}
           onChange={(e) => handleCarrierChange(e.target.value)}
+          title="Filter by carrier"
         >
           {carriers.map((carrier, index) => (
             <option key={index} value={carrier}>
-              {carrier}
+              {carrier === 'All' ? 'All carriers' : carrier}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="analysis-select"
+          value={selectedTracker}
+          onChange={(e) => handleTrackerChange(e.target.value)}
+          title="Filter by tracker - an exact match, unlike carrier which can share a device"
+        >
+          <option value="All">All trackers</option>
+          {trackers.map((tracker) => (
+            <option key={tracker.tracker_id} value={tracker.tracker_id}>
+              {tracker.tracker_name ? `${tracker.tracker_id} - ${tracker.tracker_name}` : tracker.tracker_id}
             </option>
           ))}
         </select>
