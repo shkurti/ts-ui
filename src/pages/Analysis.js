@@ -381,41 +381,44 @@ const Analysis = () => {
     return (
       <div className="chart-container">
         <h4 className="chart-title">Carrier Distribution</h4>
-        <ResponsiveContainer width="100%" height={300}>
-          <RechartsBarChart
-            data={sortedData}
-            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-            <XAxis
-              dataKey="name"
-              fontSize={12}
-              stroke={CHART.axis}
-              angle={-45}
-              textAnchor="end"
-              height={60}
-              interval={0}
-            />
-            <YAxis
-              label={{
-                value: 'Shipments',
-                angle: -90,
-                position: 'insideLeft'
-              }}
-              fontSize={12}
-              stroke={CHART.axis}
-            />
-            <Tooltip content={<CarrierChartTooltip />} />
-            <Bar 
-              dataKey="shipmentCount" 
-              radius={[4, 4, 0, 0]}
+        <div className="chart-visual">
+          <ResponsiveContainer width="100%" height={280}>
+            <RechartsBarChart
+              data={sortedData}
+              margin={{ top: 16, right: 12, left: 12, bottom: 8 }}
+              barCategoryGap="28%"
             >
-              {sortedData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
-              ))}
-            </Bar>
-          </RechartsBarChart>
-        </ResponsiveContainer>
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+              <XAxis
+                dataKey="name"
+                fontSize={12}
+                stroke={CHART.axis}
+                tickLine={false}
+                interval={0}
+              />
+              <YAxis
+                label={{
+                  value: 'Shipments',
+                  angle: -90,
+                  position: 'insideLeft'
+                }}
+                fontSize={12}
+                stroke={CHART.axis}
+                allowDecimals={false}
+              />
+              <Tooltip content={<CarrierChartTooltip />} />
+              <Bar
+                dataKey="shipmentCount"
+                radius={[4, 4, 0, 0]}
+                maxBarSize={64}
+              >
+                {sortedData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Bar>
+            </RechartsBarChart>
+          </ResponsiveContainer>
+        </div>
 
         {/* Carrier Summary */}
         <div className="chart-summary">
@@ -462,28 +465,30 @@ const Analysis = () => {
     return (
       <div className="chart-container">
         <h4 className="chart-title">Carrier Distribution</h4>
-        <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
-            <Pie
-              data={carrierPerformanceData}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              label={renderCustomLabel}
-              outerRadius={100}
-              innerRadius={40}
-              fill="#8884d8"
-              dataKey="shipmentCount"
-              startAngle={90}
-              endAngle={-270}
-            >
-              {carrierPerformanceData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
-              ))}
-            </Pie>
-            <Tooltip content={<CarrierChartTooltip />} />
-          </PieChart>
-        </ResponsiveContainer>
+        <div className="chart-visual">
+          <ResponsiveContainer width="100%" height={280}>
+            <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+              <Pie
+                data={carrierPerformanceData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={renderCustomLabel}
+                outerRadius="88%"
+                innerRadius="52%"
+                fill="#8884d8"
+                dataKey="shipmentCount"
+                startAngle={90}
+                endAngle={-270}
+              >
+                {carrierPerformanceData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip content={<CarrierChartTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
 
         {/* Legend */}
         <div className="performance-summary" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>

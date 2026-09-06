@@ -424,6 +424,14 @@
   margin: 0 0 1rem 0;
 }
 
+/* Caps the plotted mark's width so a handful of bars or a donut don't sit
+   as a small shape adrift in a wide card - keeps the mark's own aspect
+   ratio sane and lets the legend/summary below still span full width. */
+.chart-visual {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
 .chart-summary {
   display: flex;
   align-items: center;
