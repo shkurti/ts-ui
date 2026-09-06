@@ -381,44 +381,42 @@ const Analysis = () => {
     return (
       <div className="chart-container">
         <h4 className="chart-title">Carrier Distribution</h4>
-        <div className="chart-visual">
-          <ResponsiveContainer width="100%" height={280}>
-            <RechartsBarChart
-              data={sortedData}
-              margin={{ top: 16, right: 12, left: 12, bottom: 8 }}
-              barCategoryGap="28%"
+        <ResponsiveContainer width="100%" height={280}>
+          <RechartsBarChart
+            data={sortedData}
+            margin={{ top: 16, right: 24, left: 0, bottom: 8 }}
+            barCategoryGap="32%"
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+            <XAxis
+              dataKey="name"
+              fontSize={12}
+              stroke={CHART.axis}
+              tickLine={false}
+              interval={0}
+            />
+            <YAxis
+              label={{
+                value: 'Shipments',
+                angle: -90,
+                position: 'insideLeft'
+              }}
+              fontSize={12}
+              stroke={CHART.axis}
+              allowDecimals={false}
+            />
+            <Tooltip content={<CarrierChartTooltip />} />
+            <Bar
+              dataKey="shipmentCount"
+              radius={[4, 4, 0, 0]}
+              maxBarSize={72}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-              <XAxis
-                dataKey="name"
-                fontSize={12}
-                stroke={CHART.axis}
-                tickLine={false}
-                interval={0}
-              />
-              <YAxis
-                label={{
-                  value: 'Shipments',
-                  angle: -90,
-                  position: 'insideLeft'
-                }}
-                fontSize={12}
-                stroke={CHART.axis}
-                allowDecimals={false}
-              />
-              <Tooltip content={<CarrierChartTooltip />} />
-              <Bar
-                dataKey="shipmentCount"
-                radius={[4, 4, 0, 0]}
-                maxBarSize={64}
-              >
-                {sortedData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </RechartsBarChart>
-          </ResponsiveContainer>
-        </div>
+              {sortedData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Bar>
+          </RechartsBarChart>
+        </ResponsiveContainer>
 
         {/* Carrier Summary */}
         <div className="chart-summary">
