@@ -63,10 +63,18 @@ const PieChartGlyph = (props) => (
   </svg>
 );
 
-const UserIcon = (props) => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" {...props}>
-    <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/>
-    <path d="M4 20c0-3.5 3.5-6 8-6s8 2.5 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+const PlaneIcon = (props) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" {...props}>
+    <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-3 2v1.5l4.5-1.5 4.5 1.5V21l-3-2v-5.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+  </svg>
+);
+
+const RailIcon = (props) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" {...props}>
+    <rect x="5" y="3" width="14" height="13" rx="4" stroke="currentColor" strokeWidth="1.8"/>
+    <path d="M5 11h14M8 16l-2.5 4.5M16 16l2.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    <circle cx="8.5" cy="13" r="1" fill="currentColor"/>
+    <circle cx="15.5" cy="13" r="1" fill="currentColor"/>
   </svg>
 );
 
@@ -109,11 +117,6 @@ const Analysis = () => {
   const [error, setError] = useState(null);
   const [dateRange, setDateRange] = useState('May 9, 2023 - Nov 9, 2023');
   const [viewMode, setViewMode] = useState('Monthly');
-  const [filters, setFilters] = useState({
-    unspecified: 39,
-    road: true,
-    ocean: true
-  });
   const [chartType, setChartType] = useState('donut'); // 'donut' or 'bar'
   const [carriers, setCarriers] = useState(['All']); // Default value
   const [selectedCarrier, setSelectedCarrier] = useState('All');
@@ -1404,22 +1407,32 @@ const Analysis = () => {
           <option>Daily</option>
         </select>
 
-        <div className="analysis-filter-chips">
-          <span className="analysis-filter-chip">
-            <UserIcon />
-            Unspecified +{filters.unspecified}
-          </span>
-          <span className="analysis-filter-chip road">
-            <TruckIcon />
-            Road
-          </span>
-          <span className="analysis-filter-chip ocean">
-            <ShipIcon />
-            Ocean +2
-          </span>
+        <div className="analysis-mode-chips">
+          {analyticsData.roadLegs > 0 && (
+            <span className="analysis-filter-chip road">
+              <TruckIcon />
+              {analyticsData.roadLegs} Road
+            </span>
+          )}
+          {analyticsData.oceanLegs > 0 && (
+            <span className="analysis-filter-chip ocean">
+              <ShipIcon />
+              {analyticsData.oceanLegs} Ocean
+            </span>
+          )}
+          {analyticsData.airLegs > 0 && (
+            <span className="analysis-filter-chip air">
+              <PlaneIcon />
+              {analyticsData.airLegs} Air
+            </span>
+          )}
+          {analyticsData.railLegs > 0 && (
+            <span className="analysis-filter-chip rail">
+              <RailIcon />
+              {analyticsData.railLegs} Rail
+            </span>
+          )}
         </div>
-
-        <button className="analysis-all-filters-btn">All Filters</button>
       </div>
 
       <div className="analysis-main-grid">

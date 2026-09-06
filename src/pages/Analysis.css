@@ -194,7 +194,10 @@
   font-weight: 500;
 }
 
-.analysis-filter-chips {
+/* Mode chips are read-only summaries of real leg counts (from
+   analyticsData), not filter controls - only rendered when a mode has
+   at least one leg, so the row never claims data that isn't there. */
+.analysis-mode-chips {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -233,22 +236,16 @@
   color: var(--color-secondary);
 }
 
-.analysis-all-filters-btn {
-  padding: 0.5rem 1rem;
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: #fff;
-  color: var(--color-text);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  font-family: var(--font-sans);
-  cursor: pointer;
-  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+.analysis-filter-chip.air {
+  border-color: #7c3aed;
+  background: #f5f3ff;
+  color: #7c3aed;
 }
 
-.analysis-all-filters-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+.analysis-filter-chip.rail {
+  border-color: #0d9488;
+  background: #f0fdfa;
+  color: #0d9488;
 }
 
 /* ── Layout ───────────────────────────────────────────────────────── */
@@ -609,7 +606,7 @@
     align-items: stretch;
   }
 
-  .analysis-filter-chips {
+  .analysis-mode-chips {
     margin-left: 0;
   }
 
