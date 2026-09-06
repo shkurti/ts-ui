@@ -1,7 +1,74 @@
 import React, { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart as RechartsBarChart, Bar, Cell, PieChart, Pie } from 'recharts';
 import { analysisApi, trackerApi } from '../services/apiService';
-import './Page.css';
+import './Analysis.css';
+
+const BarChartIcon = (props) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" {...props}>
+    <path d="M4 20V10M12 20V4M20 20v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const TriangleAlertIcon = (props) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" {...props}>
+    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
+    <path d="M12 9v4M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
+const TruckIcon = (props) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" {...props}>
+    <path d="M1 3h13v13H1zM14 8h4l3 3v5h-7V8z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+    <circle cx="5.5" cy="18.5" r="1.75" stroke="currentColor" strokeWidth="1.8"/>
+    <circle cx="16.5" cy="18.5" r="1.75" stroke="currentColor" strokeWidth="1.8"/>
+  </svg>
+);
+
+const ShipIcon = (props) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" {...props}>
+    <path d="M3 17l1.5-6h15L21 17M4.5 11V6h3v2M6 21c1.1 0 1.5-1 2.5-1s1.4 1 2.5 1 1.5-1 2.5-1 1.4 1 2.5 1 1.5-1 2.5-1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M12 2v9M9 5h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+  </svg>
+);
+
+const ListIcon = (props) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" {...props}>
+    <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
+const ClockIcon = (props) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" {...props}>
+    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8"/>
+    <path d="M12 7v5l3.5 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const ThermometerIcon = (props) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M15 13V5a3 3 0 0 0-6 0v8a5 5 0 1 0 6 0zm-3-9a1 1 0 0 1 1 1v7.17a1 1 0 0 0 .55.9A3 3 0 1 1 10.45 12.07a1 1 0 0 0 .55-.9V5a1 1 0 0 1 1-1z"/>
+  </svg>
+);
+
+const DropletIcon = (props) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M12 2.5s-6.5 7.44-6.5 12.02A6.5 6.5 0 0 0 12 21a6.5 6.5 0 0 0 6.5-6.48C18.5 9.94 12 2.5 12 2.5zm0 16.5a4.5 4.5 0 0 1-4.5-4.48c0-2.35 2.62-6.24 4.5-8.6 1.88 2.36 4.5 6.25 4.5 8.6A4.5 4.5 0 0 1 12 19z"/>
+  </svg>
+);
+
+const PieChartGlyph = (props) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" {...props}>
+    <path d="M21.21 15.89A10 10 0 1 1 8 2.83" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+    <path d="M22 12A10 10 0 0 0 12 2v10z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+  </svg>
+);
+
+const UserIcon = (props) => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" {...props}>
+    <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8"/>
+    <path d="M4 20c0-3.5 3.5-6 8-6s8 2.5 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+  </svg>
+);
 
 // Fixed-order, CVD-safe categorical palette (mirrors theme.css --chart-series-*
 // and the backend's carrier color assignment). Grid/axis are deliberately
@@ -1248,10 +1315,13 @@ const Analysis = () => {
 
   if (loading) {
     return (
-      <div className="tive-container">
-        <div className="tive-header">
-          <h1>TS Logics</h1>
-          <p className="last-updated">Data Last Updated: 6 hours ago</p>
+      <div className="analysis-page">
+        <div className="analysis-page-header">
+          <div className="analysis-page-icon"><BarChartIcon /></div>
+          <div className="analysis-page-title">
+            <h1>TS Logics Analytics</h1>
+            <p>Data last updated 6 hours ago</p>
+          </div>
         </div>
         <div className="loading-state">Loading analytics data…</div>
       </div>
@@ -1259,15 +1329,40 @@ const Analysis = () => {
   }
 
   return (
-    <div className="tive-container">
-      <div className="tive-header">
-        <h1>TS Logics</h1>
-        <p className="last-updated">Data Last Updated: 6 hours ago</p>
+    <div className="analysis-page">
+      <div className="analysis-page-header">
+        <div className="analysis-page-icon"><BarChartIcon /></div>
+        <div className="analysis-page-title">
+          <h1>TS Logics Analytics</h1>
+          <p>Data last updated 6 hours ago</p>
+        </div>
+
+        <div className="analysis-stats-row">
+          <div className="analysis-stat analysis-stat-total">
+            <span className="analysis-stat-value">{analyticsData.totalShipments}</span>
+            <span className="analysis-stat-label">Shipments</span>
+          </div>
+          <div className="analysis-stat analysis-stat-alerts">
+            <TriangleAlertIcon />
+            <span className="analysis-stat-value">{analyticsData.shipmentsWithAlerts}</span>
+            <span className="analysis-stat-label">With Alerts</span>
+          </div>
+          <div className="analysis-stat analysis-stat-road">
+            <TruckIcon />
+            <span className="analysis-stat-value">{analyticsData.roadLegs}</span>
+            <span className="analysis-stat-label">Road Legs</span>
+          </div>
+          <div className="analysis-stat analysis-stat-ocean">
+            <ShipIcon />
+            <span className="analysis-stat-value">{analyticsData.oceanLegs}</span>
+            <span className="analysis-stat-label">Ocean Legs</span>
+          </div>
+        </div>
       </div>
 
-      <div className="tive-controls">
-        <select 
-          className="tive-select" 
+      <div className="analysis-controls-card">
+        <select
+          className="analysis-select"
           value={selectedCarrier}
           onChange={(e) => handleCarrierChange(e.target.value)}
         >
@@ -1277,27 +1372,27 @@ const Analysis = () => {
             </option>
           ))}
         </select>
-        
-        <div className="date-range-container">
-          <input 
-            type="date" 
-            className="date-input" 
+
+        <div className="analysis-date-range">
+          <input
+            type="date"
+            className="analysis-date-input"
             value={startDate}
             onChange={(e) => handleStartDateChange(e.target.value)}
             title="Start Date"
           />
-          <span className="date-separator">to</span>
-          <input 
-            type="date" 
-            className="date-input" 
+          <span className="analysis-date-separator">to</span>
+          <input
+            type="date"
+            className="analysis-date-input"
             value={endDate}
             onChange={(e) => handleEndDateChange(e.target.value)}
             title="End Date"
           />
         </div>
-        
-        <select 
-          className="tive-select" 
+
+        <select
+          className="analysis-select"
           value={viewMode}
           onChange={(e) => setViewMode(e.target.value)}
         >
@@ -1305,167 +1400,206 @@ const Analysis = () => {
           <option>Weekly</option>
           <option>Daily</option>
         </select>
-        
-        <div className="filter-group">
-          <span className="filter-item">
-            <span className="filter-icon">👤</span>
+
+        <div className="analysis-filter-chips">
+          <span className="analysis-filter-chip">
+            <UserIcon />
             Unspecified +{filters.unspecified}
           </span>
-          <span className="filter-item">
-            <span className="filter-icon transport-road">🚛</span>
+          <span className="analysis-filter-chip road">
+            <TruckIcon />
             Road
           </span>
-          <span className="filter-item">
-            <span className="filter-icon transport-ocean">🚢</span>
+          <span className="analysis-filter-chip ocean">
+            <ShipIcon />
             Ocean +2
           </span>
         </div>
-        
-        <button className="all-filters-btn">All Filters</button>
+
+        <button className="analysis-all-filters-btn">All Filters</button>
       </div>
 
-      <div className="tive-content">
-        {/* Shipments Overview */}
-        <div className="overview-section">
-          <h2 className="section-heading">Shipments Overview</h2>
-
-          <div className="overview-grid">
-            <div className="overview-card">
-              <div className="overview-label">Total Shipments</div>
-              <div className="overview-number">{analyticsData.totalShipments}</div>
-              <span className="overview-percentage">
-                ▲ 20%
-              </span>
+      <div className="analysis-main-grid">
+        {/* Left Column */}
+        <div className="analysis-column">
+          {/* Highlights */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><ListIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Highlights</h3>
+                  <p>Shipment and leg counts across the fleet</p>
+                </div>
+              </div>
             </div>
+            <div className="analysis-card-body">
+              <div className="analysis-tile-grid">
+                <div className="analysis-tile">
+                  <span className="analysis-tile-value">{analyticsData.totalShipments}</span>
+                  <span className="analysis-tile-label">Shipments</span>
+                </div>
+                <div className="analysis-tile">
+                  <span className="analysis-tile-value">{analyticsData.shipmentsWithAlerts}</span>
+                  <span className="analysis-tile-label">Shipments with Alerts</span>
+                </div>
+                <div className="analysis-tile">
+                  <span className="analysis-tile-value">{analyticsData.roadLegs}</span>
+                  <span className="analysis-tile-label">Road Legs</span>
+                </div>
+                <div className="analysis-tile">
+                  <span className="analysis-tile-value">{analyticsData.oceanLegs}</span>
+                  <span className="analysis-tile-label">Ocean Legs</span>
+                </div>
+                <div className="analysis-tile">
+                  <span className="analysis-tile-value">{analyticsData.airLegs}</span>
+                  <span className="analysis-tile-label">Air Legs</span>
+                </div>
+                <div className="analysis-tile">
+                  <span className="analysis-tile-value">{analyticsData.railLegs}</span>
+                  <span className="analysis-tile-label">Rail Legs</span>
+                </div>
+              </div>
+            </div>
+          </div>
 
-            <div className="overview-card">
-              <div className="overview-label">Shipments with Alerts</div>
-              <div className="overview-number">{analyticsData.shipmentsWithAlerts}</div>
-              <span className="overview-percentage trend-down">
-                ▲ 15%
-              </span>
+          {/* Delays & Stops */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><ClockIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Delays & Stops</h3>
+                  <p>Average schedule adherence across all legs</p>
+                </div>
+              </div>
+            </div>
+            <div className="analysis-card-body">
+              <div className="analysis-tile-grid">
+                <div className="analysis-tile">
+                  <span className="analysis-tile-value">
+                    {analyticsData.avgDepartureDelay.hours}h {analyticsData.avgDepartureDelay.minutes}m
+                  </span>
+                  <span className="analysis-tile-label">Avg. Departure Delay</span>
+                </div>
+                <div className="analysis-tile">
+                  <span className="analysis-tile-value">
+                    {analyticsData.avgArrivalDelay.days}d {analyticsData.avgArrivalDelay.hours}h
+                  </span>
+                  <span className="analysis-tile-label">Avg. Arrival Delay</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Temperature Chart */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><ThermometerIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Temperature</h3>
+                  <p>Average shipment temperature over time</p>
+                </div>
+              </div>
+            </div>
+            <div className="analysis-card-body">
+              <TemperatureChart />
+            </div>
+          </div>
+
+          {/* Humidity Chart */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><DropletIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Humidity</h3>
+                  <p>Average shipment humidity over time</p>
+                </div>
+              </div>
+            </div>
+            <div className="analysis-card-body">
+              <HumidityChart />
             </div>
           </div>
         </div>
 
-        {/* Main Content Grid */}
-        <div className="main-grid">
-          {/* Left Column */}
-          <div className="left-column">
-            {/* Highlights */}
-            <div className="highlights-section">
-              <h3 className="section-heading">Highlights</h3>
-
-              <div className="highlights-grid">
-                <div className="highlight-group">
-                  <h4>SHIPMENTS & LEGS</h4>
-                  <div className="highlight-items">
-                    <div className="highlight-item">
-                      <span className="highlight-number">{analyticsData.totalShipments}</span>
-                      <span className="highlight-label">Shipments</span>
-                    </div>
-                    <div className="highlight-item">
-                      <span className="highlight-number">{analyticsData.shipmentsWithAlerts}</span>
-                      <span className="highlight-label">Shipments with Alerts</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="highlight-group">
-                  <div className="highlight-items">
-                    <div className="highlight-item">
-                      <span className="highlight-number">{analyticsData.roadLegs}</span>
-                      <span className="highlight-label">Road Legs</span>
-                    </div>
-                    <div className="highlight-item">
-                      <span className="highlight-number">{analyticsData.oceanLegs}</span>
-                      <span className="highlight-label">Ocean Legs</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="highlight-group">
-                  <div className="highlight-items">
-                    <div className="highlight-item">
-                      <span className="highlight-number">{analyticsData.airLegs}</span>
-                      <span className="highlight-label">Air Legs</span>
-                    </div>
-                    <div className="highlight-item">
-                      <span className="highlight-number">{analyticsData.railLegs}</span>
-                      <span className="highlight-label">Rail Legs</span>
-                    </div>
-                  </div>
+        {/* Right Column - Carrier Performance */}
+        <div className="analysis-column">
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><PieChartGlyph /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Carrier Performance</h3>
+                  <p>Shipment distribution across carriers</p>
                 </div>
               </div>
-            </div>
-
-            {/* Delays & Stops */}
-            <div className="delays-section">
-              <h3 className="section-heading">Delays & Stops</h3>
-
-              <div className="delays-grid">
-                <div className="delay-item">
-                  <div className="delay-time">
-                    {analyticsData.avgDepartureDelay.hours} Hours {analyticsData.avgDepartureDelay.minutes} Minutes
-                  </div>
-                  <div className="delay-label">Avg. Departure Delay</div>
-                </div>
-                
-                <div className="delay-item">
-                  <div className="delay-time">
-                    {analyticsData.avgArrivalDelay.days} Days {analyticsData.avgArrivalDelay.hours} Hours
-                  </div>
-                  <div className="delay-label">Avg. Arrival Delay</div>
-                </div>
+              <div className="analysis-toggle-group">
+                <button
+                  className={`analysis-toggle-btn ${chartType === 'donut' ? 'active' : ''}`}
+                  onClick={() => setChartType('donut')}
+                >
+                  Donut
+                </button>
+                <button
+                  className={`analysis-toggle-btn ${chartType === 'bar' ? 'active' : ''}`}
+                  onClick={() => setChartType('bar')}
+                >
+                  Bar
+                </button>
               </div>
             </div>
-
-            {/* Add Temperature Chart */}
-            <div className="chart-section">
-              <TemperatureChart />
-            </div>
-
-            {/* Add Humidity Chart */}
-            <div className="chart-section">
-              <HumidityChart />
+            <div className="analysis-card-body">
+              {chartType === 'donut' ? <CarrierChart /> : <BarChart />}
             </div>
           </div>
 
-          {/* Right Column - Carrier Performance */}
-          <div className="right-column">
-            <div className="carrier-section">
-              <div className="carrier-header">
-                <h3 className="section-heading">Carrier Performance</h3>
-                <div className="chart-toggle">
-                  <button
-                    className={`toggle-btn ${chartType === 'donut' ? 'active' : ''}`}
-                    onClick={() => setChartType('donut')}
-                  >
-                    Donut
-                  </button>
-                  <button
-                    className={`toggle-btn ${chartType === 'bar' ? 'active' : ''}`}
-                    onClick={() => setChartType('bar')}
-                  >
-                    Bar
-                  </button>
+          {/* Duration Chart */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><ClockIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Shipment Leg Duration</h3>
+                  <p>Planned vs. actual duration over time</p>
                 </div>
               </div>
-              {chartType === 'donut' ? <CarrierChart /> : <BarChart />}
             </div>
-
-            {/* Add Duration Chart */}
-            <div className="chart-section">
+            <div className="analysis-card-body">
               <ShipmentDurationChart />
             </div>
+          </div>
 
-            {/* Add Carrier Temperature Chart */}
-            <div className="chart-section">
+          {/* Carrier Temperature Chart */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><ThermometerIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Carrier Temperature</h3>
+                  <p>Average leg temperature by carrier</p>
+                </div>
+              </div>
+            </div>
+            <div className="analysis-card-body">
               <CarrierTemperatureChart />
             </div>
+          </div>
 
-            {/* Add Carrier Humidity Chart */}
-            <div className="chart-section">
+          {/* Carrier Humidity Chart */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><DropletIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Carrier Humidity</h3>
+                  <p>Average leg humidity by carrier</p>
+                </div>
+              </div>
+            </div>
+            <div className="analysis-card-body">
               <CarrierHumidityChart />
             </div>
           </div>
