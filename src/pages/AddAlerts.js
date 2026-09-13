@@ -110,12 +110,24 @@ const getAlertDisplayName = (alert) => {
   return `${alert.type.charAt(0).toUpperCase()}${alert.type.slice(1)} Alert`;
 };
 
+const getLegDisplayName = (leg) => {
+  const parts = [`Leg ${leg.legNumber ?? '?'}`];
+  if (leg.carrier) parts.push(leg.carrier);
+  if (leg.shipFromAddress && leg.stopAddress) {
+    parts.push(`${leg.shipFromAddress} → ${leg.stopAddress}`);
+  } else if (leg.stopAddress) {
+    parts.push(`→ ${leg.stopAddress}`);
+  }
+  return parts.join(' · ');
+};
+
 const AddAlerts = () => {
   const [alertType, setAlertType] = useState('temperature');
   const [minValue, setMinValue] = useState(-10);
   const [maxValue, setMaxValue] = useState(40);
   const [alertName, setAlertName] = useState('');
   const [selectedShipment, setSelectedShipment] = useState('');
+  const [selectedLeg, setSelectedLeg] = useState('');
   const [shipments, setShipments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -164,8 +176,18 @@ const AddAlerts = () => {
         throw new Error('Selected shipment not found');
       }
 
-      // Get existing alerts
-      const existingAlerts = shipment.legs?.[0]?.alertPresets || [];
+      // Fall back to the first leg if none was explicitly chosen (e.g.
+      // single-leg shipments, where the leg picker may not be shown).
+      const legNumber = selectedLeg
+        ? parseInt(selectedLeg, 10)
+        : (shipment.legs?.[0]?.legNumber ?? 1);
+      const targetLeg = shipment.legs?.find(leg => leg.legNumber === legNumber) || shipment.legs?.[0];
+      if (!targetLeg) {
+        throw new Error('Selected shipment has no legs to attach an alert to');
+      }
+
+      // Get existing alerts for that specific leg
+      const existingAlerts = targetLeg.alertPresets || [];
 
       // Create new alert
       const newAlert = {
@@ -184,7 +206,7 @@ const AddAlerts = () => {
         `/shipment_meta/${selectedShipment}/alerts`,
         {
           alertPresets: updatedAlerts,
-          legNumber: 1
+          legNumber: targetLeg.legNumber
         }
       );
 
@@ -193,8 +215,8 @@ const AddAlerts = () => {
         ship._id === selectedShipment
           ? {
               ...ship,
-              legs: ship.legs.map((leg, index) =>
-                index === 0
+              legs: ship.legs.map(leg =>
+                leg.legNumber === targetLeg.legNumber
                   ? { ...leg, alertPresets: updatedAlerts }
                   : leg
               )
@@ -207,8 +229,9 @@ const AddAlerts = () => {
       setMinValue(alertType === 'temperature' ? -10 : 20);
       setMaxValue(alertType === 'temperature' ? 40 : 80);
       setSelectedShipment('');
+      setSelectedLeg('');
 
-      alert(`${alertType} alert "${alertName}" created successfully for shipment!`);
+      alert(`${alertType} alert "${alertName}" created successfully for shipment leg ${targetLeg.legNumber}!`);
     } catch (error) {
       console.error('Error creating alert:', error);
       alert(`Failed to create alert: ${error.message}`);
@@ -234,15 +257,21 @@ const AddAlerts = () => {
     return `#${shipment.trackerId} - ${from} → ${to}`;
   };
 
-  // Every alert preset across every shipment, flattened for the browser view
+  // Every alert preset across every shipment AND every leg, flattened for
+  // the browser view - a shipment's later legs can carry their own
+  // temperature/humidity thresholds independent of leg 1.
   const getAllAlerts = () => {
     return shipments.flatMap(shipment =>
-      (shipment.legs?.[0]?.alertPresets || []).map((alert, alertIndex) => ({
-        alert,
-        alertIndex,
-        shipmentId: shipment._id,
-        shipmentName: getShipmentDisplayName(shipment)
-      }))
+      (shipment.legs || []).flatMap(leg =>
+        (leg.alertPresets || []).map((alert, alertIndex) => ({
+          alert,
+          alertIndex,
+          legNumber: leg.legNumber,
+          legName: getLegDisplayName(leg),
+          shipmentId: shipment._id,
+          shipmentName: getShipmentDisplayName(shipment)
+        }))
+      )
     );
   };
 
@@ -289,11 +318,14 @@ const AddAlerts = () => {
     setAlertShipmentFilter('');
   };
 
-  const handleRemoveExistingAlert = async (shipmentId, alertIndex) => {
+  const handleRemoveExistingAlert = async (shipmentId, legNumber, alertIndex) => {
     const shipment = shipments.find(s => s._id === shipmentId);
     if (!shipment) return;
 
-    const existingAlerts = shipment.legs?.[0]?.alertPresets || [];
+    const targetLeg = shipment.legs?.find(leg => leg.legNumber === legNumber);
+    if (!targetLeg) return;
+
+    const existingAlerts = targetLeg.alertPresets || [];
     const updatedAlerts = existingAlerts.filter((_, index) => index !== alertIndex);
 
     try {
@@ -301,7 +333,7 @@ const AddAlerts = () => {
         `/shipment_meta/${shipmentId}/alerts`,
         {
           alertPresets: updatedAlerts,
-          legNumber: 1
+          legNumber
         }
       );
       // Update local shipments state
@@ -309,8 +341,8 @@ const AddAlerts = () => {
         ship._id === shipmentId
           ? {
               ...ship,
-              legs: ship.legs.map((leg, index) =>
-                index === 0
+              legs: ship.legs.map(leg =>
+                leg.legNumber === legNumber
                   ? { ...leg, alertPresets: updatedAlerts }
                   : leg
               )
@@ -468,8 +500,8 @@ const AddAlerts = () => {
                       <span className="alerts-group-count">{group.items.length}</span>
                     </div>
                     <div className="alerts-list">
-                      {group.items.map(({ alert, alertIndex, shipmentId }) => (
-                        <div key={alertIndex} className="alert-preview-item">
+                      {group.items.map(({ alert, alertIndex, legNumber, legName, shipmentId }) => (
+                        <div key={`${legNumber}-${alertIndex}`} className="alert-preview-item">
                           <div className="alert-preview-info">
                             <span className={`alert-icon ${alert.type}`}>
                               <AlertTypeIcon type={alert.type} />
@@ -477,6 +509,7 @@ const AddAlerts = () => {
                             <div className="alert-details">
                               <strong>{getAlertDisplayName(alert)}</strong>
                               <span className="alert-range">{describeAlertRange(alert)}</span>
+                              <span className="alert-leg">{legName}</span>
                               {alert.createdAt && (
                                 <span className="alert-created">
                                   Created {new Date(alert.createdAt).toLocaleDateString()}
@@ -488,7 +521,7 @@ const AddAlerts = () => {
                             <span className={`alert-type-badge ${alert.type}`}>{alert.type}</span>
                             <button
                               className="remove-existing-alert-btn"
-                              onClick={() => handleRemoveExistingAlert(shipmentId, alertIndex)}
+                              onClick={() => handleRemoveExistingAlert(shipmentId, legNumber, alertIndex)}
                               title="Remove this alert"
                               aria-label={`Remove ${getAlertDisplayName(alert)}`}
                             >
@@ -529,7 +562,12 @@ const AddAlerts = () => {
                   <select
                     id="selectedShipment"
                     value={selectedShipment}
-                    onChange={(e) => setSelectedShipment(e.target.value)}
+                    onChange={(e) => {
+                      const shipmentId = e.target.value;
+                      setSelectedShipment(shipmentId);
+                      const shipment = shipments.find(s => s._id === shipmentId);
+                      setSelectedLeg(shipment?.legs?.[0]?.legNumber?.toString() || '');
+                    }}
                     required
                   >
                     <option value="">Choose a shipment...</option>
@@ -540,6 +578,24 @@ const AddAlerts = () => {
                     ))}
                   </select>
                 </div>
+
+                {selectedShipment && shipments.find(s => s._id === selectedShipment)?.legs?.length > 1 && (
+                  <div className="form-group">
+                    <label htmlFor="selectedLeg">Apply To Leg *</label>
+                    <select
+                      id="selectedLeg"
+                      value={selectedLeg}
+                      onChange={(e) => setSelectedLeg(e.target.value)}
+                      required
+                    >
+                      {shipments.find(s => s._id === selectedShipment)?.legs?.map(leg => (
+                        <option key={leg.legNumber} value={leg.legNumber}>
+                          {getLegDisplayName(leg)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="form-group">
                   <label htmlFor="alertName">Alert Name *</label>

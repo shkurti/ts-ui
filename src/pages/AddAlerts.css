@@ -874,6 +874,12 @@
   font-size: 0.7rem;
 }
 
+.alert-leg {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
 .alert-actions {
   display: flex;
   flex-direction: column;
