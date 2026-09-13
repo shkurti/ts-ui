@@ -1088,16 +1088,13 @@ const Analysis = () => {
     return (
       <div className="chart-container">
         <h4 className="chart-title">Average Leg Temperature by Carrier</h4>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={sortedChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={sortedChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
             <XAxis
               dataKey="carrier"
               fontSize={11}
               stroke={CHART.axis}
-              angle={-45}
-              textAnchor="end"
-              height={60}
               interval={0}
             />
             <YAxis
@@ -1243,16 +1240,13 @@ const Analysis = () => {
     return (
       <div className="chart-container" key={`carrier-humidity-${chartData.length}-${Date.now()}`}>
         <h4 className="chart-title">Average Leg Humidity by Carrier</h4>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={sortedChartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={sortedChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
             <XAxis
               dataKey="carrier"
               fontSize={11}
               stroke={CHART.axis}
-              angle={-45}
-              textAnchor="end"
-              height={60}
               interval={0}
             />
             <YAxis
