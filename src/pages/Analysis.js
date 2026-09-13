@@ -122,8 +122,9 @@ const Analysis = () => {
   const [selectedCarrier, setSelectedCarrier] = useState('All');
   const [trackers, setTrackers] = useState([]); // [{ tracker_id, tracker_name }]
   const [selectedTracker, setSelectedTracker] = useState('All');
+  const getTodayDateString = () => new Date().toISOString().split('T')[0];
   const [startDate, setStartDate] = useState('2023-01-01');
-  const [endDate, setEndDate] = useState('2025-12-31');
+  const [endDate, setEndDate] = useState(getTodayDateString());
   const [carrierPerformanceData, setCarrierPerformanceData] = useState([]);
   const [shipmentDurationData, setShipmentDurationData] = useState({
     trendData: [],
@@ -311,8 +312,8 @@ const Analysis = () => {
           setCarriers(['All', ...carriersData.carriers]);
         }
         
-        // Fetch initial analytics data with broader date range
-        await fetchFilteredAnalytics('All', '2023-01-01', '2025-12-31');
+        // Fetch initial analytics data with broader date range, ending today
+        await fetchFilteredAnalytics('All', '2023-01-01', getTodayDateString());
         
         // Fetch trackers so they can be selected as an exact, unambiguous
         // alternative to filtering by carrier.
