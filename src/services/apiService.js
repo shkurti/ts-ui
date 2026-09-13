@@ -189,6 +189,14 @@ export const analysisApi = {
     const queryString = searchParams.toString();
     return apiService.get(`/carrier_humidity_data${queryString ? `?${queryString}` : ''}`);
   },
+  getAlertsAnalytics: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) searchParams.append(key, value);
+    });
+    const queryString = searchParams.toString();
+    return apiService.get(`/alerts_analytics${queryString ? `?${queryString}` : ''}`);
+  },
 };
 
 export default apiService;

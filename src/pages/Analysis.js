@@ -56,6 +56,13 @@ const DropletIcon = (props) => (
   </svg>
 );
 
+const ShieldCheckIcon = (props) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" {...props}>
+    <path d="M12 2.5 4.5 5.5v6c0 5 3.2 8.6 7.5 10 4.3-1.4 7.5-5 7.5-10v-6L12 2.5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+    <path d="m8.5 12 2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
 const PieChartGlyph = (props) => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" {...props}>
     <path d="M21.21 15.89A10 10 0 1 1 8 2.83" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
@@ -181,6 +188,23 @@ const Analysis = () => {
       totalTrackers: 0
     }
   });
+  const [alertsAnalyticsData, setAlertsAnalyticsData] = useState({
+    alertsByType: [],
+    totalAlerts: 0,
+    shipmentsWithAlerts: 0,
+    temperatureCompliance: {
+      totalShipmentsMonitored: 0,
+      shipmentsWithExcursions: 0,
+      compliantShipments: 0,
+      compliancePercentage: 0
+    },
+    humidityCompliance: {
+      totalShipmentsMonitored: 0,
+      shipmentsWithExcursions: 0,
+      compliantShipments: 0,
+      compliancePercentage: 0
+    }
+  });
 
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -211,14 +235,16 @@ const Analysis = () => {
         tempData,
         humidityDataResult,
         carrierTempData,
-        carrierHumidityDataResult
+        carrierHumidityDataResult,
+        alertsAnalytics
       ] = await Promise.allSettled([
         analysisApi.getAnalytics(params),
         analysisApi.getShipmentLegDuration(params),
         analysisApi.getShipmentTemperatureData(params),
         analysisApi.getShipmentHumidityData(params),
         analysisApi.getCarrierTemperatureData(params),
-        analysisApi.getCarrierHumidityData(params)
+        analysisApi.getCarrierHumidityData(params),
+        analysisApi.getAlertsAnalytics(params)
       ]);
 
       const endTime = Date.now();
@@ -230,7 +256,7 @@ const Analysis = () => {
           ...prev,
           ...newAnalyticsData.value
         }));
-        
+
         // Update carrier performance data
         if (newAnalyticsData.value.carrierPerformance) {
           setCarrierPerformanceData(newAnalyticsData.value.carrierPerformance);
@@ -238,6 +264,19 @@ const Analysis = () => {
         console.log('Updated analytics data:', newAnalyticsData.value);
       } else {
         console.error('Error fetching analytics data:', newAnalyticsData.reason);
+      }
+
+      // Process real alerts/compliance data - overrides the simulated
+      // shipmentsWithAlerts figure from /analytics with the actual count.
+      if (alertsAnalytics.status === 'fulfilled') {
+        setAlertsAnalyticsData(alertsAnalytics.value);
+        setAnalyticsData(prev => ({
+          ...prev,
+          shipmentsWithAlerts: alertsAnalytics.value.shipmentsWithAlerts
+        }));
+        console.log('Alerts analytics received:', alertsAnalytics.value);
+      } else {
+        console.error('Error fetching alerts analytics:', alertsAnalytics.reason);
       }
 
       // Process duration data
@@ -1328,6 +1367,98 @@ const Analysis = () => {
     );
   };
 
+  // Cold Chain Compliance - % of shipments monitored for temperature/
+  // humidity thresholds that had no breach (excursion) in the selected
+  // range, computed from real alert history rather than a simulated rate.
+  const ALERT_TYPE_LABELS = {
+    temperature: 'Temperature',
+    humidity: 'Humidity',
+    battery: 'Battery',
+    speed: 'Speed',
+    geofence: 'Geofence',
+    corridor_deviation: 'Corridor Deviation'
+  };
+
+  const complianceTone = (percentage, monitored) => {
+    if (monitored === 0) return STATUS.muted;
+    if (percentage >= 95) return STATUS.good;
+    if (percentage >= 80) return STATUS.warning;
+    return STATUS.critical;
+  };
+
+  const ComplianceCard = () => {
+    const { temperatureCompliance, humidityCompliance } = alertsAnalyticsData;
+    const rows = [
+      { label: 'Temperature', icon: <ThermometerIcon />, stats: temperatureCompliance },
+      { label: 'Humidity', icon: <DropletIcon />, stats: humidityCompliance }
+    ];
+
+    return (
+      <div className="analysis-tile-grid">
+        {rows.map((row) => (
+          <div className="analysis-tile" key={row.label}>
+            <span
+              className="analysis-tile-value"
+              style={{ color: complianceTone(row.stats.compliancePercentage, row.stats.totalShipmentsMonitored) }}
+            >
+              {row.stats.totalShipmentsMonitored > 0 ? `${row.stats.compliancePercentage}%` : 'N/A'}
+            </span>
+            <span className="analysis-tile-label">{row.label} Compliance</span>
+          </div>
+        ))}
+        <div className="analysis-tile">
+          <span className="analysis-tile-value">{alertsAnalyticsData.temperatureCompliance.shipmentsWithExcursions}</span>
+          <span className="analysis-tile-label">Temp. Excursions</span>
+        </div>
+        <div className="analysis-tile">
+          <span className="analysis-tile-value">{alertsAnalyticsData.humidityCompliance.shipmentsWithExcursions}</span>
+          <span className="analysis-tile-label">Humidity Excursions</span>
+        </div>
+      </div>
+    );
+  };
+
+  // Alerts by Type - breaks the single "shipments with alerts" figure down
+  // by sensor/condition so customers can see what actually triggered.
+  const AlertsByTypeCard = () => {
+    const { alertsByType, totalAlerts } = alertsAnalyticsData;
+
+    if (!alertsByType || alertsByType.length === 0) {
+      return <div className="no-data">No alerts in the selected range</div>;
+    }
+
+    const maxCount = Math.max(...alertsByType.map((item) => item.count));
+
+    return (
+      <div className="alert-type-list">
+        {alertsByType.map((item) => {
+          const label = ALERT_TYPE_LABELS[item.alertType] || item.alertType;
+          const widthPct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+          return (
+            <div className="alert-type-row" key={item.alertType}>
+              <div className="alert-type-row-header">
+                <span className="alert-type-name">{label}</span>
+                <span className="alert-type-count">{item.count} · {item.shipmentsAffected} shipments</span>
+              </div>
+              <div className="alert-type-bar-track">
+                <div
+                  className="alert-type-bar-fill"
+                  style={{
+                    width: `${widthPct}%`,
+                    backgroundColor: item.severity.critical > 0 ? STATUS.critical : STATUS.warning
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+        <div className="chart-summary">
+          <span>Total alert occurrences: {totalAlerts}</span>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="analysis-page">
@@ -1532,6 +1663,22 @@ const Analysis = () => {
             </div>
           </div>
 
+          {/* Cold Chain Compliance */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><ShieldCheckIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Cold Chain Compliance</h3>
+                  <p>Shipments with no temperature/humidity threshold breach</p>
+                </div>
+              </div>
+            </div>
+            <div className="analysis-card-body">
+              <ComplianceCard />
+            </div>
+          </div>
+
           {/* Temperature Chart */}
           <div className="analysis-card">
             <div className="analysis-card-header">
@@ -1593,6 +1740,22 @@ const Analysis = () => {
             </div>
             <div className="analysis-card-body">
               {chartType === 'donut' ? <CarrierChart /> : <BarChart />}
+            </div>
+          </div>
+
+          {/* Alerts by Type */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><TriangleAlertIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Alerts by Type</h3>
+                  <p>What triggered {analyticsData.shipmentsWithAlerts} shipment alerts</p>
+                </div>
+              </div>
+            </div>
+            <div className="analysis-card-body">
+              <AlertsByTypeCard />
             </div>
           </div>
 
