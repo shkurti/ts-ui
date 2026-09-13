@@ -1690,7 +1690,7 @@ const Analysis = () => {
       </div>
 
       <div className="analysis-main-grid">
-        {/* Left Column */}
+        {/* Left Column - Fleet overview, compliance & alerts */}
         <div className="analysis-column">
           {/* Highlights */}
           <div className="analysis-card">
@@ -1778,41 +1778,7 @@ const Analysis = () => {
             </div>
           </div>
 
-          {/* Temperature Chart */}
-          <div className="analysis-card">
-            <div className="analysis-card-header">
-              <div className="analysis-card-header-main">
-                <div className="analysis-card-header-icon"><ThermometerIcon /></div>
-                <div className="analysis-card-header-text">
-                  <h3>Temperature</h3>
-                  <p>Average shipment temperature over time</p>
-                </div>
-              </div>
-            </div>
-            <div className="analysis-card-body">
-              <TemperatureChart />
-            </div>
-          </div>
-
-          {/* Humidity Chart */}
-          <div className="analysis-card">
-            <div className="analysis-card-header">
-              <div className="analysis-card-header-main">
-                <div className="analysis-card-header-icon"><DropletIcon /></div>
-                <div className="analysis-card-header-text">
-                  <h3>Humidity</h3>
-                  <p>Average shipment humidity over time</p>
-                </div>
-              </div>
-            </div>
-            <div className="analysis-card-body">
-              <HumidityChart />
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column - Carrier Performance */}
-        <div className="analysis-column">
+          {/* Carrier Performance */}
           <div className="analysis-card">
             <div className="analysis-card-header">
               <div className="analysis-card-header-main">
@@ -1874,6 +1840,25 @@ const Analysis = () => {
             </div>
           </div>
 
+          {/* Temperature Chart */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><ThermometerIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Temperature</h3>
+                  <p>Average shipment temperature over time</p>
+                </div>
+              </div>
+            </div>
+            <div className="analysis-card-body">
+              <TemperatureChart />
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column - Duration/OTP trends & environmental conditions */}
+        <div className="analysis-column">
           {/* Duration Chart */}
           <div className="analysis-card">
             <div className="analysis-card-header">
@@ -1903,6 +1888,22 @@ const Analysis = () => {
             </div>
             <div className="analysis-card-body">
               <OTPTrendChart />
+            </div>
+          </div>
+
+          {/* Humidity Chart */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><DropletIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Humidity</h3>
+                  <p>Average shipment humidity over time</p>
+                </div>
+              </div>
+            </div>
+            <div className="analysis-card-body">
+              <HumidityChart />
             </div>
           </div>
 
