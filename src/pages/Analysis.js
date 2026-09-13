@@ -190,6 +190,7 @@ const Analysis = () => {
   });
   const [alertsAnalyticsData, setAlertsAnalyticsData] = useState({
     alertsByType: [],
+    alertsOverTime: [],
     totalAlerts: 0,
     shipmentsWithAlerts: 0,
     temperatureCompliance: {
@@ -783,6 +784,104 @@ const Analysis = () => {
             </>
           )}
         </div>
+      </div>
+    );
+  };
+
+  // Custom tooltip for the OTP trend chart
+  const OTPTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="custom-tooltip">
+          <p className="tooltip-label">{`Month: ${label}`}</p>
+          <p style={{ color: STATUS.good }}>On-time: {data.onTimePercentage}%</p>
+          <p style={{ color: STATUS.critical }}>Late: {data.latePercentage}%</p>
+          <p style={{ color: STATUS.muted }}>Unknown: {data.unknownPercentage}%</p>
+          <p className="tooltip-count">
+            <span style={{ color: '#666' }}>Total legs: {data.totalLegs}</span>
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // On-Time Performance trend - the leg duration endpoint already computes
+  // onTimePercentage per month, but nothing charted it; this surfaces that
+  // trend directly instead of only the planned-vs-actual duration lines.
+  const OTPTrendChart = () => {
+    const { trendData } = shipmentDurationData;
+
+    if (!trendData || trendData.length === 0) {
+      return <div className="no-data">No on-time performance data available</div>;
+    }
+
+    const chartData = trendData.map(item => ({
+      ...item,
+      month: formatMonth(item.month)
+    }));
+
+    return (
+      <div className="chart-container">
+        <h4 className="chart-title">On-Time Performance Over Time</h4>
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+            <XAxis dataKey="month" fontSize={12} stroke={CHART.axis} />
+            <YAxis
+              label={{ value: 'On-Time (%)', angle: -90, position: 'insideLeft' }}
+              fontSize={12}
+              stroke={CHART.axis}
+              domain={[0, 100]}
+            />
+            <Tooltip content={<OTPTooltip />} />
+            <Line
+              type="monotone"
+              dataKey="onTimePercentage"
+              stroke={STATUS.good}
+              strokeWidth={2}
+              dot={{ fill: STATUS.good, strokeWidth: 0, r: 4 }}
+              activeDot={{ r: 6 }}
+              name="On-Time %"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  };
+
+  // Alerts over time - shows whether alert volume is trending up or down,
+  // rather than only a point-in-time count for the selected range.
+  const AlertsOverTimeChart = () => {
+    const { alertsOverTime } = alertsAnalyticsData;
+
+    if (!alertsOverTime || alertsOverTime.length === 0) {
+      return <div className="no-data">No alerts in the selected range</div>;
+    }
+
+    const chartData = alertsOverTime.map(item => ({
+      ...item,
+      month: formatMonth(item.month)
+    }));
+
+    return (
+      <div className="chart-container">
+        <h4 className="chart-title">Alert Volume Over Time</h4>
+        <ResponsiveContainer width="100%" height={240}>
+          <RechartsBarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+            <XAxis dataKey="month" fontSize={12} stroke={CHART.axis} />
+            <YAxis
+              label={{ value: 'Alerts', angle: -90, position: 'insideLeft' }}
+              fontSize={12}
+              stroke={CHART.axis}
+              allowDecimals={false}
+            />
+            <Tooltip />
+            <Bar dataKey="count" name="Alert Occurrences" fill={STATUS.warning} radius={[4, 4, 0, 0]} maxBarSize={48} />
+          </RechartsBarChart>
+        </ResponsiveContainer>
       </div>
     );
   };
@@ -1759,6 +1858,22 @@ const Analysis = () => {
             </div>
           </div>
 
+          {/* Alerts Over Time */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><TriangleAlertIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>Alert Trend</h3>
+                  <p>Alert volume over time - rising or falling</p>
+                </div>
+              </div>
+            </div>
+            <div className="analysis-card-body">
+              <AlertsOverTimeChart />
+            </div>
+          </div>
+
           {/* Duration Chart */}
           <div className="analysis-card">
             <div className="analysis-card-header">
@@ -1772,6 +1887,22 @@ const Analysis = () => {
             </div>
             <div className="analysis-card-body">
               <ShipmentDurationChart />
+            </div>
+          </div>
+
+          {/* On-Time Performance Trend */}
+          <div className="analysis-card">
+            <div className="analysis-card-header">
+              <div className="analysis-card-header-main">
+                <div className="analysis-card-header-icon"><ClockIcon /></div>
+                <div className="analysis-card-header-text">
+                  <h3>On-Time Performance Trend</h3>
+                  <p>% of legs delivered on schedule, by month</p>
+                </div>
+              </div>
+            </div>
+            <div className="analysis-card-body">
+              <OTPTrendChart />
             </div>
           </div>
 
