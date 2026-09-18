@@ -2305,6 +2305,26 @@ const Shipments = () => {
     [locationData, useSnappedRoute, snappedCoordinates]
   );
 
+  // Total distance traveled so far: sum of consecutive-point distances over the
+  // same stationary-jitter-collapsed trace used for the polyline, so parked GPS
+  // noise doesn't inflate mileage. Derived straight from locationData, which is
+  // seeded by the Mongo-backed /shipment_route_data fetch on load (so this is
+  // correct even if Kafka is down) and appended to live via WebSocket sensor_data
+  // messages while connected, so it keeps advancing in real time.
+  const traveledDistanceMiles = useMemo(() => {
+    if (!locationData || locationData.length < 2) return 0;
+    const sortedData = [...locationData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const clustered = collapseStationaryClusters(sortedData);
+    let meters = 0;
+    for (let i = 1; i < clustered.length; i++) {
+      meters += haversineMeters(
+        clustered[i - 1].latitude, clustered[i - 1].longitude,
+        clustered[i].latitude, clustered[i].longitude
+      );
+    }
+    return meters / 1609.344;
+  }, [locationData]);
+
   const fetchSnappedRoute = async (trackerId, shipDate, arrivalDate) => {
     if (!trackerId || !shipDate || !arrivalDate) return;
     setIsSnappingRoute(true);
@@ -2727,6 +2747,12 @@ const Shipments = () => {
                     <div className="info-chip">
                       <span className="info-chip-label">TRACKER</span>
                       <span className="info-chip-value">#{selectedShipmentDetail.trackerId || 'N/A'}</span>
+                    </div>
+                    <div className="info-chip">
+                      <span className="info-chip-label">DISTANCE TRAVELED</span>
+                      <span className="info-chip-value">
+                        {locationData.length > 1 ? `${traveledDistanceMiles.toFixed(1)} mi` : 'N/A'}
+                      </span>
                     </div>
                   </div>
                 </div>
