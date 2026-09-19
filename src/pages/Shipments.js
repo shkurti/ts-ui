@@ -2505,6 +2505,30 @@ const Shipments = () => {
     }
 
     const latestSensorData = sensorData[currentTrackerId];
+
+    // Trackers get reused/left powered on across shipments, and GPS/sensor
+    // readings in Mongo are keyed only by trackerID (no shipmentId) - so a
+    // stray or stale message for this tracker could otherwise be attributed
+    // to whichever shipment happens to be open. The backend now resolves
+    // which shipment(s) actually claim this tracker at the reading's own
+    // timestamp and attaches that as __shipmentIds; trust it when present.
+    const activeShipmentIds = latestSensorData.__shipmentIds;
+    if (Array.isArray(activeShipmentIds)) {
+      if (!selectedShipmentDetail || !activeShipmentIds.includes(selectedShipmentDetail._id)) {
+        console.log('📦 Live reading is not for the currently viewed shipment - ignoring:', {
+          currentTrackerId,
+          activeShipmentIds,
+          viewing: selectedShipmentDetail?._id,
+        });
+        return;
+      }
+    } else if (selectedShipmentDetail && getDetailShipmentStatus(selectedShipmentDetail) === 'Delivered') {
+      // Fallback for a backend that hasn't been redeployed with shipmentIds yet:
+      // at minimum, stop appending once this shipment is confirmed delivered.
+      console.log('📦 Shipment already delivered - ignoring further live updates for tracker:', currentTrackerId);
+      return;
+    }
+
     console.log('📊 Processing new sensor data for tracker:', currentTrackerId, latestSensorData);
 
     const timestamp = new Date().toISOString();

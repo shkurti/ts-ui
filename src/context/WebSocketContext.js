@@ -32,7 +32,7 @@ export const WebSocketProvider = ({ children }) => {
         handleAlertMessage(lastMessage.data);
         break;
       case 'sensor_data':
-        handleSensorDataMessage(lastMessage.data);
+        handleSensorDataMessage(lastMessage.data, lastMessage.shipmentIds);
         break;
       default:
         console.log('Unknown message type:', lastMessage.type);
@@ -57,9 +57,9 @@ export const WebSocketProvider = ({ children }) => {
     }
   }, []);
 
-  const handleSensorDataMessage = useCallback((sensorMessage) => {
-    console.log('Processing sensor data message:', sensorMessage);
-    
+  const handleSensorDataMessage = useCallback((sensorMessage, shipmentIds) => {
+    console.log('Processing sensor data message:', sensorMessage, 'for shipments:', shipmentIds);
+
     const fullDoc = sensorMessage?.fullDocument;
     if (!fullDoc) {
       console.log('No fullDocument found in sensor message');
@@ -74,10 +74,14 @@ export const WebSocketProvider = ({ children }) => {
 
     console.log('New sensor data for tracker:', trackerId, fullDoc);
 
-    // Update sensor data state
+    // Update sensor data state. __shipmentIds carries which shipment(s) the
+    // backend resolved as actively claiming this tracker at this reading's
+    // timestamp, so consumers can ignore a reading that isn't for the
+    // shipment they're currently viewing (e.g. a delivered/reused tracker
+    // still transmitting) instead of trusting trackerId alone.
     setSensorData(prev => ({
       ...prev,
-      [trackerId]: fullDoc
+      [trackerId]: { ...fullDoc, __shipmentIds: shipmentIds || [] }
     }));
 
     // Extract latest location from sensor data
