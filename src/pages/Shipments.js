@@ -2477,15 +2477,22 @@ const Shipments = () => {
     geocodeLegs();
   }, [selectedShipmentDetail]);
 
-  // Persisted set of processed message IDs to avoid duplicates
-  const processedMessagesRef = useRef(new Set());
+  // Last sensorData object actually processed for the current tracker, so the
+  // live-update effect below can tell "this tracker got a new reading" apart
+  // from "the effect re-ran because some other tracker's data changed" -
+  // sensorData is one shared object across every tracker, so setSensorData
+  // for ANY tracker produces a new top-level object and re-triggers this
+  // effect even when sensorData[currentTrackerId] itself is unchanged. Without
+  // this check, that re-run would re-append the same last reading again.
+  const lastProcessedSensorDataRef = useRef(null);
 
   // Track current tracker ID for filtering real-time updates
   useEffect(() => {
     currentTrackerIdRef.current = selectedShipmentDetail?.trackerId ?? null;
     console.log('🎯 Selected shipment tracker ID updated:', currentTrackerIdRef.current);
-    // Reset processed messages when tracker changes
-    processedMessagesRef.current = new Set();
+    // Reset processed-message tracking when tracker changes, so the new
+    // tracker's first reading isn't skipped as a stale duplicate.
+    lastProcessedSensorDataRef.current = null;
     receivedAlertIdsRef.current = new Set();
   }, [selectedShipmentDetail?.trackerId]);
 
@@ -2505,6 +2512,17 @@ const Shipments = () => {
     }
 
     const latestSensorData = sensorData[currentTrackerId];
+
+    // Skip if this exact reading was already processed - see comment on
+    // lastProcessedSensorDataRef above. handleSensorDataMessage always builds
+    // a fresh object per genuinely new message, so reference equality here
+    // reliably distinguishes "new reading for this tracker" from "some other
+    // tracker updated and happened to re-trigger this effect."
+    if (lastProcessedSensorDataRef.current === latestSensorData) {
+      console.log('🔁 Sensor data effect re-ran without a new reading for this tracker - skipping duplicate append');
+      return;
+    }
+    lastProcessedSensorDataRef.current = latestSensorData;
 
     // Trackers get reused/left powered on across shipments, and GPS/sensor
     // readings in Mongo are keyed only by trackerID (no shipmentId) - so a
