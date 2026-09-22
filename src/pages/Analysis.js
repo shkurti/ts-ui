@@ -122,6 +122,8 @@ const Analysis = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [now, setNow] = useState(Date.now());
   const [dateRange, setDateRange] = useState('May 9, 2023 - Nov 9, 2023');
   const [viewMode, setViewMode] = useState('Monthly');
   const [chartType, setChartType] = useState('donut'); // 'donut' or 'bar'
@@ -130,6 +132,20 @@ const Analysis = () => {
   const [trackers, setTrackers] = useState([]); // [{ tracker_id, tracker_name }]
   const [selectedTracker, setSelectedTracker] = useState('All');
   const getTodayDateString = () => new Date().toISOString().split('T')[0];
+
+  const formatLastUpdated = (timestamp, currentTime) => {
+    if (!timestamp) return 'Data not yet loaded';
+    const diffMs = currentTime - timestamp;
+    const diffSeconds = Math.floor(diffMs / 1000);
+    if (diffSeconds < 5) return 'Data last updated just now';
+    if (diffSeconds < 60) return `Data last updated ${diffSeconds} seconds ago`;
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) return `Data last updated ${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `Data last updated ${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `Data last updated ${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+  };
   const [startDate, setStartDate] = useState('2023-01-01');
   const [endDate, setEndDate] = useState(getTodayDateString());
   const [carrierPerformanceData, setCarrierPerformanceData] = useState([]);
@@ -329,6 +345,8 @@ const Analysis = () => {
       } else {
         console.error('Error fetching carrier humidity data:', carrierHumidityDataResult.reason);
       }
+      setLastUpdated(Date.now());
+      setNow(Date.now());
     } catch (err) {
       console.error('Error fetching filtered analytics:', err);
       console.error('Error details:', {
@@ -371,6 +389,12 @@ const Analysis = () => {
 
     fetchAnalyticsData();
   }, [API_BASE]);
+
+  // Keep the "last updated" label fresh without refetching data.
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Handle carrier change
   const handleCarrierChange = (newCarrier) => {
@@ -1565,7 +1589,7 @@ const Analysis = () => {
           <div className="analysis-page-icon"><BarChartIcon /></div>
           <div className="analysis-page-title">
             <h1>TS Logics Analytics</h1>
-            <p>Data last updated 6 hours ago</p>
+            <p>{formatLastUpdated(lastUpdated, now)}</p>
           </div>
         </div>
         <div className="loading-state">Loading analytics data…</div>
@@ -1579,7 +1603,7 @@ const Analysis = () => {
         <div className="analysis-page-icon"><BarChartIcon /></div>
         <div className="analysis-page-title">
           <h1>TS Logics Analytics</h1>
-          <p>Data last updated 6 hours ago</p>
+          <p>{formatLastUpdated(lastUpdated, now)}</p>
         </div>
 
         <div className="analysis-stats-row">
