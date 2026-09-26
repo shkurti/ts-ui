@@ -83,6 +83,8 @@ export const trackerApi = {
   create: (tracker) => apiService.post('/registered_trackers', tracker),
   delete: (trackerIds) => apiService.delete('/registered_trackers', { tracker_ids: trackerIds }),
   getLocations: () => apiService.get('/tracker_locations'),
+  setLocationMode: (trackerId, mode) =>
+    apiService.put(`/registered_trackers/${encodeURIComponent(trackerId)}/location_mode`, { location_mode: mode }),
 };
 
 export const shipmentApi = {

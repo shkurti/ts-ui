@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Circle } from 'react-leaflet';
 import L from 'leaflet';
+import { SlidersHorizontal, Satellite, RadioTower } from 'lucide-react';
 import { trackerApi } from '../services/apiService';
 import { useWebSocketContext } from '../context/WebSocketContext';
 import './Trackers.css';
@@ -34,6 +35,9 @@ const Trackers = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [deviceTypeFilter, setDeviceTypeFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All Trackers');
+  const [configTrackerId, setConfigTrackerId] = useState(null);
+  const [modeSaving, setModeSaving] = useState(false);
+  const [modeError, setModeError] = useState(null);
   
   const API_BASE = process.env.REACT_APP_API_URL || 'https://ts-logics-kafka-backend-7e7b193bcd76.herokuapp.com';
 
@@ -83,6 +87,63 @@ const Trackers = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Location mode: the dashboard sets the desired mode, the device reports
+  // the mode it is actually using on each POST (every ~30s). Until they
+  // match, the switch is pending. Trackers that have never reported (older
+  // firmware) are assumed to be on GPS.
+  const getModeStatus = (tracker) => {
+    const desired = tracker.location_mode_desired || 'gps';
+    const reported = tracker.location_mode_reported || 'gps';
+    return { desired, reported, pending: desired !== reported };
+  };
+
+  const hasPendingMode = trackers.some(t => getModeStatus(t).pending);
+
+  // While a switch is pending, re-check the tracker list so the badge flips
+  // to confirmed without a manual refresh
+  useEffect(() => {
+    if (!hasPendingMode) return undefined;
+    const interval = setInterval(async () => {
+      try {
+        setTrackers(await trackerApi.getAll());
+      } catch (err) {
+        // Keep showing the last known state; the next tick retries
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [hasPendingMode]);
+
+  const handleModeChange = async (trackerId, mode) => {
+    const previous = trackers;
+    setModeError(null);
+    setModeSaving(true);
+    setTrackers(prev => prev.map(t =>
+      t.tracker_id === trackerId ? { ...t, location_mode_desired: mode } : t
+    ));
+    try {
+      await trackerApi.setLocationMode(trackerId, mode);
+    } catch (err) {
+      setTrackers(previous);
+      setModeError(err.message || 'Failed to update location mode');
+    } finally {
+      setModeSaving(false);
+    }
+  };
+
+  const closeConfig = () => {
+    setConfigTrackerId(null);
+    setModeError(null);
+  };
+
+  const configTracker = trackers.find(t => t.tracker_id === configTrackerId);
+
+  // The backend returns naive UTC datetimes (no zone suffix)
+  const formatUtc = (value) => {
+    if (!value) return null;
+    const hasZone = /Z$|[+-]\d\d:\d\d$/.test(value);
+    return new Date(hasZone ? value : `${value}Z`).toLocaleString();
   };
 
   // Handle form input changes
@@ -372,6 +433,8 @@ const Trackers = () => {
                 <th>BATTERY</th>
                 <th>STATUS</th>
                 <th>LAST SEEN</th>
+                <th>LOCATION</th>
+                <th aria-label="Configure"></th>
               </tr>
             </thead>
             <tbody>
@@ -384,11 +447,13 @@ const Trackers = () => {
                     <td><div className="skeleton-bar" style={{ width: '60%' }} /></td>
                     <td><div className="skeleton-bar" style={{ width: '55%' }} /></td>
                     <td><div className="skeleton-bar" style={{ width: '65%' }} /></td>
+                    <td><div className="skeleton-bar" style={{ width: '60%' }} /></td>
+                    <td><div className="skeleton-bar" style={{ width: 24 }} /></td>
                   </tr>
                 ))
               ) : error ? (
                 <tr>
-                  <td colSpan="6" className="error-row">
+                  <td colSpan="8" className="error-row">
                     <div className="state-panel">
                       <div className="state-panel-icon">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -403,7 +468,7 @@ const Trackers = () => {
                 </tr>
               ) : filteredTrackers.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="empty-row">
+                  <td colSpan="8" className="empty-row">
                     <div className="state-panel">
                       <div className="state-panel-icon">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -425,6 +490,7 @@ const Trackers = () => {
                   const isSelected = selectedTrackers.includes(tracker.tracker_id);
                   const batteryTier = trackerData.battery === null ? null :
                     trackerData.battery < 30 ? 'critical' : trackerData.battery < 70 ? 'low' : 'good';
+                  const mode = getModeStatus(tracker);
 
                   return (
                     <tr key={tracker.tracker_id} className={`tracker-row ${isSelected ? 'is-selected' : ''}`}>
@@ -474,6 +540,31 @@ const Trackers = () => {
                         </span>
                       </td>
                       <td className="last-seen-cell">{trackerData.lastConnected}</td>
+                      <td className="location-mode-cell">
+                        <span
+                          className={`mode-badge ${mode.pending ? 'pending' : mode.reported}`}
+                          title={mode.pending ? `Switching to ${mode.desired === 'cell' ? 'cell location' : 'GPS'}, waiting for the device to confirm` : undefined}
+                        >
+                          {mode.pending ? (
+                            <><span className="mode-pending-dot" />Pending…</>
+                          ) : mode.reported === 'cell' ? (
+                            <><RadioTower size={12} />Cell</>
+                          ) : (
+                            <><Satellite size={12} />GPS</>
+                          )}
+                        </span>
+                      </td>
+                      <td className="config-cell">
+                        <button
+                          type="button"
+                          className="config-btn"
+                          onClick={() => setConfigTrackerId(tracker.tracker_id)}
+                          aria-label={`Configure tracker ${tracker.tracker_id}`}
+                          title="Configure tracker"
+                        >
+                          <SlidersHorizontal size={16} />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -547,8 +638,16 @@ const Trackers = () => {
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     />
                     {validLocations.map((location) => (
+                      <React.Fragment key={location.tracker_id}>
+                      {/* Cell fixes are approximate: show their accuracy radius */}
+                      {location.source === 'cell' && location.accuracy > 0 && (
+                        <Circle
+                          center={[parseFloat(location.latitude), parseFloat(location.longitude)]}
+                          radius={location.accuracy}
+                          pathOptions={{ color: '#2563EB', weight: 1, fillOpacity: 0.08 }}
+                        />
+                      )}
                       <Marker
-                        key={location.tracker_id}
                         position={[parseFloat(location.latitude), parseFloat(location.longitude)]}
                       >
                         <Popup>
@@ -559,9 +658,16 @@ const Trackers = () => {
                             {location.temperature && <p><strong>Temperature:</strong> {location.temperature}°C</p>}
                             {location.speed && <p><strong>Speed:</strong> {location.speed} km/h</p>}
                             <p><strong>Coordinates:</strong> {parseFloat(location.latitude).toFixed(6)}, {parseFloat(location.longitude).toFixed(6)}</p>
+                            <p>
+                              <strong>Source:</strong>{' '}
+                              {location.source === 'cell'
+                                ? `Cell location${location.accuracy ? ` (±${Math.round(location.accuracy)} m)` : ''}`
+                                : 'GPS'}
+                            </p>
                           </div>
                         </Popup>
                       </Marker>
+                      </React.Fragment>
                     ))}
                   </MapContainer>
                 </>
@@ -590,6 +696,102 @@ const Trackers = () => {
           })()}
         </div>
       </div>
+
+      {/* Tracker Configuration Modal */}
+      {configTracker && (() => {
+        const mode = getModeStatus(configTracker);
+        const reportedAt = formatUtc(configTracker.location_mode_reported_at);
+        return (
+          <div className="modal-overlay" onClick={closeConfig}>
+            <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="config-title" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <div className="modal-header-title">
+                  <div className="modal-header-icon">
+                    <SlidersHorizontal size={16} />
+                  </div>
+                  <div>
+                    <h2 id="config-title">Configure Tracker</h2>
+                    <p>{configTracker.tracker_name ? `${configTracker.tracker_name} · ` : ''}{configTracker.tracker_id}</p>
+                  </div>
+                </div>
+                <button className="modal-close" onClick={closeConfig} type="button" aria-label="Close">×</button>
+              </div>
+
+              <div className="config-body">
+                <h3 className="config-section-title">Location source</h3>
+
+                <div className="toggle-row">
+                  <div className="toggle-icon"><Satellite size={18} /></div>
+                  <div className="toggle-text">
+                    <span className="toggle-label" id="toggle-gps-label">GPS</span>
+                    <span className="toggle-hint">Precise to a few metres. Needs a clear view of the sky.</span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={mode.desired === 'gps'}
+                    aria-labelledby="toggle-gps-label"
+                    className={`toggle-switch ${mode.desired === 'gps' ? 'on' : ''}`}
+                    disabled={modeSaving}
+                    onClick={() => handleModeChange(configTracker.tracker_id, mode.desired === 'gps' ? 'cell' : 'gps')}
+                  >
+                    <span className="toggle-thumb" />
+                  </button>
+                </div>
+
+                <div className="toggle-row">
+                  <div className="toggle-icon"><RadioTower size={18} /></div>
+                  <div className="toggle-text">
+                    <span className="toggle-label" id="toggle-cell-label">Cell location</span>
+                    <span className="toggle-hint">Works indoors and turns GPS off to save power. Accurate to a few hundred metres.</span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={mode.desired === 'cell'}
+                    aria-labelledby="toggle-cell-label"
+                    className={`toggle-switch ${mode.desired === 'cell' ? 'on' : ''}`}
+                    disabled={modeSaving}
+                    onClick={() => handleModeChange(configTracker.tracker_id, mode.desired === 'cell' ? 'gps' : 'cell')}
+                  >
+                    <span className="toggle-thumb" />
+                  </button>
+                </div>
+
+                <div className={`config-status ${mode.pending ? 'pending' : 'confirmed'}`} aria-live="polite">
+                  {mode.pending ? (
+                    <>
+                      <span className="mode-pending-dot" />
+                      <span>
+                        <strong>Pending…</strong> Switching to {mode.desired === 'cell' ? 'cell location' : 'GPS'}.
+                        The tracker applies it at its next check-in (about every 30 seconds while online).
+                      </span>
+                    </>
+                  ) : (
+                    <span>
+                      Device confirmed it is using <strong>{mode.reported === 'cell' ? 'cell location' : 'GPS'}</strong>
+                      {reportedAt ? ` · last check-in ${reportedAt}` : ''}.
+                    </span>
+                  )}
+                </div>
+
+                {modeError && (
+                  <div className="error-message">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span>{modeError}</span>
+                  </div>
+                )}
+
+                <div className="form-buttons">
+                  <button type="button" className="submit-btn" onClick={closeConfig}>Done</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Registration Modal */}
       {showModal && (

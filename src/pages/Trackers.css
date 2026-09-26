@@ -1021,6 +1021,205 @@ input[type="checkbox"] {
   cursor: not-allowed;
 }
 
+/* ── Location Mode ────────────────────────────────────────────────── */
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.mode-badge.gps {
+  background: var(--color-muted);
+  color: var(--color-primary-dark);
+}
+
+.mode-badge.cell {
+  background: #F5F3FF;
+  color: #5B21B6;
+}
+
+.mode-badge.pending {
+  background: var(--color-warning-bg);
+  color: #A16207;
+}
+
+.mode-pending-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  flex-shrink: 0;
+  animation: mode-pending-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes mode-pending-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.config-cell {
+  width: 44px;
+  text-align: right;
+}
+
+.config-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.config-btn:hover {
+  background: var(--color-bg);
+  border-color: var(--color-border);
+  color: var(--color-primary);
+}
+
+.config-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.config-body {
+  padding: 20px 24px 24px;
+}
+
+.config-section-title {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-muted);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-muted);
+}
+
+.toggle-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--color-muted);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.toggle-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toggle-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.toggle-hint {
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.toggle-switch {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: #CBD5E1;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.18s ease;
+}
+
+.toggle-switch.on {
+  background: var(--color-primary);
+}
+
+.toggle-switch:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.toggle-switch:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.18s ease;
+}
+
+.toggle-switch.on .toggle-thumb {
+  transform: translateX(18px);
+}
+
+.config-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.config-status .mode-pending-dot {
+  margin-top: 6px;
+}
+
+.config-status.pending {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: #854D0E;
+}
+
+.config-status.confirmed {
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+  color: var(--color-success-text);
+}
+
+.config-body .error-message {
+  margin: 12px 0 0;
+}
+
 /* ── Responsive ───────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
   .trackers-panel {
@@ -1101,7 +1300,10 @@ input[type="checkbox"] {
   .skeleton-bar,
   .create-btn,
   .stat-tile,
-  .delete-selected-btn {
+  .delete-selected-btn,
+  .mode-pending-dot,
+  .toggle-switch,
+  .toggle-thumb {
     animation: none !important;
     transition: none !important;
   }

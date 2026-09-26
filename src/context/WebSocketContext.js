@@ -85,7 +85,7 @@ export const WebSocketProvider = ({ children }) => {
     }));
 
     // Extract latest location from sensor data
-    let lat, lng, timestamp, battery, temperature, humidity, speed;
+    let lat, lng, timestamp, battery, temperature, humidity, speed, source, accuracy;
     
     // Handle data array format (legacy)
     const sensorArray = fullDoc.data;
@@ -98,6 +98,8 @@ export const WebSocketProvider = ({ children }) => {
       temperature = latestReading.Temp;
       humidity = latestReading.Hum;
       speed = latestReading.Speed;
+      source = latestReading.Src; // "gps" or "cell"
+      accuracy = latestReading.Acc; // metres, cell fixes only
     } 
     // Handle direct field format (new)
     else if (fullDoc.Lat !== undefined || fullDoc.Lng !== undefined) {
@@ -119,7 +121,9 @@ export const WebSocketProvider = ({ children }) => {
         battery: battery,
         temperature: temperature,
         humidity: humidity,
-        speed: speed
+        speed: speed,
+        source: source || 'gps',
+        accuracy: accuracy
       };
       
       console.log('🎯 Setting tracker location in WebSocket context:', {
