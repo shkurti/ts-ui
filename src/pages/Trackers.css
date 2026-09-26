@@ -323,6 +323,12 @@
   white-space: nowrap;
 }
 
+.trackers-table th:not(:first-child),
+.trackers-table td:not(:first-child) {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
 .trackers-table th:first-child,
 .trackers-table td:first-child {
   width: 40px;
@@ -491,7 +497,7 @@ input[type="checkbox"] {
 .last-seen-cell {
   color: var(--color-text-muted);
   font-size: 12.5px;
-  white-space: nowrap;
+  min-width: 120px;
 }
 
 /* ── Loading / Error / Empty States ───────────────────────────────── */
@@ -1063,9 +1069,25 @@ input[type="checkbox"] {
   50% { opacity: 0.3; }
 }
 
+/* Pinned to the right edge so the configure button stays reachable even
+   when the table is wider than the panel and scrolls horizontally */
+.trackers-table th:last-child,
 .config-cell {
+  position: sticky;
+  right: 0;
   width: 44px;
   text-align: right;
+  background: #fff;
+  box-shadow: -8px 0 8px -8px rgba(15, 23, 42, 0.15);
+}
+
+.trackers-table th:last-child {
+  background: var(--color-bg);
+}
+
+.tracker-row:hover .config-cell,
+.tracker-row.is-selected .config-cell {
+  background: var(--color-bg);
 }
 
 .config-btn {
