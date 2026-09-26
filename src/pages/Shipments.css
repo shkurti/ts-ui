@@ -1623,6 +1623,65 @@
   gap: 1px;
 }
 
+.detail-header-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+/* Which source the tracker is locating itself with (GPS / cell towers) */
+.location-source-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.location-source-pill.gps {
+  background: #eff6ff;
+  color: var(--color-primary-dark);
+  border: 1px solid #bfdbfe;
+}
+
+.location-source-pill.cell {
+  background: #f5f3ff;
+  color: #5b21b6;
+  border: 1px solid #ddd6fe;
+}
+
+.location-source-pill.pending {
+  background: var(--color-warning-bg);
+  color: #a16207;
+  border: 1px solid var(--color-warning-border);
+}
+
+.location-source-pending-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  animation: location-source-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes location-source-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .location-source-pending-dot {
+    animation: none;
+  }
+}
+
 .detail-header-eyebrow {
   font-size: 10px;
   font-weight: 700;

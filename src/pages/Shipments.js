@@ -6,7 +6,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import './Shipments.css';
-import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock, Maximize2, X, RotateCcw, Route } from 'lucide-react';
+import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock, Maximize2, X, RotateCcw, Route, Satellite, RadioTower } from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi, reportApi } from '../services/apiService';
 import GeofenceShapeMap from '../components/GeofenceShapeMap';
@@ -805,6 +805,36 @@ const Shipments = () => {
     fetchTrackers();
   }, [loading]); // Only depend on loading from AuthContext
 
+  // While a shipment is open, re-read the tracker list so the location
+  // source pill follows mode switches made on the Trackers page (the device
+  // confirms a switch at its next check-in, roughly every 30s)
+  const detailTrackerId = selectedShipmentDetail?.trackerId;
+  useEffect(() => {
+    if (detailTrackerId == null) return undefined;
+    const refresh = async () => {
+      try {
+        setTrackers(await trackerApi.getAll());
+      } catch (error) {
+        // Keep the last known tracker state; the next tick retries
+      }
+    };
+    refresh();
+    const interval = setInterval(refresh, 30000);
+    return () => clearInterval(interval);
+  }, [detailTrackerId]);
+
+  // Location source configured for the open shipment's tracker. Desired is
+  // what the dashboard asked for, reported is what the device confirmed;
+  // trackers that never reported (older firmware) are on GPS.
+  const detailLocationMode = useMemo(() => {
+    if (detailTrackerId == null) return null;
+    const tracker = trackers.find(t => String(t.tracker_id) === String(detailTrackerId));
+    if (!tracker) return null;
+    const desired = tracker.location_mode_desired || 'gps';
+    const reported = tracker.location_mode_reported || 'gps';
+    return { desired, reported, pending: desired !== reported };
+  }, [trackers, detailTrackerId]);
+
   // Filter shipments based on search term
   const filteredShipments = useMemo(() => shipments.filter(shipment => {
     const trackerId = shipment.trackerId?.toString().toLowerCase() || '';
@@ -1500,6 +1530,8 @@ const Shipments = () => {
               : record.Speed !== undefined
                 ? parseFloat(record.Speed)
                 : null,
+            source: record.source || record.Src || 'gps',
+            accuracy: record.accuracy ?? record.Acc ?? null,
           })).filter(item =>
             item.latitude !== null && 
             item.longitude !== null && 
@@ -2571,7 +2603,9 @@ const Shipments = () => {
         setLocationData(prev => [...prev, { 
           latitude: parseFloat(lat), 
           longitude: parseFloat(lng), 
-          timestamp: ts 
+          timestamp: ts,
+          source: reading.Src || 'gps',
+          accuracy: reading.Acc ?? null
         }]);
       }
 
@@ -2741,9 +2775,29 @@ const Shipments = () => {
                       <span className="detail-header-eyebrow">Tracker</span>
                       <h2 className="detail-header-id">#{selectedShipmentDetail.trackerId}</h2>
                     </div>
-                    <span className={`status ${getDetailShipmentStatus(selectedShipmentDetail).toLowerCase().replace(' ', '-')}`}>
-                      {getDetailShipmentStatus(selectedShipmentDetail)}
-                    </span>
+                    <div className="detail-header-badges">
+                      <span className={`status ${getDetailShipmentStatus(selectedShipmentDetail).toLowerCase().replace(' ', '-')}`}>
+                        {getDetailShipmentStatus(selectedShipmentDetail)}
+                      </span>
+                      {detailLocationMode && (
+                        <span
+                          className={`location-source-pill ${detailLocationMode.pending ? 'pending' : detailLocationMode.reported}`}
+                          title={detailLocationMode.pending
+                            ? `Tracker is switching to ${detailLocationMode.desired === 'cell' ? 'cell location' : 'GPS'}; it applies the change at its next check-in`
+                            : detailLocationMode.reported === 'cell'
+                              ? 'Tracker is locating itself by cell towers (GPS off). Positions are approximate, typically within a few hundred metres.'
+                              : 'Tracker is locating itself by GPS'}
+                        >
+                          {detailLocationMode.pending ? (
+                            <><span className="location-source-pending-dot" />Switching to {detailLocationMode.desired === 'cell' ? 'Cell' : 'GPS'}…</>
+                          ) : detailLocationMode.reported === 'cell' ? (
+                            <><RadioTower size={12} />Cell location</>
+                          ) : (
+                            <><Satellite size={12} />GPS</>
+                          )}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -3561,6 +3615,14 @@ const Shipments = () => {
                     }}
                   />
                 )}
+                {/* A cell fix is approximate: shade the area the tracker is actually within */}
+                {lastGps.source === 'cell' && lastGps.accuracy > 0 && (
+                  <Circle
+                    center={gpsPos}
+                    radius={lastGps.accuracy}
+                    pathOptions={{ color: '#7C3AED', weight: 1.5, dashArray: '4, 4', fillOpacity: 0.08 }}
+                  />
+                )}
                 {/* Live position: origin/destination are already drawn as pins above, so only the moving tracker needs a marker here */}
                 <Marker
                   position={gpsPos}
@@ -3570,7 +3632,10 @@ const Shipments = () => {
                     <div>
                       <strong>Current Location</strong><br />
                       Lat: {gpsPos[0].toFixed(6)}<br />
-                      Lng: {gpsPos[1].toFixed(6)}
+                      Lng: {gpsPos[1].toFixed(6)}<br />
+                      Source: {lastGps.source === 'cell'
+                        ? `Cell location${lastGps.accuracy ? ` (±${Math.round(lastGps.accuracy)} m)` : ''}`
+                        : 'GPS'}
                     </div>
                   </Popup>
                 </Marker>
