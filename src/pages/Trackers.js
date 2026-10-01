@@ -113,6 +113,40 @@ const Trackers = () => {
     return { bars: 1, label: 'Poor', tone: 'poor' };
   };
 
+  // Rates the device's last GNSS report. With a fix, by satellites used and
+  // HDOP (fix geometry); without one, explains why from what is in view:
+  // satellites need about 25 dB-Hz before the receiver can use them.
+  const getGnssStatus = (gnss) => {
+    if (!gnss) return { bars: 0, label: 'No report', tone: 'none', detail: '' };
+    const used = ['GPS', 'GLO', 'GAL', 'BDS'].reduce((sum, k) => sum + (gnss[k] || 0), 0);
+    if (gnss.Fix >= 2) {
+      const detail = `${gnss.Fix === 3 ? '3D' : '2D'} fix · ${used} satellites used`
+        + (gnss.HDOP != null ? ` · HDOP ${gnss.HDOP}` : '');
+      const hdop = gnss.HDOP != null ? gnss.HDOP : 99;
+      if (hdop <= 1 && used >= 8) return { bars: 4, label: 'Excellent', tone: 'good', detail, used };
+      if (hdop <= 2) return { bars: 3, label: 'Good', tone: 'good', detail, used };
+      if (hdop <= 5) return { bars: 2, label: 'Fair', tone: 'fair', detail, used };
+      return { bars: 1, label: 'Poor', tone: 'poor', detail, used };
+    }
+    if (!gnss.InView) {
+      return {
+        bars: 0, label: 'No satellites', tone: 'none', used,
+        detail: 'Nothing in view. Check the GPS antenna, or move the tracker outdoors.',
+      };
+    }
+    const strongest = gnss.CN0Max != null ? `, strongest ${gnss.CN0Max} dB-Hz` : '';
+    if (gnss.CN0Max != null && gnss.CN0Max >= 25) {
+      return {
+        bars: 1, label: 'Searching', tone: 'fair', used,
+        detail: `No fix yet · ${gnss.InView} in view${strongest}`,
+      };
+    }
+    return {
+      bars: 1, label: 'Too weak', tone: 'poor', used,
+      detail: `No fix · ${gnss.InView} in view${strongest}. Move it near a window or outdoors.`,
+    };
+  };
+
   const hasPendingMode = trackers.some(t => getModeStatus(t).pending);
 
   // While a switch is pending, or the config modal is open (for the live
@@ -718,6 +752,9 @@ const Trackers = () => {
         const sig = configTracker.signal_reported;
         const signal = getSignalStatus(sig);
         const signalAt = formatUtc(configTracker.signal_reported_at);
+        const gnss = configTracker.gnss_reported;
+        const gnssStatus = getGnssStatus(gnss);
+        const gnssAt = formatUtc(configTracker.gnss_reported_at);
         return (
           <div className="modal-overlay" onClick={closeConfig}>
             <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="config-title" onClick={(e) => e.stopPropagation()}>
@@ -829,6 +866,35 @@ const Trackers = () => {
                   </div>
                 ) : (
                   <p className="signal-empty">No signal report yet. It appears after the tracker's next check-in.</p>
+                )}
+
+                <h3 className="config-section-title signal-section-title">GPS reception</h3>
+                {mode.reported === 'cell' ? (
+                  <p className="signal-empty">GPS is off while the tracker uses cell location.</p>
+                ) : gnss ? (
+                  <div className="signal-card">
+                    <div className="signal-summary">
+                      <div className={`signal-bars tone-${gnssStatus.tone}`} aria-label={`${gnssStatus.bars} of 4 bars`}>
+                        {[1, 2, 3, 4].map(n => (
+                          <span key={n} className={n <= gnssStatus.bars ? 'on' : ''} />
+                        ))}
+                      </div>
+                      <div className="signal-summary-text">
+                        <strong>{gnssStatus.label}</strong>
+                        <span>{gnssStatus.detail}</span>
+                      </div>
+                    </div>
+                    <dl className="signal-metrics">
+                      {gnss.Fix >= 2 && <div><dt>Used</dt><dd>{gnssStatus.used}</dd></div>}
+                      {gnss.InView != null && <div><dt>In view</dt><dd>{gnss.InView}</dd></div>}
+                      {gnss.CN0Max != null && <div><dt>Strongest</dt><dd>{gnss.CN0Max} dB-Hz</dd></div>}
+                      {gnss.CN0Avg != null && <div><dt>Average</dt><dd>{gnss.CN0Avg} dB-Hz</dd></div>}
+                      {gnss.Fix >= 2 && gnss.HDOP != null && <div><dt>HDOP</dt><dd>{gnss.HDOP}</dd></div>}
+                    </dl>
+                    {gnssAt && <p className="signal-updated">Reported {gnssAt}</p>}
+                  </div>
+                ) : (
+                  <p className="signal-empty">No GPS report yet. It appears after the tracker's next check-in.</p>
                 )}
 
                 <div className="form-buttons">
