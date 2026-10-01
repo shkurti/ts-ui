@@ -99,12 +99,26 @@ const Trackers = () => {
     return { desired, reported, pending: desired !== reported };
   };
 
+  // Rates the device's last signal report as 0-4 bars. LTE devices send RSRP,
+  // which tracks real coverage better; otherwise fall back to CSQ in dBm.
+  const getSignalStatus = (sig) => {
+    if (!sig || sig.Net === 'NO SERVICE' || (sig.RSRP == null && sig.dBm == null)) {
+      return { bars: 0, label: 'No signal', tone: 'none' };
+    }
+    const thresholds = sig.RSRP != null ? [-80, -90, -100] : [-73, -83, -93];
+    const value = sig.RSRP != null ? sig.RSRP : sig.dBm;
+    if (value >= thresholds[0]) return { bars: 4, label: 'Excellent', tone: 'good' };
+    if (value >= thresholds[1]) return { bars: 3, label: 'Good', tone: 'good' };
+    if (value >= thresholds[2]) return { bars: 2, label: 'Fair', tone: 'fair' };
+    return { bars: 1, label: 'Poor', tone: 'poor' };
+  };
+
   const hasPendingMode = trackers.some(t => getModeStatus(t).pending);
 
-  // While a switch is pending, re-check the tracker list so the badge flips
-  // to confirmed without a manual refresh
+  // While a switch is pending, or the config modal is open (for the live
+  // signal reading), re-check the tracker list without a manual refresh
   useEffect(() => {
-    if (!hasPendingMode) return undefined;
+    if (!hasPendingMode && !configTrackerId) return undefined;
     const interval = setInterval(async () => {
       try {
         setTrackers(await trackerApi.getAll());
@@ -113,7 +127,7 @@ const Trackers = () => {
       }
     }, 10000);
     return () => clearInterval(interval);
-  }, [hasPendingMode]);
+  }, [hasPendingMode, configTrackerId]);
 
   const handleModeChange = async (trackerId, mode) => {
     const previous = trackers;
@@ -701,6 +715,9 @@ const Trackers = () => {
       {configTracker && (() => {
         const mode = getModeStatus(configTracker);
         const reportedAt = formatUtc(configTracker.location_mode_reported_at);
+        const sig = configTracker.signal_reported;
+        const signal = getSignalStatus(sig);
+        const signalAt = formatUtc(configTracker.signal_reported_at);
         return (
           <div className="modal-overlay" onClick={closeConfig}>
             <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="config-title" onClick={(e) => e.stopPropagation()}>
@@ -782,6 +799,36 @@ const Trackers = () => {
                     </svg>
                     <span>{modeError}</span>
                   </div>
+                )}
+
+                <h3 className="config-section-title signal-section-title">Cellular signal</h3>
+                {sig ? (
+                  <div className="signal-card">
+                    <div className="signal-summary">
+                      <div className={`signal-bars tone-${signal.tone}`} aria-label={`${signal.bars} of 4 bars`}>
+                        {[1, 2, 3, 4].map(n => (
+                          <span key={n} className={n <= signal.bars ? 'on' : ''} />
+                        ))}
+                      </div>
+                      <div className="signal-summary-text">
+                        <strong>{signal.label}</strong>
+                        <span>
+                          {[sig.Op, sig.Net, sig.Band].filter(Boolean).join(' · ') || 'Unknown network'}
+                        </span>
+                      </div>
+                    </div>
+                    <dl className="signal-metrics">
+                      {sig.RSRP != null && <div><dt>RSRP</dt><dd>{sig.RSRP} dBm</dd></div>}
+                      {sig.RSRQ != null && <div><dt>RSRQ</dt><dd>{sig.RSRQ} dB</dd></div>}
+                      {sig.SINR != null && <div><dt>SINR</dt><dd>{sig.SINR} dB</dd></div>}
+                      {sig.CSQ != null && (
+                        <div><dt>CSQ</dt><dd>{sig.CSQ === 99 ? 'Unknown' : `${sig.CSQ}${sig.dBm != null ? ` (${sig.dBm} dBm)` : ''}`}</dd></div>
+                      )}
+                    </dl>
+                    {signalAt && <p className="signal-updated">Reported {signalAt}</p>}
+                  </div>
+                ) : (
+                  <p className="signal-empty">No signal report yet. It appears after the tracker's next check-in.</p>
                 )}
 
                 <div className="form-buttons">
