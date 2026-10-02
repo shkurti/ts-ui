@@ -99,23 +99,33 @@ const Trackers = () => {
     return { desired, reported, pending: desired !== reported };
   };
 
-  // Rates the device's last signal report as 0-4 bars. LTE devices send RSRP,
-  // which tracks real coverage better; otherwise fall back to CSQ in dBm.
+  // Rates the device's last signal report as 1-4 bars (0 = no service), on
+  // the same scale as Android's status bar so it matches what a phone in the
+  // same spot would show. LTE devices send RSRP, which tracks real coverage
+  // better; otherwise fall back to CSQ in dBm. A strong but noisy signal
+  // (SINR below 0 dB) loses a bar.
+  const SIGNAL_LEVELS = [
+    { bars: 1, label: 'Poor', tone: 'poor' },
+    { bars: 2, label: 'Fair', tone: 'fair' },
+    { bars: 3, label: 'Good', tone: 'good' },
+    { bars: 4, label: 'Excellent', tone: 'good' },
+  ];
   const getSignalStatus = (sig) => {
     if (!sig || sig.Net === 'NO SERVICE' || (sig.RSRP == null && sig.dBm == null)) {
       return { bars: 0, label: 'No signal', tone: 'none' };
     }
-    const thresholds = sig.RSRP != null ? [-80, -90, -100] : [-73, -83, -93];
+    const thresholds = sig.RSRP != null ? [-118, -108, -98] : [-103, -97, -89];
     const value = sig.RSRP != null ? sig.RSRP : sig.dBm;
-    if (value >= thresholds[0]) return { bars: 4, label: 'Excellent', tone: 'good' };
-    if (value >= thresholds[1]) return { bars: 3, label: 'Good', tone: 'good' };
-    if (value >= thresholds[2]) return { bars: 2, label: 'Fair', tone: 'fair' };
-    return { bars: 1, label: 'Poor', tone: 'poor' };
+    let level = thresholds.filter(t => value >= t).length;
+    if (sig.SINR != null && sig.SINR < 0) level = Math.max(0, level - 1);
+    return SIGNAL_LEVELS[level];
   };
 
   // Rates the device's last GNSS report. With a fix, by satellites used and
-  // HDOP (fix geometry); without one, explains why from what is in view:
-  // satellites need about 25 dB-Hz before the receiver can use them.
+  // HDOP (fix geometry); a 2D fix means the receiver couldn't solve altitude
+  // and is assuming it, so it rates Fair at best however good the geometry.
+  // Without a fix, explains why from what is in view: satellites need about
+  // 25 dB-Hz before the receiver can use them.
   const getGnssStatus = (gnss) => {
     if (!gnss) return { bars: 0, label: 'No report', tone: 'none', detail: '' };
     const used = ['GPS', 'GLO', 'GAL', 'BDS'].reduce((sum, k) => sum + (gnss[k] || 0), 0);
@@ -123,10 +133,12 @@ const Trackers = () => {
       const detail = `${gnss.Fix === 3 ? '3D' : '2D'} fix · ${used} satellites used`
         + (gnss.HDOP != null ? ` · HDOP ${gnss.HDOP}` : '');
       const hdop = gnss.HDOP != null ? gnss.HDOP : 99;
-      if (hdop <= 1 && used >= 8) return { bars: 4, label: 'Excellent', tone: 'good', detail, used };
-      if (hdop <= 2) return { bars: 3, label: 'Good', tone: 'good', detail, used };
-      if (hdop <= 5) return { bars: 2, label: 'Fair', tone: 'fair', detail, used };
-      return { bars: 1, label: 'Poor', tone: 'poor', detail, used };
+      let level = 1;
+      if (hdop <= 1 && used >= 8) level = 4;
+      else if (hdop <= 2) level = 3;
+      else if (hdop <= 5) level = 2;
+      if (gnss.Fix === 2) level = Math.min(level, 2);
+      return { ...SIGNAL_LEVELS[level - 1], detail, used };
     }
     if (!gnss.InView) {
       return {
@@ -859,7 +871,13 @@ const Trackers = () => {
                       {sig.RSRQ != null && <div><dt>RSRQ</dt><dd>{sig.RSRQ} dB</dd></div>}
                       {sig.SINR != null && <div><dt>SINR</dt><dd>{sig.SINR} dB</dd></div>}
                       {sig.CSQ != null && (
-                        <div><dt>CSQ</dt><dd>{sig.CSQ === 99 ? 'Unknown' : `${sig.CSQ}${sig.dBm != null ? ` (${sig.dBm} dBm)` : ''}`}</dd></div>
+                        <div>
+                          <dt>CSQ</dt>
+                          <dd>
+                            {sig.CSQ === 99 ? 'Unknown' : sig.CSQ}
+                            {sig.CSQ !== 99 && sig.dBm != null && <span className="signal-metric-sub">{sig.dBm} dBm</span>}
+                          </dd>
+                        </div>
                       )}
                     </dl>
                     {signalAt && <p className="signal-updated">Reported {signalAt}</p>}
@@ -888,9 +906,7 @@ const Trackers = () => {
                       {gnss.Fix >= 2 && <div><dt>Used</dt><dd>{gnssStatus.used}</dd></div>}
                       {gnss.InView != null && <div><dt>In view</dt><dd>{gnss.InView}</dd></div>}
                       {gnss.CN0Max != null && <div><dt>Strongest</dt><dd>{gnss.CN0Max} dB-Hz</dd></div>}
-                      {gnss.CN0Avg != null && <div><dt>Average</dt><dd>{gnss.CN0Avg} dB-Hz</dd></div>}
-                      {gnss.Fix >= 2 && gnss.HDOP != null && <div><dt>HDOP</dt><dd>{gnss.HDOP}</dd></div>}
-                    </dl>
+                      {gnss.CN0Avg != null && <div><dt>Average</dt><dd>{gnss.CN0Avg} dB-Hz</dd></div>}                    </dl>
                     {gnssAt && <p className="signal-updated">Reported {gnssAt}</p>}
                   </div>
                 ) : (
