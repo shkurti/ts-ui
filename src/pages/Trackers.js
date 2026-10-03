@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Circle } from 'react-leaflet';
 import L from 'leaflet';
-import { SlidersHorizontal, Satellite, RadioTower } from 'lucide-react';
+import { SlidersHorizontal, Satellite, RadioTower, Wifi } from 'lucide-react';
+import LocationModeIcon from '../components/LocationModeIcon';
+import { normalizeMode, modeLabel, modeShortLabel, modeToggles, toggleMode, isNetworkSource, sourceLabel } from '../utils/locationModes';
 import { trackerApi } from '../services/apiService';
 import { useWebSocketContext } from '../context/WebSocketContext';
 import './Trackers.css';
@@ -94,8 +96,8 @@ const Trackers = () => {
   // match, the switch is pending. Trackers that have never reported (older
   // firmware) are assumed to be on GPS.
   const getModeStatus = (tracker) => {
-    const desired = tracker.location_mode_desired || 'gps';
-    const reported = tracker.location_mode_reported || 'gps';
+    const desired = normalizeMode(tracker.location_mode_desired);
+    const reported = normalizeMode(tracker.location_mode_reported);
     return { desired, reported, pending: desired !== reported };
   };
 
@@ -602,15 +604,13 @@ const Trackers = () => {
                       <td className="last-seen-cell">{trackerData.lastConnected}</td>
                       <td className="location-mode-cell">
                         <span
-                          className={`mode-badge ${mode.pending ? 'pending' : mode.reported}`}
-                          title={mode.pending ? `Switching to ${mode.desired === 'cell' ? 'cell location' : 'GPS'}, waiting for the device to confirm` : undefined}
+                          className={`mode-badge ${mode.pending ? 'pending' : modeToggles(mode.reported).gps ? 'gps' : 'cell'}`}
+                          title={mode.pending ? `Switching to ${modeLabel(mode.desired)}, waiting for the device to confirm` : modeLabel(mode.reported)}
                         >
                           {mode.pending ? (
                             <><span className="mode-pending-dot" />Pending…</>
-                          ) : mode.reported === 'cell' ? (
-                            <><RadioTower size={12} />Cell</>
                           ) : (
-                            <><Satellite size={12} />GPS</>
+                            <><LocationModeIcon mode={mode.reported} />{modeShortLabel(mode.reported)}</>
                           )}
                         </span>
                       </td>
@@ -699,8 +699,8 @@ const Trackers = () => {
                     />
                     {validLocations.map((location) => (
                       <React.Fragment key={location.tracker_id}>
-                      {/* Cell fixes are approximate: show their accuracy radius */}
-                      {location.source === 'cell' && location.accuracy > 0 && (
+                      {/* Cell/WiFi fixes are approximate: show their accuracy radius */}
+                      {isNetworkSource(location.source) && location.accuracy > 0 && (
                         <Circle
                           center={[parseFloat(location.latitude), parseFloat(location.longitude)]}
                           radius={location.accuracy}
@@ -719,10 +719,7 @@ const Trackers = () => {
                             {location.speed && <p><strong>Speed:</strong> {location.speed} km/h</p>}
                             <p><strong>Coordinates:</strong> {parseFloat(location.latitude).toFixed(6)}, {parseFloat(location.longitude).toFixed(6)}</p>
                             <p>
-                              <strong>Source:</strong>{' '}
-                              {location.source === 'cell'
-                                ? `Cell location${location.accuracy ? ` (±${Math.round(location.accuracy)} m)` : ''}`
-                                : 'GPS'}
+                              <strong>Source:</strong> {sourceLabel(location.source, location.accuracy)}
                             </p>
                           </div>
                         </Popup>
@@ -786,56 +783,55 @@ const Trackers = () => {
               <div className="config-body">
                 <h3 className="config-section-title">Location source</h3>
 
-                <div className="toggle-row">
-                  <div className="toggle-icon"><Satellite size={18} /></div>
-                  <div className="toggle-text">
-                    <span className="toggle-label" id="toggle-gps-label">GPS</span>
-                    <span className="toggle-hint">Precise to a few metres. Needs a clear view of the sky.</span>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={mode.desired === 'gps'}
-                    aria-labelledby="toggle-gps-label"
-                    className={`toggle-switch ${mode.desired === 'gps' ? 'on' : ''}`}
-                    disabled={modeSaving}
-                    onClick={() => handleModeChange(configTracker.tracker_id, mode.desired === 'gps' ? 'cell' : 'gps')}
-                  >
-                    <span className="toggle-thumb" />
-                  </button>
-                </div>
-
-                <div className="toggle-row">
-                  <div className="toggle-icon"><RadioTower size={18} /></div>
-                  <div className="toggle-text">
-                    <span className="toggle-label" id="toggle-cell-label">Cell location</span>
-                    <span className="toggle-hint">Works indoors and turns GPS off to save power. Accurate to a few hundred metres.</span>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={mode.desired === 'cell'}
-                    aria-labelledby="toggle-cell-label"
-                    className={`toggle-switch ${mode.desired === 'cell' ? 'on' : ''}`}
-                    disabled={modeSaving}
-                    onClick={() => handleModeChange(configTracker.tracker_id, mode.desired === 'cell' ? 'gps' : 'cell')}
-                  >
-                    <span className="toggle-thumb" />
-                  </button>
-                </div>
+                {[
+                  {
+                    key: 'gps', label: 'GPS', Icon: Satellite,
+                    hint: 'Precise to a few metres. Needs a clear view of the sky.',
+                  },
+                  {
+                    key: 'cell', label: 'Cell location', Icon: RadioTower,
+                    hint: 'Works indoors and turns GPS off to save power. Accurate to a few hundred metres to a few km.',
+                  },
+                  {
+                    key: 'wifi', label: 'WiFi', Icon: Wifi,
+                    hint: 'Uses nearby WiFi networks with GPS off. Tens of metres in towns and cities, nothing where there is no WiFi. Combine with cell location for the best coverage.',
+                  },
+                ].map(({ key, label, Icon, hint }) => {
+                  const on = modeToggles(mode.desired)[key];
+                  return (
+                    <div className="toggle-row" key={key}>
+                      <div className="toggle-icon"><Icon size={18} /></div>
+                      <div className="toggle-text">
+                        <span className="toggle-label" id={`toggle-${key}-label`}>{label}</span>
+                        <span className="toggle-hint">{hint}</span>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on}
+                        aria-labelledby={`toggle-${key}-label`}
+                        className={`toggle-switch ${on ? 'on' : ''}`}
+                        disabled={modeSaving}
+                        onClick={() => handleModeChange(configTracker.tracker_id, toggleMode(mode.desired, key))}
+                      >
+                        <span className="toggle-thumb" />
+                      </button>
+                    </div>
+                  );
+                })}
 
                 <div className={`config-status ${mode.pending ? 'pending' : 'confirmed'}`} aria-live="polite">
                   {mode.pending ? (
                     <>
                       <span className="mode-pending-dot" />
                       <span>
-                        <strong>Pending…</strong> Switching to {mode.desired === 'cell' ? 'cell location' : 'GPS'}.
+                        <strong>Pending…</strong> Switching to {modeLabel(mode.desired)}.
                         The tracker applies it at its next check-in (about every 30 seconds while online).
                       </span>
                     </>
                   ) : (
                     <span>
-                      Device confirmed it is using <strong>{mode.reported === 'cell' ? 'cell location' : 'GPS'}</strong>
+                      Device confirmed it is using <strong>{modeLabel(mode.reported)}</strong>
                       {reportedAt ? ` · last check-in ${reportedAt}` : ''}.
                     </span>
                   )}
@@ -887,8 +883,8 @@ const Trackers = () => {
                 )}
 
                 <h3 className="config-section-title signal-section-title">GPS reception</h3>
-                {mode.reported === 'cell' ? (
-                  <p className="signal-empty">GPS is off while the tracker uses cell location.</p>
+                {!modeToggles(mode.reported).gps ? (
+                  <p className="signal-empty">GPS is off while the tracker uses {modeLabel(mode.reported).toLowerCase().replace('wifi', 'WiFi')}.</p>
                 ) : gnss ? (
                   <div className="signal-card">
                     <div className="signal-summary">

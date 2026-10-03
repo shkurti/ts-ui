@@ -6,7 +6,9 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import './Shipments.css';
-import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock, Maximize2, X, RotateCcw, Route, Satellite, RadioTower } from 'lucide-react';
+import { TriangleAlert, ChevronLeft, ChevronRight, Package, Plus, Search, Flag, Truck, Clock, Maximize2, X, RotateCcw, Route } from 'lucide-react';
+import LocationModeIcon from '../components/LocationModeIcon';
+import { normalizeMode, modeLabel, modeToggles, isNetworkSource, sourceLabel } from '../utils/locationModes';
 import { renderToStaticMarkup } from 'react-dom/server';
 import apiService, { shipmentApi, trackerApi, reportApi } from '../services/apiService';
 import GeofenceShapeMap from '../components/GeofenceShapeMap';
@@ -830,8 +832,8 @@ const Shipments = () => {
     if (detailTrackerId == null) return null;
     const tracker = trackers.find(t => String(t.tracker_id) === String(detailTrackerId));
     if (!tracker) return null;
-    const desired = tracker.location_mode_desired || 'gps';
-    const reported = tracker.location_mode_reported || 'gps';
+    const desired = normalizeMode(tracker.location_mode_desired);
+    const reported = normalizeMode(tracker.location_mode_reported);
     return { desired, reported, pending: desired !== reported };
   }, [trackers, detailTrackerId]);
 
@@ -2787,19 +2789,17 @@ const Shipments = () => {
                       </span>
                       {detailLocationMode && (
                         <span
-                          className={`location-source-pill ${detailLocationMode.pending ? 'pending' : detailLocationMode.reported}`}
+                          className={`location-source-pill ${detailLocationMode.pending ? 'pending' : modeToggles(detailLocationMode.reported).gps ? 'gps' : 'cell'}`}
                           title={detailLocationMode.pending
-                            ? `Tracker is switching to ${detailLocationMode.desired === 'cell' ? 'cell location' : 'GPS'}; it applies the change at its next check-in`
-                            : detailLocationMode.reported === 'cell'
-                              ? 'Tracker is locating itself by cell towers (GPS off). Positions are approximate, typically within a few hundred metres.'
-                              : 'Tracker is locating itself by GPS'}
+                            ? `Tracker is switching to ${modeLabel(detailLocationMode.desired)}; it applies the change at its next check-in`
+                            : modeToggles(detailLocationMode.reported).gps
+                              ? 'Tracker is locating itself by GPS'
+                              : `Tracker is locating itself by ${modeLabel(detailLocationMode.reported)} (GPS off). Positions are approximate: tens of metres with WiFi, hundreds of metres to a few km from cell towers.`}
                         >
                           {detailLocationMode.pending ? (
-                            <><span className="location-source-pending-dot" />Switching to {detailLocationMode.desired === 'cell' ? 'Cell' : 'GPS'}…</>
-                          ) : detailLocationMode.reported === 'cell' ? (
-                            <><RadioTower size={12} />Cell location</>
+                            <><span className="location-source-pending-dot" />Switching to {modeLabel(detailLocationMode.desired)}…</>
                           ) : (
-                            <><Satellite size={12} />GPS</>
+                            <><LocationModeIcon mode={detailLocationMode.reported} />{modeLabel(detailLocationMode.reported)}</>
                           )}
                         </span>
                       )}
@@ -3621,8 +3621,8 @@ const Shipments = () => {
                     }}
                   />
                 )}
-                {/* A cell fix is approximate: shade the area the tracker is actually within */}
-                {lastGps.source === 'cell' && lastGps.accuracy > 0 && (
+                {/* A cell/WiFi fix is approximate: shade the area the tracker is actually within */}
+                {isNetworkSource(lastGps.source) && lastGps.accuracy > 0 && (
                   <Circle
                     center={gpsPos}
                     radius={lastGps.accuracy}
@@ -3639,9 +3639,7 @@ const Shipments = () => {
                       <strong>Current Location</strong><br />
                       Lat: {gpsPos[0].toFixed(6)}<br />
                       Lng: {gpsPos[1].toFixed(6)}<br />
-                      Source: {lastGps.source === 'cell'
-                        ? `Cell location${lastGps.accuracy ? ` (±${Math.round(lastGps.accuracy)} m)` : ''}`
-                        : 'GPS'}
+                      Source: {sourceLabel(lastGps.source, lastGps.accuracy)}
                     </div>
                   </Popup>
                 </Marker>
