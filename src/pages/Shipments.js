@@ -161,31 +161,31 @@ const GPS_STAY_CLUSTER_RADIUS_METERS = 60; // collapse GPS jitter while parked/d
 // Collapse consecutive points that jitter within a small radius (e.g. multipath
 // GPS noise while parked) into a single representative point, so a stationary
 // dwell doesn't draw as a tangle of back-and-forth segments. `points` must
-// already be sorted by timestamp.
+// already be sorted by timestamp. Each result keeps the largest accuracy
+// radius in its cluster (set on cell-tower fixes, null for GPS).
 const collapseStationaryClusters = (points) => {
   if (points.length === 0) return points;
 
-  const centroid = (cluster) => {
+  const summarize = (cluster) => {
     const lat = cluster.reduce((sum, p) => sum + p.latitude, 0) / cluster.length;
     const lng = cluster.reduce((sum, p) => sum + p.longitude, 0) / cluster.length;
-    return [lat, lng];
+    const accuracies = cluster.map((p) => p.accuracy).filter((a) => a > 0);
+    return { latitude: lat, longitude: lng, accuracy: accuracies.length ? Math.max(...accuracies) : null };
   };
 
   const collapsed = [];
   let cluster = [points[0]];
   for (let i = 1; i < points.length; i++) {
     const p = points[i];
-    const [cLat, cLng] = centroid(cluster);
-    if (haversineMeters(cLat, cLng, p.latitude, p.longitude) <= GPS_STAY_CLUSTER_RADIUS_METERS) {
+    const c = summarize(cluster);
+    if (haversineMeters(c.latitude, c.longitude, p.latitude, p.longitude) <= GPS_STAY_CLUSTER_RADIUS_METERS) {
       cluster.push(p);
     } else {
-      const [lat, lng] = centroid(cluster);
-      collapsed.push({ latitude: lat, longitude: lng });
+      collapsed.push(c);
       cluster = [p];
     }
   }
-  const [lat, lng] = centroid(cluster);
-  collapsed.push({ latitude: lat, longitude: lng });
+  collapsed.push(summarize(cluster));
   return collapsed;
 };
 
@@ -2347,12 +2347,18 @@ const Shipments = () => {
     if (!locationData || locationData.length < 2) return 0;
     const sortedData = [...locationData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     const clustered = collapseStationaryClusters(sortedData);
+    // A cell-tower fix only places the tracker somewhere within its accuracy
+    // radius, so a move that stays inside both fixes' radii (e.g. a parked
+    // tracker switching between nearby towers) isn't counted as travel
     let meters = 0;
+    let anchor = clustered[0];
     for (let i = 1; i < clustered.length; i++) {
-      meters += haversineMeters(
-        clustered[i - 1].latitude, clustered[i - 1].longitude,
-        clustered[i].latitude, clustered[i].longitude
-      );
+      const p = clustered[i];
+      const d = haversineMeters(anchor.latitude, anchor.longitude, p.latitude, p.longitude);
+      if (d > (anchor.accuracy || 0) + (p.accuracy || 0)) {
+        meters += d;
+        anchor = p;
+      }
     }
     return meters / 1609.344;
   }, [locationData]);
