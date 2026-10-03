@@ -794,12 +794,16 @@ const Trackers = () => {
                   },
                   {
                     key: 'wifi', label: 'WiFi', Icon: Wifi,
-                    hint: 'Uses nearby WiFi networks with GPS off. Tens of metres in towns and cities, nothing where there is no WiFi. Combine with cell location for the best coverage.',
+                    hint: modeToggles(mode.desired).cell
+                      ? 'Adds nearby WiFi networks to cell location: tens of metres where they are known, otherwise the cell tower is used.'
+                      : 'Turn on cell location to add WiFi.',
                   },
                 ].map(({ key, label, Icon, hint }) => {
                   const on = modeToggles(mode.desired)[key];
+                  // WiFi only works on top of cell location
+                  const unavailable = key === 'wifi' && !modeToggles(mode.desired).cell;
                   return (
-                    <div className="toggle-row" key={key}>
+                    <div className={`toggle-row ${unavailable ? 'disabled' : ''}`} key={key}>
                       <div className="toggle-icon"><Icon size={18} /></div>
                       <div className="toggle-text">
                         <span className="toggle-label" id={`toggle-${key}-label`}>{label}</span>
@@ -811,7 +815,7 @@ const Trackers = () => {
                         aria-checked={on}
                         aria-labelledby={`toggle-${key}-label`}
                         className={`toggle-switch ${on ? 'on' : ''}`}
-                        disabled={modeSaving}
+                        disabled={modeSaving || unavailable}
                         onClick={() => handleModeChange(configTracker.tracker_id, toggleMode(mode.desired, key))}
                       >
                         <span className="toggle-thumb" />

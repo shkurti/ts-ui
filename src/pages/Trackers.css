@@ -1195,6 +1195,16 @@ input[type="checkbox"] {
   cursor: wait;
 }
 
+/* A toggle that can't be used in the current mode (WiFi without cell location) */
+.toggle-row.disabled .toggle-icon,
+.toggle-row.disabled .toggle-label {
+  opacity: 0.5;
+}
+
+.toggle-row.disabled .toggle-switch:disabled {
+  cursor: not-allowed;
+}
+
 .toggle-thumb {
   position: absolute;
   top: 3px;

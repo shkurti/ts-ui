@@ -1,22 +1,19 @@
 // Tracker location modes, set from the Configure Tracker toggles. GPS is used
-// on its own; the network sources (cell tower, WiFi) can be used alone or
-// together, and any of them keeps the tracker's GPS receiver off.
+// on its own; cell location keeps the tracker's GPS receiver off and can add
+// nearby WiFi networks for a more precise position where they are known.
 //   gps        GPS only
 //   cell       cell tower only
 //   cell_wifi  cell tower + nearby WiFi
-//   wifi       nearby WiFi only
 const MODE_LABELS = {
   gps: 'GPS',
   cell: 'Cell location',
   cell_wifi: 'Cell location + WiFi',
-  wifi: 'WiFi',
 };
 
 const MODE_SHORT_LABELS = {
   gps: 'GPS',
   cell: 'Cell',
   cell_wifi: 'Cell + WiFi',
-  wifi: 'WiFi',
 };
 
 // Trackers that never set or reported a mode (older firmware) are on GPS
@@ -28,30 +25,23 @@ export const modeShortLabel = (mode) => MODE_SHORT_LABELS[normalizeMode(mode)];
 // Which toggles are on for a mode
 export const modeToggles = (mode) => {
   const m = normalizeMode(mode);
-  return {
-    gps: m === 'gps',
-    cell: m === 'cell' || m === 'cell_wifi',
-    wifi: m === 'wifi' || m === 'cell_wifi',
-  };
+  return { gps: m === 'gps', cell: m !== 'gps', wifi: m === 'cell_wifi' };
 };
 
-// The mode after flipping one toggle. Turning GPS on turns the network
-// sources off, and turning a network source on turns GPS off. Turning off
-// the last source falls back to the other kind (GPS off -> cell, last
-// network source off -> GPS) so the tracker always has one.
+// The mode after flipping one toggle. GPS and cell location replace each
+// other, so the tracker always has one source. WiFi is an add-on to cell
+// location: it can only be switched while cell location is on, and turning
+// cell location off turns it off too.
 export const toggleMode = (mode, toggle) => {
-  const on = modeToggles(mode);
-  if (toggle === 'gps') return on.gps ? 'cell' : 'gps';
-  const cell = toggle === 'cell' ? !on.cell : on.cell;
-  const wifi = toggle === 'wifi' ? !on.wifi : on.wifi;
-  if (cell && wifi) return 'cell_wifi';
-  if (cell) return 'cell';
-  if (wifi) return 'wifi';
-  return 'gps';
+  const m = normalizeMode(mode);
+  if (toggle === 'gps') return m === 'gps' ? 'cell' : 'gps';
+  if (toggle === 'cell') return m === 'gps' ? 'cell' : 'gps';
+  if (toggle === 'wifi' && m !== 'gps') return m === 'cell_wifi' ? 'cell' : 'cell_wifi';
+  return m;
 };
 
-// What placed one reading ("Src"): gps, or a network source with an
-// accuracy radius worth drawing on the map
+// What placed one reading ("Src"): gps, or a network source (cell tower or
+// WiFi) with an accuracy radius worth drawing on the map
 export const isNetworkSource = (source) => source === 'cell' || source === 'wifi';
 
 export const sourceLabel = (source, accuracy) => {
